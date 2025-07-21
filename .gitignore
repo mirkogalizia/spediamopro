@@ -1,0 +1,10 @@
+# Node
+node_modules/
+.next/
+out/
+
+# Env
+.env.local
+
+# MacOS / IDE
+.DS_Store
