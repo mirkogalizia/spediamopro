@@ -33,12 +33,12 @@ function normalizeVariant(variant) {
 
 export async function GET() {
   try {
-    // 1) Mappa product_id → tipologia
+    // 1) mappa product_id → tipologia
     const productTypeMap = {};
-    let productCursor = null;
+    let cursor = null;
     do {
       let url = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products.json?fields=id,product_type&limit=250`;
-      if (productCursor) url += `&page_info=${productCursor}`;
+      if (cursor) url += `&page_info=${cursor}`;
       const res = await fetch(url, {
         headers: { "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN },
         cache: "no-store",
@@ -49,61 +49,64 @@ export async function GET() {
         const raw = (p.product_type||"").toLowerCase().trim();
         productTypeMap[p.id] = TYPE_ALIASES[raw]||raw;
       });
-      productCursor = getPageInfo(res.headers.get("link"));
-    } while (productCursor);
+      cursor = getPageInfo(res.headers.get("link"));
+    } while (cursor);
 
-    // 2) Stock blanks
+    // 2) stock blanks
     const blanksStockMap = {};
-    await Promise.all(Object.entries(BLANKS_PRODUCTS).map(async ([type, prodId]) => {
-      const res = await fetch(
-        `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${prodId}.json`,
-        { headers: { "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN }, cache: "no-store" }
-      );
-      if (!res.ok) return;
-      const data = await res.json();
-      blanksStockMap[type] = {};
-      (data.product.variants||[]).forEach(v => {
-        blanksStockMap[type][normalizeVariant(v.title)] = v.inventory_quantity||0;
-      });
-    }));
+    await Promise.all(
+      Object.entries(BLANKS_PRODUCTS).map(async ([type, prodId]) => {
+        const res = await fetch(
+          `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${prodId}.json`,
+          { headers: { "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN }, cache: "no-store" }
+        );
+        if (!res.ok) return;
+        const json = await res.json();
+        blanksStockMap[type] = {};
+        (json.product.variants || []).forEach(v => {
+          blanksStockMap[type][normalizeVariant(v.title)] = v.inventory_quantity || 0;
+        });
+      })
+    );
 
-    // 3) Venduto
+    // 3) venduto
     const soldMap = {};
-    let orderCursor = null;
+    cursor = null;
     do {
       let url = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&created_at_min=${START_DATE}&fields=line_items,product_id,variant_title&limit=250`;
-      if (orderCursor) url += `&page_info=${orderCursor}`;
+      if (cursor) url += `&page_info=${cursor}`;
       const res = await fetch(url, {
         headers: { "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN },
         cache: "no-store",
       });
       if (!res.ok) break;
       const data = await res.json();
-      (data.orders||[]).forEach(order => {
-        (order.line_items||[]).forEach(item => {
-          const type = productTypeMap[item.product_id]||"";
+      (data.orders || []).forEach(order =>
+        (order.line_items || []).forEach(item => {
+          const type = productTypeMap[item.product_id] || "";
           if (!(type in BLANKS_PRODUCTS)) return;
-          const v = normalizeVariant(item.variant_title||"");
-          soldMap[type] = soldMap[type]||{};
-          soldMap[type][v] = (soldMap[type][v]||0) + (item.quantity||0);
-        });
-      });
-      orderCursor = getPageInfo(res.headers.get("link"));
-    } while (orderCursor);
+          const v = normalizeVariant(item.variant_title || "");
+          soldMap[type] = soldMap[type] || {};
+          soldMap[type][v] = (soldMap[type][v] || 0) + (item.quantity || 0);
+        })
+      );
+      cursor = getPageInfo(res.headers.get("link"));
+    } while (cursor);
 
-    // 4) Unisci stock e venduto
+    // 4) combiniamo stock e venduto
     const rows = Object.entries(blanksStockMap).map(([tipologia, stockVars]) => ({
       tipologia,
       variants: Object.entries(stockVars).map(([varn, stock]) => ({
         variante: varn,
         stock,
-        venduto: soldMap[tipologia]?.[varn]||0,
+        venduto: soldMap[tipologia]?.[varn] || 0,
       })),
     }));
 
     return NextResponse.json(rows);
-  } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
+
 
