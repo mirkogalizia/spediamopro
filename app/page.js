@@ -156,7 +156,7 @@ export default function Page() {
     }
   };
 
-  // CREA + UPDATE + PAY + DETTAGLI (tracking reale)
+  // Crea → Update → Pay
   const handleCreaECompletaEPaga = async (idSim) => {
     setLoading(true);
     setErrore(null);
@@ -195,18 +195,11 @@ export default function Page() {
       if (!resP.ok) throw await resP.json();
       const dataP = await resP.json();
 
-      // DETTAGLIO TRACKING
-      const resDetails = await fetch(`/api/spediamo?step=details&id=${spedizione.id}`, { method: "POST" });
-      let details = {};
-      if (resDetails.ok) {
-        details = await resDetails.json();
-      }
-
-      // Aggiorno storico (merge dati)
+      // Aggiorno storico
       setSpedizioniCreate((prev) => [
         {
           shopifyOrder: orders.find((o) => o.id === Number(selectedOrderId)),
-          spedizione: { ...dataUpd.spedizione, ...details.spedizione },
+          spedizione: dataUpd.spedizione,
         },
         ...prev.filter((el) => el.spedizione.id !== spedizione.id),
       ]);
@@ -243,14 +236,6 @@ export default function Page() {
       setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : err.toString());
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Cancella la cache delle spedizioni create
-  const handleCancellaCache = () => {
-    if (window.confirm("Vuoi davvero cancellare tutte le spedizioni salvate?")) {
-      setSpedizioniCreate([]);
-      localStorage.removeItem(LS_KEY);
     }
   };
 
@@ -333,24 +318,13 @@ export default function Page() {
 
         {/* Spedizioni generate */}
         <div style={historyContainer}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h3 style={historyHeader}>Spedizioni storiche</h3>
-            {spedizioniCreate.length > 0 && (
-              <button
-                style={{ ...buttonSecondary, background: "#ff3b30", color: "#fff", fontSize: 14, padding: "6px 16px" }}
-                onClick={handleCancellaCache}
-              >
-                Cancella cache
-              </button>
-            )}
-          </div>
+          <h3 style={historyHeader}>Spedizioni storiche</h3>
           {spedizioniCreate.length === 0 && <div style={historyEmpty}>Nessuna spedizione creata.</div>}
           {spedizioniCreate.map(({ shopifyOrder, spedizione }) => (
             <div key={spedizione.id} style={historyCard}>
               <span>
                 <strong>{shopifyOrder?.name}</strong> · ID {spedizione.id}
-                {spedizione.tracking_number && <> · Tracking: {spedizione.tracking_number}</>}
-                {!spedizione.tracking_number && spedizione.codice && <> · Tracking: {spedizione.codice}</>}
+                {spedizione.codice && <> · Tracking: {spedizione.codice}</>}
               </span>
               <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>
                 Stampa LDV

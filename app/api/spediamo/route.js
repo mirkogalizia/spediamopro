@@ -246,36 +246,6 @@ export async function POST(req) {
     }
   }
 
-  // ════════════════════
-  // STEP = "details" (NUOVO ENDPOINT)
-  // ════════════════════
-  if (step === "details" && id) {
-    try {
-      const jwt = await getSpediamoToken();
-      const res = await fetch(`https://core.spediamopro.com/api/v1/spedizione/${id}`, {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${jwt}`,
-          "Content-Type":  "application/json",
-        },
-      });
-      const data = await res.json();
-      if (!res.ok) throw data;
-      return new Response(JSON.stringify({ ok: true, spedizione: data.spedizione }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
-    } catch (err) {
-      return new Response(JSON.stringify({ ok: false, error: err }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      });
-    }
-  }
-
-  // ════════════════════
-  // Default response
-  // ════════════════════
   return new Response(
     JSON.stringify({ ok: false, error: "step non supportato o id mancante" }),
     { status: 400, headers: { "Content-Type": "application/json" } }
