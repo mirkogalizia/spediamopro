@@ -6,6 +6,39 @@ function removeAccents(str) {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
+// Icone SVG per corrieri
+function getCorriereIcon(corriere) {
+  const c = (corriere || '').toLowerCase();
+  if (c.includes("brt")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#E30613"/><text x="14" y="13" fill="#fff" fontSize="11" fontWeight="bold" textAnchor="middle">BRT</text></svg>
+  );
+  if (c.includes("gls")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#002776"/><text x="14" y="13" fill="#ffd200" fontSize="12" fontWeight="bold" textAnchor="middle">GLS</text></svg>
+  );
+  if (c.includes("sda")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#003A7B"/><text x="14" y="13" fill="#fff" fontSize="12" fontWeight="bold" textAnchor="middle">SDA</text></svg>
+  );
+  if (c.includes("poste")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#FFEB3B"/><text x="14" y="13" fill="#003366" fontSize="11" fontWeight="bold" textAnchor="middle">Poste</text></svg>
+  );
+  if (c.includes("ups")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#351C15"/><text x="14" y="13" fill="#ffb500" fontSize="12" fontWeight="bold" textAnchor="middle">UPS</text></svg>
+  );
+  if (c.includes("tnt")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ff6c00"/><text x="14" y="13" fill="#fff" fontSize="12" fontWeight="bold" textAnchor="middle">TNT</text></svg>
+  );
+  if (c.includes("dhl")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#FDE500"/><text x="14" y="13" fill="#D40511" fontSize="12" fontWeight="bold" textAnchor="middle">DHL</text></svg>
+  );
+  if (c.includes("fedex")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#fff"/><text x="14" y="13" fill="#4D148C" fontSize="11" fontWeight="bold" textAnchor="middle">FedEx</text></svg>
+  );
+  // Default: pacco/van generico
+  return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ccc"/><text x="14" y="13" fill="#333" fontSize="11" fontWeight="bold" textAnchor="middle">Corriere</text></svg>
+  );
+}
+
 const LS_KEY = "spediamo-pro-spedizioni";
 
 export default function Page() {
@@ -156,7 +189,7 @@ export default function Page() {
     }
   };
 
-  // Crea → Update → Pay
+  // CREA + UPDATE + PAY + DETTAGLI (tracking reale)
   const handleCreaECompletaEPaga = async (idSim) => {
     setLoading(true);
     setErrore(null);
@@ -195,11 +228,18 @@ export default function Page() {
       if (!resP.ok) throw await resP.json();
       const dataP = await resP.json();
 
-      // Aggiorno storico
+      // DETTAGLIO TRACKING
+      const resDetails = await fetch(`/api/spediamo?step=details&id=${spedizione.id}`, { method: "POST" });
+      let details = {};
+      if (resDetails.ok) {
+        details = await resDetails.json();
+      }
+
+      // Aggiorno storico (merge dati)
       setSpedizioniCreate((prev) => [
         {
           shopifyOrder: orders.find((o) => o.id === Number(selectedOrderId)),
-          spedizione: dataUpd.spedizione,
+          spedizione: { ...dataUpd.spedizione, ...details.spedizione },
         },
         ...prev.filter((el) => el.spedizione.id !== spedizione.id),
       ]);
@@ -236,6 +276,14 @@ export default function Page() {
       setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : err.toString());
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Cancella la cache delle spedizioni create
+  const handleCancellaCache = () => {
+    if (window.confirm("Vuoi davvero cancellare tutte le spedizioni salvate?")) {
+      setSpedizioniCreate([]);
+      localStorage.removeItem(LS_KEY);
     }
   };
 
@@ -301,9 +349,10 @@ export default function Page() {
           <div style={offersContainer}>
             {spedizioni.map((s) => (
               <div key={s.id} style={offerCard}>
-                <div>
-                  <div style={offerHeader}>{s.corriere}</div>
-                  <div style={offerId}>ID {s.id}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {getCorriereIcon(s.corriere)}
+                  <span style={{ fontWeight: 600, marginLeft: 2 }}>{s.corriere}</span>
+                  <span style={{ fontSize: 12, color: "#999", marginLeft: 8 }}>ID {s.id}</span>
                 </div>
                 <div style={offerActions}>
                   <div style={offerPrice}>{parseFloat(s.tariffa).toFixed(2)} €</div>
@@ -318,13 +367,24 @@ export default function Page() {
 
         {/* Spedizioni generate */}
         <div style={historyContainer}>
-          <h3 style={historyHeader}>Spedizioni storiche</h3>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 style={historyHeader}>Spedizioni storiche</h3>
+            {spedizioniCreate.length > 0 && (
+              <button
+                style={{ ...buttonSecondary, background: "#ff3b30", color: "#fff", fontSize: 14, padding: "6px 16px" }}
+                onClick={handleCancellaCache}
+              >
+                Cancella cache
+              </button>
+            )}
+          </div>
           {spedizioniCreate.length === 0 && <div style={historyEmpty}>Nessuna spedizione creata.</div>}
           {spedizioniCreate.map(({ shopifyOrder, spedizione }) => (
             <div key={spedizione.id} style={historyCard}>
               <span>
                 <strong>{shopifyOrder?.name}</strong> · ID {spedizione.id}
-                {spedizione.codice && <> · Tracking: {spedizione.codice}</>}
+                {spedizione.tracking_number && <> · Tracking: {spedizione.tracking_number}</>}
+                {!spedizione.tracking_number && spedizione.codice && <> · Tracking: {spedizione.codice}</>}
               </span>
               <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>
                 Stampa LDV
