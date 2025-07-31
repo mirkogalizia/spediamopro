@@ -39,6 +39,15 @@ function getCorriereIcon(corriere) {
   );
 }
 
+// Utility tracking: segnacollo solo per BRT, altrimenti tracking_number/codice
+function getTrackingLabel(spedizione) {
+  const corriere = (spedizione.corriere || "").toLowerCase();
+  if (corriere.includes("brt")) {
+    return spedizione.segnacollo || spedizione.tracking_number || spedizione.codice || "";
+  }
+  return spedizione.tracking_number || spedizione.codice || "";
+}
+
 const LS_KEY = "spediamo-pro-spedizioni";
 
 export default function Page() {
@@ -327,16 +336,79 @@ export default function Page() {
         {selectedOrderId && (
           <form onSubmit={handleSimula} style={simulateFormStyle}>
             <div style={rowStyle}>
-              <input name="nome" placeholder="Destinatario" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required style={inputStyle} />
-              <input name="telefono" placeholder="Telefono" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} required style={inputStyle} />
+              <input
+                name="nome"
+                placeholder="Destinatario"
+                value={form.nome}
+                onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                required
+                style={inputStyle}
+              />
+              <input
+                name="telefono"
+                placeholder="Telefono"
+                value={form.telefono}
+                onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+                required
+                style={inputStyle}
+              />
             </div>
-            <input name="indirizzo" placeholder="Indirizzo (Via, Numero)" value={form.indirizzo} onChange={(e) => setForm({ ...form, indirizzo: removeAccents(e.target.value) })} required style={inputStyle} />
-            <input name="indirizzo2" placeholder="Indirizzo 2" value={form.indirizzo2} onChange={(e) => setForm({ ...form, indirizzo2: removeAccents(e.target.value) })} style={inputStyle} />
+            <input
+              name="email"
+              placeholder="Email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              required
+              style={inputStyle}
+              type="email"
+            />
+            <input
+              name="indirizzo"
+              placeholder="Indirizzo (Via, Numero)"
+              value={form.indirizzo}
+              onChange={(e) => setForm({ ...form, indirizzo: removeAccents(e.target.value) })}
+              required
+              style={inputStyle}
+            />
+            <input
+              name="indirizzo2"
+              placeholder="Indirizzo 2"
+              value={form.indirizzo2}
+              onChange={(e) => setForm({ ...form, indirizzo2: removeAccents(e.target.value) })}
+              style={inputStyle}
+            />
             <div style={rowStyle}>
-              <input name="capDest" placeholder="CAP" value={form.capDestinatario} onChange={(e) => setForm({ ...form, capDestinatario: e.target.value })} required style={smallInput} />
-              <input name="citta" placeholder="Città" value={form.cittaDestinatario} onChange={(e) => setForm({ ...form, cittaDestinatario: e.target.value })} required style={inputStyle} />
-              <input name="prov" placeholder="Prov" value={form.provinciaDestinatario} onChange={(e) => setForm({ ...form, provinciaDestinatario: e.target.value })} required style={smallInput} />
-              <input name="naz" placeholder="Nazione" value={form.nazioneDestinatario} readOnly style={smallInput} />
+              <input
+                name="capDest"
+                placeholder="CAP"
+                value={form.capDestinatario}
+                onChange={(e) => setForm({ ...form, capDestinatario: e.target.value })}
+                required
+                style={smallInput}
+              />
+              <input
+                name="citta"
+                placeholder="Città"
+                value={form.cittaDestinatario}
+                onChange={(e) => setForm({ ...form, cittaDestinatario: e.target.value })}
+                required
+                style={inputStyle}
+              />
+              <input
+                name="prov"
+                placeholder="Prov"
+                value={form.provinciaDestinatario}
+                onChange={(e) => setForm({ ...form, provinciaDestinatario: e.target.value })}
+                required
+                style={smallInput}
+              />
+              <input
+                name="naz"
+                placeholder="Nazione"
+                value={form.nazioneDestinatario}
+                readOnly
+                style={smallInput}
+              />
             </div>
             <button type="submit" disabled={loading} style={buttonSecondary}>
               {loading ? "Simulando..." : "Simula spedizione"}
@@ -383,8 +455,7 @@ export default function Page() {
             <div key={spedizione.id} style={historyCard}>
               <span>
                 <strong>{shopifyOrder?.name}</strong> · ID {spedizione.id}
-                {spedizione.tracking_number && <> · Tracking: {spedizione.tracking_number}</>}
-                {!spedizione.tracking_number && spedizione.codice && <> · Tracking: {spedizione.codice}</>}
+                {getTrackingLabel(spedizione) && <> · Tracking: {getTrackingLabel(spedizione)}</>}
               </span>
               <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>
                 Stampa LDV
