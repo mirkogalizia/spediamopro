@@ -24,9 +24,9 @@ export default function Sidebar() {
         },
       }}
     >
-      <List sx={{ mt: 2, display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <List sx={{ mt: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
         {nav.map((item) => (
-          <Link key={item.href} href={item.href} style={{ width: "100%" }}>
+          <Link key={item.href} href={item.href} style={{ width: "100%", textDecoration: "none" }}>
             <ListItem
               button
               selected={pathname === item.href}
@@ -34,11 +34,14 @@ export default function Sidebar() {
                 flexDirection: "column",
                 alignItems: "center",
                 py: 2,
+                borderRadius: 2,
                 color: pathname === item.href ? "primary.main" : "text.secondary",
                 "&.Mui-selected": {
-                  bgcolor: "primary.lighter",
-                  color: "primary.main",
+                  bgcolor: "primary.main",
+                  color: "white",
                 },
+                transition: "background .2s, color .2s",
+                mb: 1,
               }}
             >
               <ListItemIcon sx={{ minWidth: 0, mb: 0.5, color: "inherit" }}>

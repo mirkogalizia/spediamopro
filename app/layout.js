@@ -1,11 +1,11 @@
-// app/layout.tsx (o .js)
 "use client";
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
+import Sidebar from "./components/Sidebar"; // Assicurati che il path sia corretto!
 
 const theme = createTheme({
   palette: {
     primary: {
-      main: "#1976d2", // blu MUI, cambia se vuoi!
+      main: "#1976d2",
     },
     secondary: {
       main: "#00c9a7",
@@ -34,7 +34,12 @@ export default function RootLayout({ children }) {
       <body>
         <ThemeProvider theme={theme}>
           <CssBaseline />
-          {children}
+          <div style={{ display: "flex", minHeight: "100vh" }}>
+            <Sidebar />
+            <main style={{ flex: 1, minHeight: "100vh", background: "#f5f5f7" }}>
+              {children}
+            </main>
+          </div>
         </ThemeProvider>
       </body>
     </html>
