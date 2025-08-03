@@ -299,14 +299,8 @@ export default function Page() {
 
   return (
     <div style={containerStyle}>
-      {/* --- LOGO GRANDE IN ALTO --- */}
-      <div style={{
-        width: "100%",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        marginBottom: 32,
-      }}>
+      {/* Logo grande centrato in alto sopra la card */}
+      <div style={logoWrapperStyle}>
         <Image
           src="/logo.png"
           alt="Logo"
@@ -316,7 +310,8 @@ export default function Page() {
             width: "220px",
             height: "auto",
             objectFit: "contain",
-            filter: "drop-shadow(0 2px 14px #bbb8)"
+            filter: "drop-shadow(0 2px 14px #bbb8)",
+            maxWidth: "95vw"
           }}
           priority
         />
@@ -492,16 +487,24 @@ export default function Page() {
   );
 }
 
-// ── STILI ──
+// --- STILI ---
 const containerStyle = {
   minHeight: "100vh",
   background: "#f5f7fa",
   display: "flex",
-  justifyContent: "center",
+  flexDirection: "column",    // IMPORTANTE: verticale!
+  justifyContent: "flex-start",
   alignItems: "center",
   padding: 24,
   fontFamily: "-apple-system, BlinkMacSystemFont, SF Pro Display, sans-serif",
   color: "#333",
+};
+const logoWrapperStyle = {
+  width: "100%",
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  marginBottom: 32,
 };
 const cardStyle = {
   background: "#fff",
@@ -564,8 +567,6 @@ const offerCard = {
   alignItems: "center",
   boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
 };
-const offerHeader = { fontWeight: 600 };
-const offerId = { fontSize: 12, color: "#999" };
 const offerActions = { display: "flex", alignItems: "center", gap: 12 };
 const offerPrice = { fontWeight: 700 };
 const offersContainer = { display: "flex", flexDirection: "column", gap: 12 };
