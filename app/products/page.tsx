@@ -1,12 +1,10 @@
 import React from 'react';
 
-// Configurazione SOLO da variabili ambiente!
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
 const SHOPIFY_API_VERSION = "2023-10";
-const PRODUCT_ID = process.env.BLANKS_PRODUCT_ID!; // Imposta questa env con l'ID del prodotto blanks
+const PRODUCT_ID = process.env.BLANKS_PRODUCT_ID!;
 
-// Tipi
 interface Variant {
   id: number;
   option1: string; // Taglia
@@ -19,7 +17,6 @@ interface ProductInfo {
   imageSrc: string;
 }
 
-// Recupera informazioni del prodotto (titolo e immagine principale)
 async function fetchProductInfo(): Promise<ProductInfo> {
   const url = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${PRODUCT_ID}.json`;
   const res = await fetch(url, {
@@ -40,7 +37,6 @@ async function fetchProductInfo(): Promise<ProductInfo> {
   return { title: product.title, imageSrc };
 }
 
-// Recupera varianti blanks
 async function fetchVariants(): Promise<Variant[]> {
   const url = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${PRODUCT_ID}/variants.json`;
   const res = await fetch(url, {
@@ -59,7 +55,6 @@ async function fetchVariants(): Promise<Variant[]> {
 }
 
 export default async function StockPage() {
-  // Controllo ENV: se manca qualcosa blocca subito!
   if (!SHOPIFY_ACCESS_TOKEN || !SHOPIFY_SHOP_DOMAIN || !PRODUCT_ID) {
     return (
       <div className="p-4 text-red-600 whitespace-pre-wrap">
@@ -87,28 +82,69 @@ export default async function StockPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center space-x-4 mb-6">
-        {productInfo.imageSrc && (
-          <img src={productInfo.imageSrc} alt={productInfo.title} className="w-24 h-24 object-cover rounded-md" />
-        )}
-        <h1 className="text-2xl font-bold">{productInfo.title}</h1>
+    <div className="min-h-screen bg-gradient-to-br from-[#f8fafc] via-[#e8eafe] to-[#e6f7fa] px-2 py-12 max-w-3xl mx-auto flex flex-col items-center">
+      <div className="w-full flex flex-col items-center mb-8">
+        <div className="w-28 h-28 mb-2 rounded-2xl bg-white shadow-lg flex items-center justify-center overflow-hidden border-4 border-white">
+          {productInfo.imageSrc && (
+            <img
+              src={productInfo.imageSrc}
+              alt={productInfo.title}
+              className="w-full h-full object-contain"
+            />
+          )}
+        </div>
+        <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#2b59ff] to-[#00c9a7] text-center mb-1">
+          {productInfo.title}
+        </h1>
+        <div className="text-lg text-[#555] font-medium">Situazione magazzino (blanks)</div>
       </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full table-auto border-collapse">
+
+      <div className="overflow-x-auto w-full">
+        <table className="min-w-full border-separate border-spacing-y-2">
           <thead>
             <tr>
-              <th className="border px-4 py-2 bg-gray-100">Taglia</th>
-              <th className="border px-4 py-2 bg-gray-100">Colore</th>
-              <th className="border px-4 py-2 bg-gray-100">Stock</th>
+              <th className="px-4 py-3 text-left text-lg font-semibold text-[#444] bg-white rounded-xl shadow">
+                Taglia
+              </th>
+              <th className="px-4 py-3 text-left text-lg font-semibold text-[#444] bg-white rounded-xl shadow">
+                Colore
+              </th>
+              <th className="px-4 py-3 text-center text-lg font-semibold text-[#444] bg-white rounded-xl shadow">
+                Stock
+              </th>
             </tr>
           </thead>
           <tbody>
             {variants.map((v) => (
-              <tr key={v.id} className="hover:bg-gray-50">
-                <td className="border px-4 py-2">{v.option1}</td>
-                <td className="border px-4 py-2">{v.option2}</td>
-                <td className="border px-4 py-2 text-center">{v.inventory_quantity}</td>
+              <tr
+                key={v.id}
+                className="transition-all hover:scale-[1.01] hover:bg-[#f3f8ff] bg-white rounded-2xl shadow-sm"
+              >
+                <td className="px-4 py-2">
+                  <span className="inline-block px-4 py-1 rounded-xl font-bold bg-[#e9f3ff] text-[#245fff] border border-[#2b59ff33] shadow">
+                    {v.option1}
+                  </span>
+                </td>
+                <td className="px-4 py-2">
+                  <span className="inline-block px-4 py-1 rounded-xl font-semibold bg-[#d6f5f1] text-[#00c9a7] border border-[#00c9a733] shadow">
+                    {v.option2}
+                  </span>
+                </td>
+                <td className="px-4 py-2 text-center">
+                  <span
+                    className={`inline-block px-5 py-1 rounded-xl font-bold
+                      ${
+                        v.inventory_quantity === 0
+                          ? 'bg-[#ffecec] text-[#d93025]'
+                          : v.inventory_quantity <= 5
+                          ? 'bg-[#fff9ea] text-[#cf8700]'
+                          : 'bg-[#edfbf6] text-[#009a60]'
+                      }
+                    `}
+                  >
+                    {v.inventory_quantity}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>
