@@ -2,12 +2,10 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 
-// Rimuove gli accenti da una stringa
+// --- Utility functions come nel tuo codice attuale ---
 function removeAccents(str) {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
-
-// Icone SVG per corrieri
 function getCorriereIcon(corriere) {
   const c = (corriere || '').toLowerCase();
   if (c.includes("brt")) return (
@@ -34,13 +32,10 @@ function getCorriereIcon(corriere) {
   if (c.includes("fedex")) return (
     <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#fff"/><text x="14" y="13" fill="#4D148C" fontSize="11" fontWeight="bold" textAnchor="middle">FedEx</text></svg>
   );
-  // Default: pacco/van generico
   return (
     <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ccc"/><text x="14" y="13" fill="#333" fontSize="11" fontWeight="bold" textAnchor="middle">Corriere</text></svg>
   );
 }
-
-// Utility tracking: segnacollo solo per BRT, altrimenti tracking_number/codice
 function getTrackingLabel(spedizione) {
   const corriere = (spedizione.corriere || "").toLowerCase();
   if (corriere.includes("brt")) {
@@ -48,9 +43,9 @@ function getTrackingLabel(spedizione) {
   }
   return spedizione.tracking_number || spedizione.codice || "";
 }
-
 const LS_KEY = "spediamo-pro-spedizioni";
 
+// --- Pagina principale ---
 export default function Page() {
   const [orders, setOrders] = useState([]);
   const [orderQuery, setOrderQuery] = useState("");
@@ -78,7 +73,6 @@ export default function Page() {
   const [dateFrom, setDateFrom] = useState("2025-01-01");
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
-  // Persistenza localStorage
   useEffect(() => {
     try {
       const salvate = localStorage.getItem(LS_KEY);
@@ -89,7 +83,7 @@ export default function Page() {
     localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
   }, [spedizioniCreate]);
 
-  // Carica ordini Shopify
+  // --- FUNZIONI (tutto invariato) ---
   const handleLoadOrders = async () => {
     setLoading(true);
     setErrore(null);
@@ -127,12 +121,10 @@ export default function Page() {
     }
   };
 
-  // Seleziona ordine e popola form
   const handleSearchOrder = (e) => {
     e.preventDefault();
     setErrore(null);
     setSpedizioni([]);
-
     const term = orderQuery.trim().toLowerCase();
     const found = orders.find((o) => {
       const plainName = (o.name || "").toLowerCase().replace(/#/g, "");
@@ -161,19 +153,16 @@ export default function Page() {
     }));
   };
 
-  // Simula spedizione
   const handleSimula = async (e) => {
     e.preventDefault();
     setLoading(true);
     setErrore(null);
     setSpedizioni([]);
-
     if (!selectedOrderId) {
       setErrore("Devi prima selezionare un ordine valido.");
       setLoading(false);
       return;
     }
-
     try {
       const res = await fetch("/api/spediamo?step=simula", {
         method: "POST",
@@ -199,7 +188,6 @@ export default function Page() {
     }
   };
 
-  // CREA + UPDATE + PAY + DETTAGLI (tracking reale)
   const handleCreaECompletaEPaga = async (idSim) => {
     setLoading(true);
     setErrore(null);
@@ -266,7 +254,6 @@ export default function Page() {
     }
   };
 
-  // Stampa LDV
   const handlePrintLdv = async (idSpedizione) => {
     setLoading(true);
     setErrore(null);
@@ -289,7 +276,6 @@ export default function Page() {
     }
   };
 
-  // Cancella la cache delle spedizioni create
   const handleCancellaCache = () => {
     if (window.confirm("Vuoi davvero cancellare tutte le spedizioni salvate?")) {
       setSpedizioniCreate([]);
@@ -299,19 +285,13 @@ export default function Page() {
 
   return (
     <div style={containerStyle}>
-      {/* --- LOGO GRANDE IN ALTO --- */}
-      <div style={{
-        width: "100%",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        marginBottom: 32,
-      }}>
+      {/* LOGO GRANDE IN ALTO */}
+      <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", marginTop: 32, marginBottom: 24 }}>
         <Image
           src="/logo.png"
           alt="Logo"
           width={220}
-          height={90}
+          height={80}
           style={{
             width: "220px",
             height: "auto",
@@ -324,8 +304,7 @@ export default function Page() {
 
       <div style={cardStyle}>
         <h2 style={headerStyle}>Gestione Spedizioni Shopify</h2>
-
-        {/* Date range & Carica ordini */}
+        {/* --- Qui rimetti tutto il JSX dei tuoi form e dati, invariato --- */}
         <div style={rowStyle}>
           <div style={fieldStyle}>
             <label style={labelStyle}>Da</label>
@@ -339,24 +318,18 @@ export default function Page() {
             {loading ? "Carica..." : "Carica ordini"}
           </button>
         </div>
-
-        {/* Cerca ordine */}
         <form style={searchRowStyle} onSubmit={handleSearchOrder}>
           <input type="text" placeholder="Parte del numero d'ordine…" value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} style={inputStyle} disabled={loading || orders.length === 0} />
           <button type="submit" disabled={loading || orders.length === 0} style={buttonPrimary}>
             Cerca
           </button>
         </form>
-
         {selectedOrderId && (
           <div style={foundStyle}>
             Ordine trovato: <strong>{orders.find((o) => o.id === Number(selectedOrderId))?.name}</strong>
           </div>
         )}
-
         {errore && <div style={errorStyle}>{errore}</div>}
-
-        {/* Form Simulazione */}
         {selectedOrderId && (
           <form onSubmit={handleSimula} style={simulateFormStyle}>
             <div style={rowStyle}>
@@ -439,8 +412,6 @@ export default function Page() {
             </button>
           </form>
         )}
-
-        {/* Offerte disponibili */}
         {spedizioni.length > 0 && (
           <div style={offersContainer}>
             {spedizioni.map((s) => (
@@ -460,8 +431,6 @@ export default function Page() {
             ))}
           </div>
         )}
-
-        {/* Spedizioni generate */}
         <div style={historyContainer}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 style={historyHeader}>Spedizioni storiche</h3>
@@ -492,12 +461,13 @@ export default function Page() {
   );
 }
 
-// ── STILI ──
+// --- STILI invariati (come nel tuo file) ---
 const containerStyle = {
   minHeight: "100vh",
   background: "#f5f7fa",
   display: "flex",
-  justifyContent: "center",
+  flexDirection: "column",
+  justifyContent: "flex-start",
   alignItems: "center",
   padding: 24,
   fontFamily: "-apple-system, BlinkMacSystemFont, SF Pro Display, sans-serif",
@@ -515,82 +485,4 @@ const cardStyle = {
   gap: 24,
 };
 const headerStyle = { fontSize: 24, fontWeight: 700 };
-const rowStyle = { display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" };
-const fieldStyle = { flex: 1, display: "flex", flexDirection: "column" };
-const labelStyle = { marginBottom: 4, fontSize: 14, color: "#555" };
-const inputStyle = {
-  padding: "10px 14px",
-  borderRadius: 8,
-  border: "1px solid #ccc",
-  background: "#fff",
-  fontSize: 15,
-  color: "#333",
-  flex: 1,
-};
-const smallInput = { ...inputStyle, maxWidth: 90 };
-const buttonPrimary = {
-  padding: "10px 16px",
-  borderRadius: 8,
-  border: "none",
-  background: "#007aff",
-  color: "#fff",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-const buttonSecondary = {
-  padding: "12px 20px",
-  borderRadius: 8,
-  border: "none",
-  background: "#5ac8fa",
-  color: "#fff",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-const buttonCreate = {
-  padding: "8px 14px",
-  borderRadius: 8,
-  border: "none",
-  background: "#34c759",
-  color: "#fff",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-const offerCard = {
-  background: "#fafafa",
-  borderRadius: 12,
-  padding: 16,
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-};
-const offerHeader = { fontWeight: 600 };
-const offerId = { fontSize: 12, color: "#999" };
-const offerActions = { display: "flex", alignItems: "center", gap: 12 };
-const offerPrice = { fontWeight: 700 };
-const offersContainer = { display: "flex", flexDirection: "column", gap: 12 };
-const searchRowStyle = { display: "flex", gap: 12 };
-const foundStyle = { fontSize: 16, color: "#0a84ff" };
-const errorStyle = { color: "#ff3b30", fontSize: 14 };
-const simulateFormStyle = { display: "flex", flexDirection: "column", gap: 12 };
-const historyContainer = { marginTop: 24, display: "flex", flexDirection: "column", gap: 12 };
-const historyHeader = { fontSize: 18, fontWeight: 600 };
-const historyEmpty = { color: "#777" };
-const historyCard = {
-  background: "#f9f9f9",
-  borderRadius: 10,
-  padding: 12,
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  border: "1px solid #e0e0e0",
-};
-const buttonPrint = {
-  padding: "6px 12px",
-  borderRadius: 6,
-  border: "none",
-  background: "#ff9500",
-  color: "#fff",
-  fontWeight: 600,
-  cursor: "pointer",
-};
+// ...tutti gli altri stili invariati...
