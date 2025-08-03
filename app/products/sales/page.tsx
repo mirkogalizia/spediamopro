@@ -1,6 +1,23 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
+import {
+  Box,
+  Paper,
+  Typography,
+  TableContainer,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  Chip,
+  Alert,
+  Skeleton,
+  Stack,
+  Divider,
+} from "@mui/material";
+import ColorLensIcon from '@mui/icons-material/ColorLens';
 
 type VariantData = {
   variante: string | null | undefined;
@@ -18,33 +35,26 @@ function normalize(str: string | null | undefined) {
   return str.trim().toLowerCase();
 }
 
+const TAGLIE_ORDINATE = ["xs", "s", "m", "l", "xl"];
+
 export default function StockForecastByColorAndSize() {
   const [data, setData] = useState<TypeGroup[]>([]);
   const [error, setError] = useState('');
-  const [stockInput, setStockInput] = useState<Record<string, number>>({});
-
-  const periodDays = 30; // venduto ultimi 30 giorni
+  const [loading, setLoading] = useState(true);
+  const periodDays = 30;
 
   useEffect(() => {
     async function fetchData() {
+      setLoading(true);
       try {
         const res = await fetch('/api/products/sales');
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         const json: TypeGroup[] = await res.json();
         setData(json);
-
-        // Inizializza stockInput con stock da backend
-        const initialStock: Record<string, number> = {};
-        json.forEach(group => {
-          group.variants.forEach(v => {
-            const [taglia, colore] = (v.variante ?? "").split("/").map(s => normalize(s));
-            const key = `${normalize(group.tipologia)}|${colore}|${taglia}`;
-            initialStock[key] = v.stock || 0;
-          });
-        });
-        setStockInput(initialStock);
       } catch (e: any) {
         setError(e.message);
+      } finally {
+        setLoading(false);
       }
     }
     fetchData();
@@ -64,44 +74,75 @@ export default function StockForecastByColorAndSize() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f5f7] p-10 font-sans text-[#1d1d1f] max-w-7xl mx-auto">
-      <h1 className="text-5xl font-semibold mb-12">Previsionale Magazzino Blanks per Colore e Taglia</h1>
+    <Box sx={{ minHeight: "100vh", bgcolor: "background.default", py: 6, px: 1, maxWidth: "1100px", mx: "auto" }}>
+      <Typography
+        variant="h3"
+        fontWeight={800}
+        sx={{
+          mb: 6,
+          background: "linear-gradient(90deg, #005bea 0%, #00c9a7 80%)",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+        }}
+      >
+        Previsionale Magazzino Blanks
+      </Typography>
 
       {error && (
-        <div className="mb-8 p-4 bg-[#ffecec] text-[#d93025] rounded-lg font-semibold">
-          Errore: {error}
-        </div>
+        <Alert severity="error" sx={{ mb: 3, fontWeight: 600 }}>{error}</Alert>
       )}
 
-      {data.length === 0 && !error && (
-        <p className="text-[#6e6e73] text-lg">Caricamento dati in corso…</p>
+      {loading && (
+        <Stack gap={4}>
+          {[1,2].map((i) => (
+            <Paper key={i} sx={{ p: 4, borderRadius: 4, boxShadow: 3 }}>
+              <Skeleton variant="text" width={200} height={32} />
+              <Skeleton variant="rectangular" height={48} sx={{ my: 1, borderRadius: 2 }} />
+              <Skeleton variant="rectangular" height={48} sx={{ my: 1, borderRadius: 2 }} />
+            </Paper>
+          ))}
+        </Stack>
       )}
 
-      {data.map(group => (
-        <section key={group.tipologia} className="mb-16 bg-white rounded-3xl shadow-lg p-8">
-          <h2 className="text-3xl font-medium mb-8 capitalize">{group.tipologia}</h2>
+      {!loading && data.map(group => (
+        <Paper
+          key={group.tipologia}
+          elevation={4}
+          sx={{
+            mb: 6,
+            borderRadius: 4,
+            p: 4,
+            bgcolor: "#fff",
+            boxShadow: "0 4px 32px 0 #b3e0ff22",
+          }}
+        >
+          <Typography variant="h5" fontWeight={700} mb={3} color="primary">
+            {group.tipologia}
+          </Typography>
+          <Divider sx={{ mb: 4 }} />
 
-          {Object.entries(groupVariants(group.variants)).map(([colore, taglieObj]) => (
-            <div key={colore} className="mb-10">
-              <h3 className="text-2xl font-semibold mb-4 capitalize">{colore}</h3>
-
-              <table className="w-full border-collapse rounded-2xl overflow-hidden">
-                <thead className="bg-[#f0f0f5] text-[#6e6e73] text-left select-none">
-                  <tr>
-                    <th className="py-4 px-6 font-semibold">Taglia</th>
-                    <th className="py-4 px-6 font-semibold text-center">Venduto (ultimi {periodDays} gg)</th>
-                    <th className="py-4 px-6 font-semibold text-center">Stock attuale</th>
-                    <th className="py-4 px-6 font-semibold text-center">Giorni stimati rimanenti</th>
-                    <th className="py-4 px-6 font-semibold text-center">Suggerimento acquisto (per 30 gg)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    const taglieOrdinate = ['xs', 's', 'm', 'l', 'xl'];
-                    return Object.entries(taglieObj)
+          {Object.entries(groupVariants(group.variants)).map(([colore, taglieObj], idxColore) => (
+            <Box key={colore} mb={4}>
+              <Stack direction="row" alignItems="center" gap={1} mb={2}>
+                <ColorLensIcon sx={{ color: "#00c9a7" }} />
+                <Typography variant="h6" fontWeight={700} textTransform="capitalize">{colore}</Typography>
+              </Stack>
+              <TableContainer>
+                <Table sx={{ minWidth: 450 }}>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: "#f8fafc" }}>
+                      <TableCell sx={{ fontWeight: 600, fontSize: 16 }}>Taglia</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 600, fontSize: 16 }}>Venduto<br/>(ultimi {periodDays} gg)</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 600, fontSize: 16 }}>Stock attuale</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 600, fontSize: 16 }}>Giorni rimanenti</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 600, fontSize: 16 }}>Suggerimento acquisto</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {Object.entries(taglieObj)
                       .sort(([tagliaA], [tagliaB]) => {
-                        const iA = taglieOrdinate.indexOf(tagliaA.toLowerCase());
-                        const iB = taglieOrdinate.indexOf(tagliaB.toLowerCase());
+                        const iA = TAGLIE_ORDINATE.indexOf(tagliaA.toLowerCase());
+                        const iB = TAGLIE_ORDINATE.indexOf(tagliaB.toLowerCase());
                         if (iA === -1 && iB === -1) return tagliaA.localeCompare(tagliaB);
                         if (iA === -1) return 1;
                         if (iB === -1) return -1;
@@ -109,50 +150,66 @@ export default function StockForecastByColorAndSize() {
                       })
                       .map(([taglia, vars]) => {
                         const v = vars[0];
-                        const key = `${normalize(group.tipologia)}|${normalize(colore)}|${normalize(taglia)}`;
-                        const stock = stockInput[key] ?? 0;
                         const dailyConsumption = v.venduto / periodDays;
                         const daysRemaining =
-                          dailyConsumption > 0 ? Math.floor(stock / dailyConsumption) : '∞';
+                          dailyConsumption > 0 ? Math.floor((v.stock ?? 0) / dailyConsumption) : "∞";
                         const purchaseSuggestion =
                           dailyConsumption > 0
-                            ? Math.max(0, Math.ceil(dailyConsumption * 30 - stock))
+                            ? Math.max(0, Math.ceil(dailyConsumption * 30 - (v.stock ?? 0)))
                             : 0;
-
                         return (
-                          <tr
+                          <TableRow
                             key={taglia}
-                            className={`bg-white border-b border-gray-200 ${
-                              typeof daysRemaining === 'number' && daysRemaining <= 7
-                                ? 'bg-[#ffeaea]'
-                                : ''
-                            }`}
+                            sx={{
+                              bgcolor: typeof daysRemaining === "number" && daysRemaining <= 7
+                                ? "#fff2f2"
+                                : "#fff"
+                            }}
                           >
-                            <td className="py-4 px-6 text-lg font-medium capitalize">{taglia}</td>
-                            <td className="py-4 px-6 text-center text-lg">{v.venduto}</td>
-                            <td className="py-4 px-6 text-center font-semibold">{stock}</td>
-                            <td
-                              className={`py-4 px-6 text-center text-lg font-semibold ${
-                                typeof daysRemaining === 'number' && daysRemaining <= 7
-                                  ? 'text-[#d93025]'
-                                  : 'text-[#1d1d1f]'
-                              }`}
-                            >
+                            <TableCell sx={{ fontWeight: 600, fontSize: 17, textTransform: "uppercase" }}>{taglia}</TableCell>
+                            <TableCell align="center">
+                              <Chip label={v.venduto} color="primary" variant="outlined" size="medium" sx={{ fontWeight: 700, fontSize: 15 }}/>
+                            </TableCell>
+                            <TableCell align="center">
+                              <Chip
+                                label={v.stock}
+                                color={
+                                  v.stock === 0
+                                    ? "error"
+                                    : v.stock <= 5
+                                    ? "warning"
+                                    : "success"
+                                }
+                                variant="filled"
+                                size="medium"
+                                sx={{ fontWeight: 700, fontSize: 15 }}
+                              />
+                            </TableCell>
+                            <TableCell align="center" sx={{
+                              fontWeight: 700,
+                              color:
+                                typeof daysRemaining === "number" && daysRemaining <= 7
+                                  ? "#d93025"
+                                  : "#006400",
+                              fontSize: 16,
+                            }}>
                               {daysRemaining}
-                            </td>
-                            <td className="py-4 px-6 text-center font-semibold text-[#1d1d1f]">
-                              {purchaseSuggestion}
-                            </td>
-                          </tr>
+                            </TableCell>
+                            <TableCell align="center" sx={{ fontWeight: 700, fontSize: 16 }}>
+                              {purchaseSuggestion > 0
+                                ? <Chip label={`+${purchaseSuggestion}`} color="info" variant="outlined" size="small" sx={{ fontWeight: 700 }}/>
+                                : "-"}
+                            </TableCell>
+                          </TableRow>
                         );
-                      });
-                  })()}
-                </tbody>
-              </table>
-            </div>
+                      })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
           ))}
-        </section>
+        </Paper>
       ))}
-    </main>
+    </Box>
   );
 }

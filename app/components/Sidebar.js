@@ -1,36 +1,62 @@
-import {
-  Truck,
-  Boxes,
-} from "lucide-react";
+"use client";
+import { Drawer, List, ListItem, ListItemIcon, ListItemText } from "@mui/material";
+import LocalShippingIcon from "@mui/icons-material/LocalShipping";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const nav = [
-  { href: "/", icon: <Truck size={28} strokeWidth={2.5} />, tooltip: "Spedizioni" },
-  { href: "/products/sales", icon: <Boxes size={26} strokeWidth={2.5} />, tooltip: "Stock & Previsionale" },
+  { href: "/", label: "Spedizioni", icon: <LocalShippingIcon fontSize="large" /> },
+  { href: "/products/sales", label: "Stock", icon: <Inventory2Icon fontSize="large" /> },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
   return (
-    <aside className="flex flex-col items-center py-10 bg-white border-r border-gray-100 shadow-lg min-h-screen w-20 z-10">
-      {nav.map((item) => (
-        <Link
-          href={item.href}
-          key={item.href}
-          className={`group mb-8 rounded-2xl p-2 hover:bg-blue-50 transition
-            ${pathname === item.href ? "bg-blue-100 text-blue-600 shadow-sm" : "text-gray-400"}
-          `}
-        >
-          <div className="flex flex-col items-center relative">
-            {item.icon}
-            {/* Tooltip all’hover */}
-            <span className="absolute left-14 top-1/2 -translate-y-1/2 bg-[#222] text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 translate-x-2 pointer-events-none shadow-lg transition z-50 whitespace-nowrap">
-              {item.tooltip}
-            </span>
-          </div>
-        </Link>
-      ))}
-    </aside>
+    <Drawer
+      variant="permanent"
+      PaperProps={{
+        sx: {
+          width: 82,
+          bgcolor: "background.paper",
+          borderRight: "1px solid #eee",
+          boxShadow: 3,
+        },
+      }}
+    >
+      <List sx={{ mt: 2, display: "flex", flexDirection: "column", alignItems: "center" }}>
+        {nav.map((item) => (
+          <Link key={item.href} href={item.href} style={{ width: "100%" }}>
+            <ListItem
+              button
+              selected={pathname === item.href}
+              sx={{
+                flexDirection: "column",
+                alignItems: "center",
+                py: 2,
+                color: pathname === item.href ? "primary.main" : "text.secondary",
+                "&.Mui-selected": {
+                  bgcolor: "primary.lighter",
+                  color: "primary.main",
+                },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 0, mb: 0.5, color: "inherit" }}>
+                {item.icon}
+              </ListItemIcon>
+              <ListItemText
+                primary={item.label}
+                primaryTypographyProps={{
+                  fontSize: 12,
+                  fontWeight: pathname === item.href ? 700 : 500,
+                  align: "center",
+                }}
+                sx={{ textAlign: "center" }}
+              />
+            </ListItem>
+          </Link>
+        ))}
+      </List>
+    </Drawer>
   );
 }
