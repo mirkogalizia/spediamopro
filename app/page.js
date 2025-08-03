@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from "react";
+import Image from "next/image";
 
 // Rimuove gli accenti da una stringa
 function removeAccents(str) {
@@ -298,6 +299,29 @@ export default function Page() {
 
   return (
     <div style={containerStyle}>
+      {/* --- LOGO GRANDE IN ALTO --- */}
+      <div style={{
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        marginBottom: 32,
+      }}>
+        <Image
+          src="/logo.png"
+          alt="Logo"
+          width={220}
+          height={90}
+          style={{
+            width: "220px",
+            height: "auto",
+            objectFit: "contain",
+            filter: "drop-shadow(0 2px 14px #bbb8)"
+          }}
+          priority
+        />
+      </div>
+
       <div style={cardStyle}>
         <h2 style={headerStyle}>Gestione Spedizioni Shopify</h2>
 
@@ -570,4 +594,3 @@ const buttonPrint = {
   fontWeight: 600,
   cursor: "pointer",
 };
-
