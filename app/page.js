@@ -40,18 +40,22 @@ function getCorriereIcon(corriere) {
   );
 }
 
-// Funzione tracking aggiornata
+// Tracking vero + link
 function getTrackingLabel(spedizione) {
-  // 1. Prova tracking array (caso più affidabile)
+  // 1. Tracking vero: colli > segnacollo
+  if (Array.isArray(spedizione.colli) && spedizione.colli.length > 0) {
+    const c = spedizione.colli[0];
+    if (c.segnacollo) return c.segnacollo;
+  }
+  // 2. Link tracking diretto, se solo link
+  if (spedizione.trackLink) return spedizione.trackLink;
+  // 3. Fallback: tracking array, tracking_number, tracking_number_corriere
   if (Array.isArray(spedizione.tracking) && spedizione.tracking.length > 0) {
     const t = spedizione.tracking.find(tk => tk.number);
     if (t) return t.number;
   }
-  // 2. Prova tracking_number_corriere
   if (spedizione.tracking_number_corriere) return spedizione.tracking_number_corriere;
-  // 3. Prova tracking_number
   if (spedizione.tracking_number) return spedizione.tracking_number;
-  // 4. fallback: segna collo o codice interno
   if (spedizione.segnacollo) return spedizione.segnacollo;
   if (spedizione.codice) return spedizione.codice;
   return "";
@@ -97,9 +101,8 @@ export default function Page() {
     localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
   }, [spedizioniCreate]);
 
-  // Aggiornamento automatico tracking delle spedizioni storiche
+  // Aggiorna tracking delle spedizioni storiche
   useEffect(() => {
-    // Aggiorna solo quelle senza tracking valido
     const aggiornaTracking = async () => {
       try {
         const daAggiornare = spedizioniCreate.filter(
@@ -123,7 +126,6 @@ export default function Page() {
         setErrore("Errore durante l’aggiornamento tracking: " + err);
       }
     };
-
     aggiornaTracking();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spedizioniCreate.length]);
@@ -529,13 +531,18 @@ export default function Page() {
           {spedizioniCreate.length === 0 && <div style={historyEmpty}>Nessuna spedizione creata.</div>}
           {spedizioniCreate.map(({ shopifyOrder, spedizione, lastPayReason }) => {
             const tracking = getTrackingLabel(spedizione);
+            const trackingLink = spedizione.trackLink;
             return (
               <div key={spedizione.id} style={historyCard}>
                 <span>
                   <strong>{shopifyOrder?.name}</strong> · ID {spedizione.id}
                   {" · Tracking: "}
                   {tracking
-                    ? tracking
+                    ? (
+                        trackingLink
+                          ? <a href={trackingLink} target="_blank" rel="noopener noreferrer" style={{ color: "#0a84ff", fontWeight: 700 }}>{tracking}</a>
+                          : <span style={{ fontWeight: 600 }}>{tracking}</span>
+                      )
                     : <span style={{ color: "#999" }}>non ancora disponibile</span>}
                   {lastPayReason && (
                     <span style={{ color: "#ff3b30", fontSize: 13, marginLeft: 8 }}>
