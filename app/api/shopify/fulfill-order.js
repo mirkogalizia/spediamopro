@@ -6,7 +6,7 @@ export async function POST(req) {
 
     if (!orderId || !trackingNumber || !carrierName) {
       return new Response(
-        JSON.stringify({ error: "Mancano parametri obbligatori" }),
+        JSON.stringify({ error: "orderId, trackingNumber e carrierName sono obbligatori" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -16,18 +16,19 @@ export async function POST(req) {
       process.env.SHOPIFY_TOKEN
     );
 
+    // Creo fulfillment
     const fulfillment = {
       fulfillment: {
         location_id: parseInt(process.env.SHOPIFY_LOCATION_ID, 10),
         tracking_number: trackingNumber,
         tracking_company: carrierName,
         notify_customer: true,
-        line_items_by_fulfillment_order: [], // vuoto per evadere tutto
+        line_items_by_fulfillment_order: [], // vuoto: evadi tutto
       },
     };
 
     const response = await client.post({
-      path: `orders/${orderId}/fulfillments`,
+      path: `orders/${orderId}/fulfillments.json`,
       data: fulfillment,
       type: Shopify.DataType.JSON,
     });
@@ -36,7 +37,6 @@ export async function POST(req) {
       JSON.stringify({ success: true, data: response.body }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
-
   } catch (error) {
     return new Response(
       JSON.stringify({ error: error.message || "Errore interno" }),
