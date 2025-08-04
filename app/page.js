@@ -40,16 +40,14 @@ function getCorriereIcon(corriere) {
   );
 }
 
-// --- Tracking BRT/GLS/altro sempre corretto ---
+// Tracking label + link stabile
 function getTrackingLabel(spedizione) {
-  // 1. Tracking via colli[0].segnacollo (vero tracking BRT)
+  // Tracking vero: colli[0].segnacollo
   if (Array.isArray(spedizione.colli) && spedizione.colli.length > 0 && spedizione.colli[0].segnacollo) {
     return spedizione.colli[0].segnacollo;
   }
-  // 2. Campo tracking_number/tracking_number_corriere
   if (spedizione.tracking_number_corriere) return spedizione.tracking_number_corriere;
   if (spedizione.tracking_number) return spedizione.tracking_number;
-  // 3. Fallback segna collo/codice interno
   if (spedizione.segnacollo) return spedizione.segnacollo;
   if (spedizione.codice) return spedizione.codice;
   return "";
@@ -95,19 +93,15 @@ export default function Page() {
     localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
   }, [spedizioniCreate]);
 
-  // Aggiornamento automatico tracking delle spedizioni storiche
+  // Aggiornamento tracking in differita (ogni 60 secondi)
   useEffect(() => {
-    const aggiornaTracking = async () => {
+    if (!spedizioniCreate.length) return;
+    const updateTracking = async () => {
       try {
-        const daAggiornare = spedizioniCreate.filter(
-          (el) =>
-            !getTrackingLabel(el.spedizione) ||
-            !el.spedizione.trackLink
-        );
-        if (daAggiornare.length === 0) return;
-        const spedizioniAggiornate = await Promise.all(
+        const nuove = await Promise.all(
           spedizioniCreate.map(async (el) => {
-            if (!getTrackingLabel(el.spedizione) || !el.spedizione.trackLink) {
+            const tracking = getTrackingLabel(el.spedizione);
+            if (!tracking || !el.spedizione.trackLink) {
               const res = await fetch(`/api/spediamo?step=details&id=${el.spedizione.id}`, { method: "POST" });
               if (res.ok) {
                 const details = await res.json();
@@ -117,14 +111,14 @@ export default function Page() {
             return el;
           })
         );
-        setSpedizioniCreate(spedizioniAggiornate);
+        setSpedizioniCreate(nuove);
       } catch (err) {
-        setErrore("Errore durante l’aggiornamento tracking: " + err);
+        setErrore("Errore aggiornamento tracking: " + err);
       }
     };
-
-    aggiornaTracking();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    updateTracking();
+    const timer = setInterval(updateTracking, 60000);
+    return () => clearInterval(timer);
   }, [spedizioniCreate.length]);
 
   // Carica ordini Shopify
@@ -305,14 +299,12 @@ export default function Page() {
         ...prev.filter((el) => el.spedizione.id !== spedizione.id),
       ]);
 
-      // --- ALERT MIGLIORATO ---
       if (dataP.can_pay) {
         alert(`✅ Spedizione #${spedizione.id} creata e pagata!`);
       } else {
         alert(
           `⚠️ Spedizione #${spedizione.id} creata ma NON pagata.\n\nMotivo:\n${motivo}`
         );
-        // Log dettagliato per debug
         console.warn("PAY NON RIUSCITO:", dataP);
       }
     } catch (err) {
@@ -355,7 +347,7 @@ export default function Page() {
 
   return (
     <div style={containerStyle}>
-      {/* Logo grande centrato in alto sopra la card */}
+      {/* Logo */}
       <div style={logoWrapperStyle}>
         <Image
           src="/logo.png"
@@ -535,7 +527,11 @@ export default function Page() {
                   <strong>{shopifyOrder?.name}</strong> · ID {spedizione.id}
                   {" · Tracking: "}
                   {trackingLink && tracking
-                    ? <a href={trackingLink} target="_blank" rel="noopener noreferrer" style={{ color: "#0a84ff", fontWeight: 700 }}>{tracking}</a>
+                    ? (
+                      <a href={trackingLink} target="_blank" rel="noopener noreferrer" style={{ color: "#0a84ff", fontWeight: 700 }}>
+                        {tracking}
+                      </a>
+                    )
                     : tracking
                       ? <span style={{ fontWeight: 600 }}>{tracking}</span>
                       : <span style={{ color: "#999" }}>non ancora disponibile</span>
