@@ -1,10 +1,20 @@
 import Shopify from '@shopify/shopify-api';
 
-export async function POST(req, res) {
+export async function POST(req) {
   try {
     const { orderId, trackingNumber, carrierName } = await req.json();
 
-    const client = new Shopify.Clients.Rest(process.env.SHOPIFY_DOMAIN, process.env.SHOPIFY_TOKEN);
+    if (!orderId || !trackingNumber || !carrierName) {
+      return new Response(
+        JSON.stringify({ error: "Mancano parametri obbligatori" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const client = new Shopify.Clients.Rest(
+      process.env.SHOPIFY_DOMAIN,
+      process.env.SHOPIFY_TOKEN
+    );
 
     const fulfillment = {
       fulfillment: {
@@ -22,14 +32,15 @@ export async function POST(req, res) {
       type: Shopify.DataType.JSON,
     });
 
-    return new Response(JSON.stringify({ success: true, data: response.body }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: true, data: response.body }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message || "Errore interno" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: error.message || "Errore interno" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
   }
 }
