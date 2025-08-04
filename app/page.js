@@ -312,7 +312,7 @@ export default function Page() {
     }
   };
 
-  // Stampa LDV
+  // Stampa LDV con download diretto senza apertura finestra
   const handlePrintLdv = async (idSpedizione) => {
     setLoading(true);
     setErrore(null);
@@ -320,14 +320,23 @@ export default function Page() {
       const res = await fetch(`/api/spediamo?step=ldv&id=${idSpedizione}`, { method: "POST" });
       if (!res.ok) throw await res.json();
       const { ldv } = await res.json();
+
+      // Decodifica base64 in blob
       const byteChars = atob(ldv.b64);
       const bytes = Uint8Array.from(byteChars, (c) => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: ldv.type });
       const url = URL.createObjectURL(blob);
-      const w = window.open("", "_blank");
-      w.document.write(
-        `<iframe src="${url}" style="width:100%;height:100vh;border:none;" onload="this.contentWindow.print()"></iframe>`
-      );
+
+      // Crea link di download e cliccaci sopra
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ldv_${idSpedizione}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      // Rilascia URL
+      URL.revokeObjectURL(url);
     } catch (err) {
       setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : err.toString());
     } finally {
