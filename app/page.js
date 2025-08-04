@@ -52,12 +52,12 @@ function getTrackingLabel(spedizione) {
   return "";
 }
 
-// --- Componente Stampa LDV integrato ---
+// --- Componente Stampa LDV con download diretto ---
 function PrintLdvButton({ idSpedizione }) {
   const [loading, setLoading] = useState(false);
   const [errore, setErrore] = useState(null);
 
-  const handlePrintLdv = async () => {
+  const handleDownloadLdv = async () => {
     setLoading(true);
     setErrore(null);
     try {
@@ -66,25 +66,29 @@ function PrintLdvButton({ idSpedizione }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ idSpedizione }),
       });
-      const data = await res.json();
 
-      if (!res.ok || data.error) {
+      if (!res.ok) {
+        const data = await res.json();
         throw new Error(data.error || "Errore durante il download LDV");
       }
 
-      data.pdfs.forEach(({ base64, filename }) => {
-        const byteChars = atob(base64);
-        const bytes = Uint8Array.from(byteChars, (c) => c.charCodeAt(0));
-        const blob = new Blob([bytes], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
+      const blob = await res.blob();
 
-        const w = window.open("", "_blank");
-        w.document.write(
-          `<html><head><title>${filename}</title></head><body style="margin:0">
-           <iframe src="${url}" style="width:100%;height:100vh;border:none;" onload="this.contentWindow.print()"></iframe>
-           </body></html>`
-        );
-      });
+      const disposition = res.headers.get("Content-Disposition") || res.headers.get("content-disposition");
+      let filename = `etichetta_${idSpedizione}.pdf`;
+      if (disposition) {
+        const match = disposition.match(/filename="?(.+?)"?($|;)/i);
+        if (match && match[1]) filename = match[1];
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
     } catch (err) {
       setErrore(err.message || String(err));
     } finally {
@@ -94,8 +98,8 @@ function PrintLdvButton({ idSpedizione }) {
 
   return (
     <>
-      <button onClick={handlePrintLdv} disabled={loading} style={buttonPrint}>
-        {loading ? "Caricamento..." : "Stampa LDV"}
+      <button onClick={handleDownloadLdv} disabled={loading} style={buttonPrint}>
+        {loading ? "Scaricando..." : "Stampa LDV"}
       </button>
       {errore && <div style={{ color: "red", marginTop: 8 }}>{errore}</div>}
     </>
@@ -356,13 +360,6 @@ export default function Page() {
       setLoading(false);
     }
   };
-
-  // Usato per la stampa LDV con estrazione automatica
-  // Qui usiamo il componente integrato sotto
-  // che richiama /api/ldv-extract
-  // e apre PDF direttamente
-  // Vedi componente PrintLdvButton in questo file
-  // Per favore non modificare!
 
   // Cancella la cache delle spedizioni create
   const handleCancellaCache = () => {
