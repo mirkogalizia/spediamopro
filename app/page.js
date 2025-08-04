@@ -2,23 +2,44 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 
-// Utility per rimuovere accenti
+// Utility: rimuove accenti
 function removeAccents(str) {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-// Icone corrieri
+// Icone corriere
 function getCorriereIcon(corriere) {
   const c = (corriere || '').toLowerCase();
   if (c.includes("brt")) return (
     <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#E30613"/><text x="14" y="13" fill="#fff" fontSize="11" fontWeight="bold" textAnchor="middle">BRT</text></svg>
   );
-  // ... altri corrieri come prima ...
+  if (c.includes("gls")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#002776"/><text x="14" y="13" fill="#ffd200" fontSize="12" fontWeight="bold" textAnchor="middle">GLS</text></svg>
+  );
+  if (c.includes("sda")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#003A7B"/><text x="14" y="13" fill="#fff" fontSize="12" fontWeight="bold" textAnchor="middle">SDA</text></svg>
+  );
+  if (c.includes("poste")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#FFEB3B"/><text x="14" y="13" fill="#003366" fontSize="11" fontWeight="bold" textAnchor="middle">Poste</text></svg>
+  );
+  if (c.includes("ups")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#351C15"/><text x="14" y="13" fill="#ffb500" fontSize="12" fontWeight="bold" textAnchor="middle">UPS</text></svg>
+  );
+  if (c.includes("tnt")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ff6c00"/><text x="14" y="13" fill="#fff" fontSize="12" fontWeight="bold" textAnchor="middle">TNT</text></svg>
+  );
+  if (c.includes("dhl")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#FDE500"/><text x="14" y="13" fill="#D40511" fontSize="12" fontWeight="bold" textAnchor="middle">DHL</text></svg>
+  );
+  if (c.includes("fedex")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#fff"/><text x="14" y="13" fill="#4D148C" fontSize="11" fontWeight="bold" textAnchor="middle">FedEx</text></svg>
+  );
   return (
     <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ccc"/><text x="14" y="13" fill="#333" fontSize="11" fontWeight="bold" textAnchor="middle">Corriere</text></svg>
   );
 }
 
+// Tracking label + link stabile
 function getTrackingLabel(spedizione) {
   if (Array.isArray(spedizione.colli) && spedizione.colli.length > 0 && spedizione.colli[0].segnacollo) {
     return spedizione.colli[0].segnacollo;
@@ -35,7 +56,7 @@ const LS_KEY = "spediamo-pro-spedizioni";
 export default function Page() {
   const [orders, setOrders] = useState([]);
   const [orderQuery, setOrderQuery] = useState("");
-  const [selectedOrderId, setSelectedOrderId] = useState(null); // shopify order id numerico
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [form, setForm] = useState({
     nome: "",
     telefono: "",
@@ -70,7 +91,7 @@ export default function Page() {
     localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
   }, [spedizioniCreate]);
 
-  // Aggiornamento tracking in differita (ogni 60s)
+  // Aggiornamento tracking in differita (ogni 60 secondi)
   useEffect(() => {
     if (!spedizioniCreate.length) return;
     const updateTracking = async () => {
@@ -98,22 +119,32 @@ export default function Page() {
     return () => clearInterval(timer);
   }, [spedizioniCreate.length]);
 
-  // Carica ordini Shopify da API route
+  // Carica ordini Shopify
   const handleLoadOrders = async () => {
     setLoading(true);
     setErrore(null);
     setOrders([]);
     setSelectedOrderId(null);
     setForm({
-      nome: "", telefono: "", email: "", indirizzo: "", indirizzo2: "",
-      capDestinatario: "", cittaDestinatario: "", provinciaDestinatario: "", nazioneDestinatario: "",
-      altezza: "10", larghezza: "15", profondita: "20", peso: "1",
+      nome: "",
+      telefono: "",
+      email: "",
+      indirizzo: "",
+      indirizzo2: "",
+      capDestinatario: "",
+      cittaDestinatario: "",
+      provinciaDestinatario: "",
+      nazioneDestinatario: "",
+      altezza: "10",
+      larghezza: "15",
+      profondita: "20",
+      peso: "1",
     });
     setSpedizioni([]);
 
     try {
       if (!dateFrom || !dateTo) throw new Error("Specificare sia la data di inizio che di fine.");
-      if (dateFrom > dateTo) throw new Error("La data di inizio non può essere dopo la data di fine.");
+      if (dateFrom > dateTo)   throw new Error("La data di inizio non può essere dopo la data di fine.");
 
       const res = await fetch(`/api/shopify?from=${dateFrom}&to=${dateTo}`);
       if (!res.ok) throw new Error(await res.text());
@@ -126,7 +157,7 @@ export default function Page() {
     }
   };
 
-  // Cerca ordine per numero d'ordine o id e popola form e selectedOrderId (shopify order id)
+  // Seleziona ordine e popola form
   const handleSearchOrder = (e) => {
     e.preventDefault();
     setErrore(null);
@@ -143,7 +174,7 @@ export default function Page() {
       setErrore(`Nessun ordine trovato per "${orderQuery}".`);
       return;
     }
-    setSelectedOrderId(found.id); // ID numerico Shopify importante!
+    setSelectedOrderId(found.id);
     const ship = found.shipping_address || {};
     setForm((f) => ({
       ...f,
@@ -160,7 +191,7 @@ export default function Page() {
     }));
   };
 
-  // Simula spedizione - chiama API
+  // Simula spedizione
   const handleSimula = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -203,7 +234,7 @@ export default function Page() {
     setLoading(true);
     setErrore(null);
     try {
-      // CREATE spedizione
+      // CREATE
       const resC = await fetch(`/api/spediamo?step=create&id=${idSim}&shopifyOrderId=${selectedOrderId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -212,7 +243,7 @@ export default function Page() {
       if (!resC.ok) throw await resC.json();
       const { spedizione } = await resC.json();
 
-      // UPDATE indirizzi ecc.
+      // UPDATE
       const resU = await fetch(`/api/spediamo?step=update&id=${spedizione.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -232,7 +263,7 @@ export default function Page() {
       if (!resU.ok) throw await resU.json();
       const dataUpd = await resU.json();
 
-      // PAY spedizione
+      // PAY
       const resP = await fetch(`/api/spediamo?step=pay&id=${spedizione.id}`, { method: "POST" });
       let dataP;
       try {
@@ -242,27 +273,27 @@ export default function Page() {
       }
       if (!resP.ok) throw dataP;
 
-      // DETTAGLIO TRACKING aggiornato
+      // DETTAGLIO TRACKING
       const resDetails = await fetch(`/api/spediamo?step=details&id=${spedizione.id}`, { method: "POST" });
       let details = {};
       if (resDetails.ok) {
         details = await resDetails.json();
       }
 
-      // Motivo se pay non ok
+      // --- MOTIVO PAY ---
       const motivo =
         dataP.message ||
         dataP.error ||
         (typeof dataP === "string" ? dataP : "") ||
         JSON.stringify(dataP, null, 2);
 
-      // Aggiorno cache spedizioniCreate e salvo anche shopifyOrder completo!
+      // Aggiorno storico (merge dati)
       setSpedizioniCreate((prev) => [
         {
           shopifyOrder: orders.find((o) => o.id === Number(selectedOrderId)),
           spedizione: { ...dataUpd.spedizione, ...details.spedizione },
           lastPayReason: !dataP.can_pay ? motivo : "",
-          evaso: false,  // flag nuovo per evidenziare se evaso
+          fulfilled: false, // inizialmente non evaso
         },
         ...prev.filter((el) => el.spedizione.id !== spedizione.id),
       ]);
@@ -270,7 +301,9 @@ export default function Page() {
       if (dataP.can_pay) {
         alert(`✅ Spedizione #${spedizione.id} creata e pagata!`);
       } else {
-        alert(`⚠️ Spedizione #${spedizione.id} creata ma NON pagata.\n\nMotivo:\n${motivo}`);
+        alert(
+          `⚠️ Spedizione #${spedizione.id} creata ma NON pagata.\n\nMotivo:\n${motivo}`
+        );
         console.warn("PAY NON RIUSCITO:", dataP);
       }
     } catch (err) {
@@ -280,34 +313,42 @@ export default function Page() {
     }
   };
 
-  // Funzione per evadere ordine Shopify (fulfillment)
-  const handleEvadi = async (spedizioneId, shopifyOrderId, trackingNumber, carrierName) => {
+  // Evadi spedizione (fulfill ordine)
+  const handleEvadiSpedizione = async (spedizioneObj) => {
     setLoading(true);
     setErrore(null);
     try {
       const res = await fetch("/api/shopify/fulfill-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: shopifyOrderId, trackingNumber, carrierName }),
+        body: JSON.stringify({
+          orderId: spedizioneObj.shopifyOrder.id,
+          trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
+          carrierName: spedizioneObj.spedizione.corriere || "Altro",
+        }),
       });
-      if (!res.ok) throw await res.json();
-      await res.json();
-
-      // aggiorna cache spedizioniCreate: evaso=true su quella spedizione
+      if (!res.ok) {
+        const errJson = await res.json();
+        throw new Error(errJson.error || "Errore evasione");
+      }
+      const data = await res.json();
+      // Segna la spedizione come evasa in cache (stato fulfilled = true)
       setSpedizioniCreate((prev) =>
         prev.map((el) =>
-          el.spedizione.id === spedizioneId ? { ...el, evaso: true } : el
+          el.spedizione.id === spedizioneObj.spedizione.id
+            ? { ...el, fulfilled: true }
+            : el
         )
       );
-      alert("✅ Ordine evaso correttamente su Shopify.");
+      alert("✅ Ordine evaso con successo!");
     } catch (err) {
-      setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : err.toString());
+      setErrore(err.message || "Errore evasione ordine");
     } finally {
       setLoading(false);
     }
   };
 
-  // Stampa o download LDV
+  // Stampa LDV
   const handlePrintLdv = async (idSpedizione) => {
     setLoading(true);
     setErrore(null);
@@ -315,17 +356,14 @@ export default function Page() {
       const res = await fetch(`/api/spediamo?step=ldv&id=${idSpedizione}`, { method: "POST" });
       if (!res.ok) throw await res.json();
       const { ldv } = await res.json();
-
-      // download file così com'è (ZIP o PDF ecc.)
       const byteChars = atob(ldv.b64);
       const bytes = Uint8Array.from(byteChars, (c) => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: ldv.type });
-
-      // Download diretto
       const url = URL.createObjectURL(blob);
+      // Scarica il file senza stampa automatica:
       const a = document.createElement("a");
       a.href = url;
-      a.download = `ldv_${idSpedizione}.${ldv.type.includes("zip") ? "zip" : "pdf"}`;
+      a.download = `ldv_${idSpedizione}.zip`; // usa estensione zip o pdf a seconda del tipo
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -337,7 +375,7 @@ export default function Page() {
     }
   };
 
-  // Cancella cache spedizioni
+  // Cancella la cache delle spedizioni create
   const handleCancellaCache = () => {
     if (window.confirm("Vuoi davvero cancellare tutte le spedizioni salvate?")) {
       setSpedizioniCreate([]);
@@ -347,6 +385,7 @@ export default function Page() {
 
   return (
     <div style={containerStyle}>
+      {/* Logo */}
       <div style={logoWrapperStyle}>
         <Image
           src="/logo.png"
@@ -367,29 +406,24 @@ export default function Page() {
       <div style={cardStyle}>
         <h2 style={headerStyle}>Gestione Spedizioni Shopify</h2>
 
+        {/* Date range & Carica ordini */}
         <div style={rowStyle}>
           <div style={fieldStyle}>
             <label style={labelStyle}>Da</label>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inputStyle} max={dateTo} />
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={inputStyle} max={dateTo} />
           </div>
           <div style={fieldStyle}>
             <label style={labelStyle}>A</label>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={inputStyle} min={dateFrom} max={new Date().toISOString().split("T")[0]} />
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={inputStyle} min={dateFrom} max={new Date().toISOString().split("T")[0]} />
           </div>
           <button onClick={handleLoadOrders} disabled={loading} style={buttonPrimary}>
             {loading ? "Carica..." : "Carica ordini"}
           </button>
         </div>
 
+        {/* Cerca ordine */}
         <form style={searchRowStyle} onSubmit={handleSearchOrder}>
-          <input
-            type="text"
-            placeholder="Parte del numero d'ordine…"
-            value={orderQuery}
-            onChange={e => setOrderQuery(e.target.value)}
-            style={inputStyle}
-            disabled={loading || orders.length === 0}
-          />
+          <input type="text" placeholder="Parte del numero d'ordine…" value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} style={inputStyle} disabled={loading || orders.length === 0} />
           <button type="submit" disabled={loading || orders.length === 0} style={buttonPrimary}>
             Cerca
           </button>
@@ -397,12 +431,13 @@ export default function Page() {
 
         {selectedOrderId && (
           <div style={foundStyle}>
-            Ordine trovato: <strong>{orders.find(o => o.id === Number(selectedOrderId))?.name}</strong>
+            Ordine trovato: <strong>{orders.find((o) => o.id === Number(selectedOrderId))?.name}</strong>
           </div>
         )}
 
         {errore && <div style={errorStyle}>{errore}</div>}
 
+        {/* Form Simulazione */}
         {selectedOrderId && (
           <form onSubmit={handleSimula} style={simulateFormStyle}>
             <div style={rowStyle}>
@@ -410,7 +445,7 @@ export default function Page() {
                 name="nome"
                 placeholder="Destinatario"
                 value={form.nome}
-                onChange={e => setForm({ ...form, nome: e.target.value })}
+                onChange={(e) => setForm({ ...form, nome: e.target.value })}
                 required
                 style={inputStyle}
               />
@@ -418,7 +453,7 @@ export default function Page() {
                 name="telefono"
                 placeholder="Telefono"
                 value={form.telefono}
-                onChange={e => setForm({ ...form, telefono: e.target.value })}
+                onChange={(e) => setForm({ ...form, telefono: e.target.value })}
                 required
                 style={inputStyle}
               />
@@ -427,7 +462,7 @@ export default function Page() {
               name="email"
               placeholder="Email"
               value={form.email}
-              onChange={e => setForm({ ...form, email: e.target.value })}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
               required
               style={inputStyle}
               type="email"
@@ -436,7 +471,7 @@ export default function Page() {
               name="indirizzo"
               placeholder="Indirizzo (Via, Numero)"
               value={form.indirizzo}
-              onChange={e => setForm({ ...form, indirizzo: removeAccents(e.target.value) })}
+              onChange={(e) => setForm({ ...form, indirizzo: removeAccents(e.target.value) })}
               required
               style={inputStyle}
             />
@@ -444,7 +479,7 @@ export default function Page() {
               name="indirizzo2"
               placeholder="Indirizzo 2"
               value={form.indirizzo2}
-              onChange={e => setForm({ ...form, indirizzo2: removeAccents(e.target.value) })}
+              onChange={(e) => setForm({ ...form, indirizzo2: removeAccents(e.target.value) })}
               style={inputStyle}
             />
             <div style={rowStyle}>
@@ -452,7 +487,7 @@ export default function Page() {
                 name="capDest"
                 placeholder="CAP"
                 value={form.capDestinatario}
-                onChange={e => setForm({ ...form, capDestinatario: e.target.value })}
+                onChange={(e) => setForm({ ...form, capDestinatario: e.target.value })}
                 required
                 style={smallInput}
               />
@@ -460,7 +495,7 @@ export default function Page() {
                 name="citta"
                 placeholder="Città"
                 value={form.cittaDestinatario}
-                onChange={e => setForm({ ...form, cittaDestinatario: e.target.value })}
+                onChange={(e) => setForm({ ...form, cittaDestinatario: e.target.value })}
                 required
                 style={inputStyle}
               />
@@ -468,7 +503,7 @@ export default function Page() {
                 name="prov"
                 placeholder="Prov"
                 value={form.provinciaDestinatario}
-                onChange={e => setForm({ ...form, provinciaDestinatario: e.target.value })}
+                onChange={(e) => setForm({ ...form, provinciaDestinatario: e.target.value })}
                 required
                 style={smallInput}
               />
@@ -486,9 +521,10 @@ export default function Page() {
           </form>
         )}
 
+        {/* Offerte disponibili */}
         {spedizioni.length > 0 && (
           <div style={offersContainer}>
-            {spedizioni.map(s => (
+            {spedizioni.map((s) => (
               <div key={s.id} style={offerCard}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   {getCorriereIcon(s.corriere)}
@@ -506,7 +542,7 @@ export default function Page() {
           </div>
         )}
 
-        {/* Lista spedizioni create con stampa LDV ed evadi */}
+        {/* Spedizioni generate */}
         <div style={historyContainer}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 style={historyHeader}>Spedizioni storiche</h3>
@@ -520,7 +556,7 @@ export default function Page() {
             )}
           </div>
           {spedizioniCreate.length === 0 && <div style={historyEmpty}>Nessuna spedizione creata.</div>}
-          {spedizioniCreate.map(({ shopifyOrder, spedizione, lastPayReason, evaso }) => {
+          {spedizioniCreate.map(({ shopifyOrder, spedizione, lastPayReason, fulfilled }) => {
             const tracking = getTrackingLabel(spedizione);
             const trackingLink = spedizione.trackLink;
             return (
@@ -528,49 +564,35 @@ export default function Page() {
                 key={spedizione.id}
                 style={{
                   ...historyCard,
-                  borderColor: evaso ? "#34c759" : "#ff9500",
-                  backgroundColor: evaso ? "#e6ffea" : "#fff8e1",
+                  backgroundColor: fulfilled ? "#e6ffe6" : "#fff3cd", // verde chiaro se evaso, giallo se no
+                  borderColor: fulfilled ? "#28a745" : "#ffc107",
                 }}
               >
                 <span>
                   <strong>{shopifyOrder?.name}</strong> · ID {spedizione.id}
                   {" · Tracking: "}
-                  {trackingLink && tracking ? (
-                    <a href={trackingLink} target="_blank" rel="noopener noreferrer" style={{ color: "#0a84ff", fontWeight: 700 }}>
-                      {tracking}
-                    </a>
-                  ) : tracking ? (
-                    <span style={{ fontWeight: 600 }}>{tracking}</span>
-                  ) : (
-                    <span style={{ color: "#999" }}>non ancora disponibile</span>
-                  )}
+                  {trackingLink && tracking
+                    ? (
+                      <a href={trackingLink} target="_blank" rel="noopener noreferrer" style={{ color: "#0a84ff", fontWeight: 700 }}>
+                        {tracking}
+                      </a>
+                    )
+                    : tracking
+                      ? <span style={{ fontWeight: 600 }}>{tracking}</span>
+                      : <span style={{ color: "#999" }}>non ancora disponibile</span>
+                  }
                   {lastPayReason && (
                     <span style={{ color: "#ff3b30", fontSize: 13, marginLeft: 8 }}>
                       (NON PAGATA: {lastPayReason})
                     </span>
                   )}
                 </span>
-                <div>
-                  <button
-                    onClick={() => handlePrintLdv(spedizione.id)}
-                    style={{ ...buttonPrint, marginRight: 8 }}
-                    disabled={loading}
-                  >
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>
                     Stampa LDV
                   </button>
-                  {!evaso && (
-                    <button
-                      onClick={() =>
-                        handleEvadi(
-                          spedizione.id,
-                          shopifyOrder.id,
-                          getTrackingLabel(spedizione),
-                          spedizione.corriere
-                        )
-                      }
-                      style={buttonCreate}
-                      disabled={loading}
-                    >
+                  {!fulfilled && (
+                    <button onClick={() => handleEvadiSpedizione({ shopifyOrder, spedizione })} style={buttonEvadi}>
                       Evadi
                     </button>
                   )}
@@ -585,29 +607,119 @@ export default function Page() {
 }
 
 // --- STILI ---
-// ... (qui metti gli stili come prima, copia quelli già usati)
-const containerStyle = { /* ... */ };
-const logoWrapperStyle = { /* ... */ };
-const cardStyle = { /* ... */ };
-const headerStyle = { /* ... */ };
-const rowStyle = { /* ... */ };
-const fieldStyle = { /* ... */ };
-const labelStyle = { /* ... */ };
-const inputStyle = { /* ... */ };
-const smallInput = { /* ... */ };
-const buttonPrimary = { /* ... */ };
-const buttonSecondary = { /* ... */ };
-const buttonCreate = { /* ... */ };
-const offerCard = { /* ... */ };
-const offerActions = { /* ... */ };
-const offerPrice = { /* ... */ };
-const offersContainer = { /* ... */ };
-const searchRowStyle = { /* ... */ };
-const foundStyle = { /* ... */ };
-const errorStyle = { /* ... */ };
-const simulateFormStyle = { /* ... */ };
-const historyContainer = { /* ... */ };
-const historyHeader = { /* ... */ };
-const historyEmpty = { /* ... */ };
-const historyCard = { /* ... */ };
-const buttonPrint = { /* ... */ };
+const containerStyle = {
+  minHeight: "100vh",
+  background: "#f5f7fa",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "flex-start",
+  alignItems: "center",
+  padding: 24,
+  fontFamily: "-apple-system, BlinkMacSystemFont, SF Pro Display, sans-serif",
+  color: "#333",
+};
+const logoWrapperStyle = {
+  width: "100%",
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  marginBottom: 32,
+};
+const cardStyle = {
+  background: "#fff",
+  borderRadius: 16,
+  padding: 32,
+  width: "100%",
+  maxWidth: 600,
+  boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
+  display: "flex",
+  flexDirection: "column",
+  gap: 24,
+};
+const headerStyle = { fontSize: 24, fontWeight: 700 };
+const rowStyle = { display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" };
+const fieldStyle = { flex: 1, display: "flex", flexDirection: "column" };
+const labelStyle = { marginBottom: 4, fontSize: 14, color: "#555" };
+const inputStyle = {
+  padding: "10px 14px",
+  borderRadius: 8,
+  border: "1px solid #ccc",
+  background: "#fff",
+  fontSize: 15,
+  color: "#333",
+  flex: 1,
+};
+const smallInput = { ...inputStyle, maxWidth: 90 };
+const buttonPrimary = {
+  padding: "10px 16px",
+  borderRadius: 8,
+  border: "none",
+  background: "#007aff",
+  color: "#fff",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+const buttonSecondary = {
+  padding: "12px 20px",
+  borderRadius: 8,
+  border: "none",
+  background: "#5ac8fa",
+  color: "#fff",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+const buttonCreate = {
+  padding: "8px 14px",
+  borderRadius: 8,
+  border: "none",
+  background: "#34c759",
+  color: "#fff",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+const offerCard = {
+  background: "#fafafa",
+  borderRadius: 12,
+  padding: 16,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+};
+const offerActions = { display: "flex", alignItems: "center", gap: 12 };
+const offerPrice = { fontWeight: 700 };
+const offersContainer = { display: "flex", flexDirection: "column", gap: 12 };
+const searchRowStyle = { display: "flex", gap: 12 };
+const foundStyle = { fontSize: 16, color: "#0a84ff" };
+const errorStyle = { color: "#ff3b30", fontSize: 14 };
+const simulateFormStyle = { display: "flex", flexDirection: "column", gap: 12 };
+const historyContainer = { marginTop: 24, display: "flex", flexDirection: "column", gap: 12 };
+const historyHeader = { fontSize: 18, fontWeight: 600 };
+const historyEmpty = { color: "#777" };
+const historyCard = {
+  background: "#f9f9f9",
+  borderRadius: 10,
+  padding: 12,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  border: "1px solid #e0e0e0",
+};
+const buttonPrint = {
+  padding: "6px 12px",
+  borderRadius: 6,
+  border: "none",
+  background: "#ff9500",
+  color: "#fff",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+const buttonEvadi = {
+  padding: "6px 12px",
+  borderRadius: 6,
+  border: "none",
+  background: "#28a745",
+  color: "#fff",
+  fontWeight: 600,
+  cursor: "pointer",
+};
