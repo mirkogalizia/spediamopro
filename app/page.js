@@ -34,7 +34,6 @@ function getCorriereIcon(corriere) {
   if (c.includes("fedex")) return (
     <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#fff"/><text x="14" y="13" fill="#4D148C" fontSize="11" fontWeight="bold" textAnchor="middle">FedEx</text></svg>
   );
-  // Default
   return (
     <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ccc"/><text x="14" y="13" fill="#333" fontSize="11" fontWeight="bold" textAnchor="middle">Corriere</text></svg>
   );
@@ -42,7 +41,6 @@ function getCorriereIcon(corriere) {
 
 // Tracking label + link stabile
 function getTrackingLabel(spedizione) {
-  // Tracking vero: colli[0].segnacollo
   if (Array.isArray(spedizione.colli) && spedizione.colli.length > 0 && spedizione.colli[0].segnacollo) {
     return spedizione.colli[0].segnacollo;
   }
