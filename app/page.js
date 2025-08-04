@@ -34,6 +34,7 @@ function getCorriereIcon(corriere) {
   if (c.includes("fedex")) return (
     <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#fff"/><text x="14" y="13" fill="#4D148C" fontSize="11" fontWeight="bold" textAnchor="middle">FedEx</text></svg>
   );
+  // Default
   return (
     <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ccc"/><text x="14" y="13" fill="#333" fontSize="11" fontWeight="bold" textAnchor="middle">Corriere</text></svg>
   );
@@ -312,22 +313,37 @@ export default function Page() {
     }
   };
 
-  // Stampa LDV
+  // Stampa LDV aggiornata per estrazione ZIP/PDF multipli
   const handlePrintLdv = async (idSpedizione) => {
     setLoading(true);
     setErrore(null);
     try {
-      const res = await fetch(`/api/spediamo?step=ldv&id=${idSpedizione}`, { method: "POST" });
+      const res = await fetch(`/api/ldv-extract`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idSpedizione }),
+      });
       if (!res.ok) throw await res.json();
-      const { ldv } = await res.json();
-      const byteChars = atob(ldv.b64);
-      const bytes = Uint8Array.from(byteChars, (c) => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: ldv.type });
-      const url = URL.createObjectURL(blob);
-      const w = window.open("", "_blank");
-      w.document.write(
-        `<iframe src="${url}" style="width:100%;height:100vh;border:none;" onload="this.contentWindow.print()"></iframe>`
-      );
+      const { pdfs } = await res.json();
+
+      if (!pdfs || pdfs.length === 0) {
+        throw new Error("Nessun PDF disponibile per la spedizione");
+      }
+
+      // Stampa ogni PDF aprendo una finestra e forzando print
+      pdfs.forEach(({ filename, base64 }) => {
+        const byteChars = atob(base64);
+        const bytes = Uint8Array.from(byteChars, (c) => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+
+        const win = window.open("", "_blank");
+        win.document.write(
+          `<html><head><title>${filename}</title></head><body style="margin:0">
+          <iframe src="${url}" style="width:100vw;height:100vh;border:none;" onload="window.frames[0].focus(); window.frames[0].print();"></iframe>
+          </body></html>`
+        );
+      });
     } catch (err) {
       setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : err.toString());
     } finally {
@@ -345,7 +361,6 @@ export default function Page() {
 
   return (
     <div style={containerStyle}>
-      {/* Logo */}
       <div style={logoWrapperStyle}>
         <Image
           src="/logo.png"
@@ -366,7 +381,6 @@ export default function Page() {
       <div style={cardStyle}>
         <h2 style={headerStyle}>Gestione Spedizioni Shopify</h2>
 
-        {/* Date range & Carica ordini */}
         <div style={rowStyle}>
           <div style={fieldStyle}>
             <label style={labelStyle}>Da</label>
@@ -381,7 +395,6 @@ export default function Page() {
           </button>
         </div>
 
-        {/* Cerca ordine */}
         <form style={searchRowStyle} onSubmit={handleSearchOrder}>
           <input type="text" placeholder="Parte del numero d'ordine…" value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} style={inputStyle} disabled={loading || orders.length === 0} />
           <button type="submit" disabled={loading || orders.length === 0} style={buttonPrimary}>
@@ -397,7 +410,6 @@ export default function Page() {
 
         {errore && <div style={errorStyle}>{errore}</div>}
 
-        {/* Form Simulazione */}
         {selectedOrderId && (
           <form onSubmit={handleSimula} style={simulateFormStyle}>
             <div style={rowStyle}>
@@ -481,7 +493,6 @@ export default function Page() {
           </form>
         )}
 
-        {/* Offerte disponibili */}
         {spedizioni.length > 0 && (
           <div style={offersContainer}>
             {spedizioni.map((s) => (
@@ -502,7 +513,6 @@ export default function Page() {
           </div>
         )}
 
-        {/* Spedizioni generate */}
         <div style={historyContainer}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 style={historyHeader}>Spedizioni storiche</h3>
