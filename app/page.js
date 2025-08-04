@@ -52,7 +52,8 @@ function getTrackingLabel(spedizione) {
   return "";
 }
 
-// --- Componente Stampa LDV con download diretto ---
+const LS_KEY = "spediamo-pro-spedizioni";
+
 function PrintLdvButton({ idSpedizione }) {
   const [loading, setLoading] = useState(false);
   const [errore, setErrore] = useState(null);
@@ -68,19 +69,20 @@ function PrintLdvButton({ idSpedizione }) {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Errore durante il download LDV");
+        const text = await res.text();
+        throw new Error(text || "Errore durante il download LDV");
       }
 
+      // risposta binaria (pdf o zip)
       const blob = await res.blob();
 
-      const disposition = res.headers.get("Content-Disposition") || res.headers.get("content-disposition");
+      // estrai filename da header content-disposition
+      const disposition = res.headers.get("content-disposition") || "";
       let filename = `etichetta_${idSpedizione}.pdf`;
-      if (disposition) {
-        const match = disposition.match(/filename="?(.+?)"?($|;)/i);
-        if (match && match[1]) filename = match[1];
-      }
+      const match = disposition.match(/filename="?(.+?)"?($|;)/i);
+      if (match && match[1]) filename = match[1];
 
+      // crea url e forza download
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -89,6 +91,7 @@ function PrintLdvButton({ idSpedizione }) {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+
     } catch (err) {
       setErrore(err.message || String(err));
     } finally {
@@ -105,8 +108,6 @@ function PrintLdvButton({ idSpedizione }) {
     </>
   );
 }
-
-const LS_KEY = "spediamo-pro-spedizioni";
 
 export default function Page() {
   const [orders, setOrders] = useState([]);
@@ -361,7 +362,7 @@ export default function Page() {
     }
   };
 
-  // Cancella la cache delle spedizioni create
+  // Cancella cache
   const handleCancellaCache = () => {
     if (window.confirm("Vuoi davvero cancellare tutte le spedizioni salvate?")) {
       setSpedizioniCreate([]);
