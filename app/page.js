@@ -73,20 +73,22 @@ export default function Page() {
     peso: "1",
   });
   const [spedizioni, setSpedizioni] = useState([]);
-  const [spedizioniCreate, setSpedizioniCreate] = useState([]);
+  const [spedizioniCreate, setSpedizioniCreate] = useState(() => {
+    try {
+      const salvate = localStorage.getItem(LS_KEY);
+      return salvate ? JSON.parse(salvate) : [];
+    } catch {
+      return [];
+    }
+  });
   const [loading, setLoading] = useState(false);
+  const [loadingEvadi, setLoadingEvadi] = useState(false);
   const [errore, setErrore] = useState(null);
 
   const [dateFrom, setDateFrom] = useState("2025-01-01");
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
   // Persistenza localStorage
-  useEffect(() => {
-    try {
-      const salvate = localStorage.getItem(LS_KEY);
-      if (salvate) setSpedizioniCreate(JSON.parse(salvate));
-    } catch {}
-  }, []);
   useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
   }, [spedizioniCreate]);
@@ -293,7 +295,7 @@ export default function Page() {
           shopifyOrder: orders.find((o) => o.id === Number(selectedOrderId)),
           spedizione: { ...dataUpd.spedizione, ...details.spedizione },
           lastPayReason: !dataP.can_pay ? motivo : "",
-          evasa: false, // Nuovo campo per tracking evasa
+          evasa: prev.find(el => el.spedizione.id === spedizione.id)?.evasa || false,
         },
         ...prev.filter((el) => el.spedizione.id !== spedizione.id),
       ]);
@@ -325,14 +327,16 @@ export default function Page() {
       const bytes = Uint8Array.from(byteChars, (c) => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: ldv.type });
       const url = URL.createObjectURL(blob);
-      // Download diretto senza stampa automatica:
+
+      // Scarica il file così com'è (zip/pdf/altro)
       const link = document.createElement("a");
       link.href = url;
-      link.download = `etichetta_${idSpedizione}.pdf`;
+      const estensione = ldv.type === "application/zip" ? "zip" : (ldv.type === "application/pdf" ? "pdf" : "");
+      link.download = `LDV_${idSpedizione}.${estensione}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
+
     } catch (err) {
       setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : err.toString());
     } finally {
@@ -340,44 +344,29 @@ export default function Page() {
     }
   };
 
-  // Evadi ordine Shopify
-  const handleEvadi = async (spedizione) => {
-    if (
-      !spedizione ||
-      !spedizione.shopifyOrderId ||
-      !spedizione.tracking_number &&
-      !spedizione.corriere
-    ) {
-      alert("Mancano dati necessari per evadere (ordine, tracking, corriere).");
-      return;
-    }
-    setLoading(true);
+  // Nuova funzione EVADI ordine Shopify via API
+  const handleEvadiOrder = async (orderId, trackingNumber, carrierName, spedizioneId) => {
+    setLoadingEvadi(true);
     setErrore(null);
     try {
       const res = await fetch("/api/shopify/fulfill-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: spedizione.shopifyOrderId,
-          trackingNumber: getTrackingLabel(spedizione),
-          carrierName: spedizione.corriere,
-        }),
+        body: JSON.stringify({ orderId, trackingNumber, carrierName }),
       });
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Errore fulfillment");
-      }
-      // Aggiorna stato evasa a true se successo
+      if (!res.ok) throw new Error(await res.text());
+
+      // Segna come evasa nella cache locale
       setSpedizioniCreate((prev) =>
-        prev.map((s) =>
-          s.spedizione.id === spedizione.spedizione.id ? { ...s, evasa: true } : s
+        prev.map((el) =>
+          el.spedizione.id === spedizioneId ? { ...el, evasa: true } : el
         )
       );
-      alert(`Ordine #${spedizione.shopifyOrderId} evaso con successo!`);
+      alert("Ordine evaso con successo!");
     } catch (err) {
       setErrore(err.message || String(err));
     } finally {
-      setLoading(false);
+      setLoadingEvadi(false);
     }
   };
 
@@ -566,14 +555,7 @@ export default function Page() {
             const tracking = getTrackingLabel(spedizione);
             const trackingLink = spedizione.trackLink;
             return (
-              <div
-                key={spedizione.id}
-                style={{
-                  ...historyCard,
-                  backgroundColor: evasa ? "#d4edda" : "#f9f9f9", // verde chiaro se evasa, grigio altrimenti
-                  borderColor: evasa ? "#c3e6cb" : "#e0e0e0",
-                }}
-              >
+              <div key={spedizione.id} style={{...historyCard, backgroundColor: evasa ? "#d4f0d4" : "#fff0f0", borderColor: evasa ? "#0a8f08" : "#f44336"}}>
                 <span>
                   <strong>{shopifyOrder?.name}</strong> · ID {spedizione.id}
                   {" · Tracking: "}
@@ -593,15 +575,22 @@ export default function Page() {
                     </span>
                   )}
                 </span>
-                <div>
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                   <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>
                     Stampa LDV
                   </button>
                   {!evasa && (
-                    <button onClick={() => handleEvadi({ spedizione, ...{ shopifyOrderId: shopifyOrder?.id, corriere: spedizione.corriere, tracking_number: tracking } })} style={buttonEvadi} disabled={loading}>
-                      Evadi
+                    <button
+                      onClick={() =>
+                        handleEvadiOrder(shopifyOrder.id, tracking, spedizione.corriere, spedizione.id)
+                      }
+                      style={buttonEvadi}
+                      disabled={loadingEvadi}
+                    >
+                      {loadingEvadi ? "Evadi..." : "Evadi ordine"}
                     </button>
                   )}
+                  {evasa && <span style={{ color: "#0a8f08", fontWeight: "bold", alignSelf: "center" }}>Evasa</span>}
                 </div>
               </div>
             );
@@ -724,9 +713,8 @@ const buttonEvadi = {
   padding: "6px 12px",
   borderRadius: 6,
   border: "none",
-  background: "#007aff",
+  background: "#28a745",
   color: "#fff",
   fontWeight: 600,
   cursor: "pointer",
-  marginLeft: 8,
 };
