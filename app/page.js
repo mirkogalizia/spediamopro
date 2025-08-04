@@ -80,6 +80,7 @@ export default function Page() {
   const [dateFrom, setDateFrom] = useState("2025-01-01");
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
+  // Persistenza localStorage
   useEffect(() => {
     try {
       const salvate = localStorage.getItem(LS_KEY);
@@ -90,6 +91,7 @@ export default function Page() {
     localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
   }, [spedizioniCreate]);
 
+  // Aggiornamento tracking in differita (ogni 60 secondi)
   useEffect(() => {
     if (!spedizioniCreate.length) return;
     const updateTracking = async () => {
@@ -117,6 +119,7 @@ export default function Page() {
     return () => clearInterval(timer);
   }, [spedizioniCreate.length]);
 
+  // Carica ordini Shopify
   const handleLoadOrders = async () => {
     setLoading(true);
     setErrore(null);
@@ -141,7 +144,7 @@ export default function Page() {
 
     try {
       if (!dateFrom || !dateTo) throw new Error("Specificare sia la data di inizio che di fine.");
-      if (dateFrom > dateTo) throw new Error("La data di inizio non può essere dopo la data di fine.");
+      if (dateFrom > dateTo)   throw new Error("La data di inizio non può essere dopo la data di fine.");
 
       const res = await fetch(`/api/shopify?from=${dateFrom}&to=${dateTo}`);
       if (!res.ok) throw new Error(await res.text());
@@ -154,6 +157,7 @@ export default function Page() {
     }
   };
 
+  // Seleziona ordine e popola form
   const handleSearchOrder = (e) => {
     e.preventDefault();
     setErrore(null);
@@ -187,6 +191,7 @@ export default function Page() {
     }));
   };
 
+  // Simula spedizione
   const handleSimula = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -224,10 +229,12 @@ export default function Page() {
     }
   };
 
+  // CREA + UPDATE + PAY + DETTAGLI (tracking reale)
   const handleCreaECompletaEPaga = async (idSim) => {
     setLoading(true);
     setErrore(null);
     try {
+      // CREATE
       const resC = await fetch(`/api/spediamo?step=create&id=${idSim}&shopifyOrderId=${selectedOrderId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -236,6 +243,7 @@ export default function Page() {
       if (!resC.ok) throw await resC.json();
       const { spedizione } = await resC.json();
 
+      // UPDATE
       const resU = await fetch(`/api/spediamo?step=update&id=${spedizione.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -255,6 +263,7 @@ export default function Page() {
       if (!resU.ok) throw await resU.json();
       const dataUpd = await resU.json();
 
+      // PAY
       const resP = await fetch(`/api/spediamo?step=pay&id=${spedizione.id}`, { method: "POST" });
       let dataP;
       try {
@@ -264,18 +273,21 @@ export default function Page() {
       }
       if (!resP.ok) throw dataP;
 
+      // DETTAGLIO TRACKING
       const resDetails = await fetch(`/api/spediamo?step=details&id=${spedizione.id}`, { method: "POST" });
       let details = {};
       if (resDetails.ok) {
         details = await resDetails.json();
       }
 
+      // --- MOTIVO PAY ---
       const motivo =
         dataP.message ||
         dataP.error ||
         (typeof dataP === "string" ? dataP : "") ||
         JSON.stringify(dataP, null, 2);
 
+      // Aggiorno storico (merge dati)
       setSpedizioniCreate((prev) => [
         {
           shopifyOrder: orders.find((o) => o.id === Number(selectedOrderId)),
@@ -300,25 +312,27 @@ export default function Page() {
     }
   };
 
-  // Nuova funzione Stampa LDV con download diretto (pdf o zip)
+  // Stampa LDV (download diretto senza stampa automatica)
   const handlePrintLdv = async (idSpedizione) => {
     setLoading(true);
     setErrore(null);
     try {
       const res = await fetch(`/api/spediamo?step=ldv&id=${idSpedizione}`, { method: "POST" });
       if (!res.ok) throw await res.json();
+      const { ldv } = await res.json();
 
-      const contentType = res.headers.get("content-type") || "";
-      const blob = await res.blob();
+      // Decodifica base64
+      const byteChars = atob(ldv.b64);
+      const bytes = Uint8Array.from(byteChars, c => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: ldv.type });
 
-      let estensione = "pdf";
-      if (contentType.includes("zip")) estensione = "zip";
-      else if (contentType.includes("pdf")) estensione = "pdf";
-
+      // Scarica il file
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `ldv_${idSpedizione}.${estensione}`;
+      // Estensione file in base al content-type
+      const ext = ldv.type.includes("zip") ? "zip" : "pdf";
+      a.download = `ldv_${idSpedizione}.${ext}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -331,6 +345,7 @@ export default function Page() {
     }
   };
 
+  // Cancella la cache delle spedizioni create
   const handleCancellaCache = () => {
     if (window.confirm("Vuoi davvero cancellare tutte le spedizioni salvate?")) {
       setSpedizioniCreate([]);
@@ -340,13 +355,20 @@ export default function Page() {
 
   return (
     <div style={containerStyle}>
+      {/* Logo */}
       <div style={logoWrapperStyle}>
         <Image
           src="/logo.png"
           alt="Logo"
           width={220}
           height={90}
-          style={{ width: "220px", height: "auto", objectFit: "contain", filter: "drop-shadow(0 2px 14px #bbb8)", maxWidth: "95vw" }}
+          style={{
+            width: "220px",
+            height: "auto",
+            objectFit: "contain",
+            filter: "drop-shadow(0 2px 14px #bbb8)",
+            maxWidth: "95vw"
+          }}
           priority
         />
       </div>
@@ -354,6 +376,7 @@ export default function Page() {
       <div style={cardStyle}>
         <h2 style={headerStyle}>Gestione Spedizioni Shopify</h2>
 
+        {/* Date range & Carica ordini */}
         <div style={rowStyle}>
           <div style={fieldStyle}>
             <label style={labelStyle}>Da</label>
@@ -363,37 +386,112 @@ export default function Page() {
             <label style={labelStyle}>A</label>
             <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={inputStyle} min={dateFrom} max={new Date().toISOString().split("T")[0]} />
           </div>
-          <button onClick={handleLoadOrders} disabled={loading} style={buttonPrimary}>{loading ? "Carica..." : "Carica ordini"}</button>
+          <button onClick={handleLoadOrders} disabled={loading} style={buttonPrimary}>
+            {loading ? "Carica..." : "Carica ordini"}
+          </button>
         </div>
 
+        {/* Cerca ordine */}
         <form style={searchRowStyle} onSubmit={handleSearchOrder}>
           <input type="text" placeholder="Parte del numero d'ordine…" value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} style={inputStyle} disabled={loading || orders.length === 0} />
-          <button type="submit" disabled={loading || orders.length === 0} style={buttonPrimary}>Cerca</button>
+          <button type="submit" disabled={loading || orders.length === 0} style={buttonPrimary}>
+            Cerca
+          </button>
         </form>
 
-        {selectedOrderId && <div style={foundStyle}>Ordine trovato: <strong>{orders.find((o) => o.id === Number(selectedOrderId))?.name}</strong></div>}
+        {selectedOrderId && (
+          <div style={foundStyle}>
+            Ordine trovato: <strong>{orders.find((o) => o.id === Number(selectedOrderId))?.name}</strong>
+          </div>
+        )}
 
         {errore && <div style={errorStyle}>{errore}</div>}
 
+        {/* Form Simulazione */}
         {selectedOrderId && (
           <form onSubmit={handleSimula} style={simulateFormStyle}>
             <div style={rowStyle}>
-              <input name="nome" placeholder="Destinatario" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required style={inputStyle} />
-              <input name="telefono" placeholder="Telefono" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} required style={inputStyle} />
+              <input
+                name="nome"
+                placeholder="Destinatario"
+                value={form.nome}
+                onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                required
+                style={inputStyle}
+              />
+              <input
+                name="telefono"
+                placeholder="Telefono"
+                value={form.telefono}
+                onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+                required
+                style={inputStyle}
+              />
             </div>
-            <input name="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required style={inputStyle} type="email" />
-            <input name="indirizzo" placeholder="Indirizzo (Via, Numero)" value={form.indirizzo} onChange={(e) => setForm({ ...form, indirizzo: removeAccents(e.target.value) })} required style={inputStyle} />
-            <input name="indirizzo2" placeholder="Indirizzo 2" value={form.indirizzo2} onChange={(e) => setForm({ ...form, indirizzo2: removeAccents(e.target.value) })} style={inputStyle} />
+            <input
+              name="email"
+              placeholder="Email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              required
+              style={inputStyle}
+              type="email"
+            />
+            <input
+              name="indirizzo"
+              placeholder="Indirizzo (Via, Numero)"
+              value={form.indirizzo}
+              onChange={(e) => setForm({ ...form, indirizzo: removeAccents(e.target.value) })}
+              required
+              style={inputStyle}
+            />
+            <input
+              name="indirizzo2"
+              placeholder="Indirizzo 2"
+              value={form.indirizzo2}
+              onChange={(e) => setForm({ ...form, indirizzo2: removeAccents(e.target.value) })}
+              style={inputStyle}
+            />
             <div style={rowStyle}>
-              <input name="capDest" placeholder="CAP" value={form.capDestinatario} onChange={(e) => setForm({ ...form, capDestinatario: e.target.value })} required style={smallInput} />
-              <input name="citta" placeholder="Città" value={form.cittaDestinatario} onChange={(e) => setForm({ ...form, cittaDestinatario: e.target.value })} required style={inputStyle} />
-              <input name="prov" placeholder="Prov" value={form.provinciaDestinatario} onChange={(e) => setForm({ ...form, provinciaDestinatario: e.target.value })} required style={smallInput} />
-              <input name="naz" placeholder="Nazione" value={form.nazioneDestinatario} readOnly style={smallInput} />
+              <input
+                name="capDest"
+                placeholder="CAP"
+                value={form.capDestinatario}
+                onChange={(e) => setForm({ ...form, capDestinatario: e.target.value })}
+                required
+                style={smallInput}
+              />
+              <input
+                name="citta"
+                placeholder="Città"
+                value={form.cittaDestinatario}
+                onChange={(e) => setForm({ ...form, cittaDestinatario: e.target.value })}
+                required
+                style={inputStyle}
+              />
+              <input
+                name="prov"
+                placeholder="Prov"
+                value={form.provinciaDestinatario}
+                onChange={(e) => setForm({ ...form, provinciaDestinatario: e.target.value })}
+                required
+                style={smallInput}
+              />
+              <input
+                name="naz"
+                placeholder="Nazione"
+                value={form.nazioneDestinatario}
+                readOnly
+                style={smallInput}
+              />
             </div>
-            <button type="submit" disabled={loading} style={buttonSecondary}>{loading ? "Simulando..." : "Simula spedizione"}</button>
+            <button type="submit" disabled={loading} style={buttonSecondary}>
+              {loading ? "Simulando..." : "Simula spedizione"}
+            </button>
           </form>
         )}
 
+        {/* Offerte disponibili */}
         {spedizioni.length > 0 && (
           <div style={offersContainer}>
             {spedizioni.map((s) => (
@@ -405,18 +503,26 @@ export default function Page() {
                 </div>
                 <div style={offerActions}>
                   <div style={offerPrice}>{parseFloat(s.tariffa).toFixed(2)} €</div>
-                  <button onClick={() => handleCreaECompletaEPaga(s.id)} disabled={loading} style={buttonCreate}>Crea & paga</button>
+                  <button onClick={() => handleCreaECompletaEPaga(s.id)} disabled={loading} style={buttonCreate}>
+                    Crea & paga
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         )}
 
+        {/* Spedizioni generate */}
         <div style={historyContainer}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 style={historyHeader}>Spedizioni storiche</h3>
             {spedizioniCreate.length > 0 && (
-              <button style={{ ...buttonSecondary, background: "#ff3b30", color: "#fff", fontSize: 14, padding: "6px 16px" }} onClick={handleCancellaCache}>Cancella cache</button>
+              <button
+                style={{ ...buttonSecondary, background: "#ff3b30", color: "#fff", fontSize: 14, padding: "6px 16px" }}
+                onClick={handleCancellaCache}
+              >
+                Cancella cache
+              </button>
             )}
           </div>
           {spedizioniCreate.length === 0 && <div style={historyEmpty}>Nessuna spedizione creata.</div>}
@@ -428,18 +534,25 @@ export default function Page() {
                 <span>
                   <strong>{shopifyOrder?.name}</strong> · ID {spedizione.id}
                   {" · Tracking: "}
-                  {trackingLink && tracking ? (
-                    <a href={trackingLink} target="_blank" rel="noopener noreferrer" style={{ color: "#0a84ff", fontWeight: 700 }}>{tracking}</a>
-                  ) : tracking ? (
-                    <span style={{ fontWeight: 600 }}>{tracking}</span>
-                  ) : (
-                    <span style={{ color: "#999" }}>non ancora disponibile</span>
-                  )}
+                  {trackingLink && tracking
+                    ? (
+                      <a href={trackingLink} target="_blank" rel="noopener noreferrer" style={{ color: "#0a84ff", fontWeight: 700 }}>
+                        {tracking}
+                      </a>
+                    )
+                    : tracking
+                      ? <span style={{ fontWeight: 600 }}>{tracking}</span>
+                      : <span style={{ color: "#999" }}>non ancora disponibile</span>
+                  }
                   {lastPayReason && (
-                    <span style={{ color: "#ff3b30", fontSize: 13, marginLeft: 8 }}>(NON PAGATA: {lastPayReason})</span>
+                    <span style={{ color: "#ff3b30", fontSize: 13, marginLeft: 8 }}>
+                      (NON PAGATA: {lastPayReason})
+                    </span>
                   )}
                 </span>
-                <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>Stampa LDV</button>
+                <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>
+                  Stampa LDV
+                </button>
               </div>
             );
           })}
