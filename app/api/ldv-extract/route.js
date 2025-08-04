@@ -1,4 +1,3 @@
-// /app/api/ldv-extract/route.js
 import { NextResponse } from "next/server";
 import AdmZip from "adm-zip";
 
@@ -22,29 +21,30 @@ export async function POST(req) {
       return NextResponse.json({ error: "AuthCode non configurato" }, { status: 500 });
     }
 
-    // Prendi token dinamico con authCode
     const token = await getToken(authCode);
 
-    // Scarica LDV con metodo GET (non POST)
     const ldvRes = await fetch(
       `https://core.spediamopro.com/api/v1/spedizione/${idSpedizione}/ldv`,
       {
-        method: "GET", // CORRETTO: GET invece di POST
+        method: "GET", // PROVA con GET
         headers: {
           Authorization: `Bearer ${token}`,
         },
       }
     );
 
-    if (!ldvRes.ok) {
-      return NextResponse.json({ error: "Errore download LDV" }, { status: 500 });
-    }
-
     const contentType = ldvRes.headers.get("content-type") || "";
     const disposition = ldvRes.headers.get("content-disposition") || "";
     const buffer = Buffer.from(await ldvRes.arrayBuffer());
 
-    // PDF singolo
+    console.log("LDV Response content-type:", contentType);
+    console.log("LDV Response content-disposition:", disposition);
+    console.log("LDV Response text (slice):", buffer.toString("utf8").slice(0, 500));
+
+    if (!ldvRes.ok) {
+      return NextResponse.json({ error: "Errore download LDV" }, { status: 500 });
+    }
+
     if (contentType.includes("pdf")) {
       return NextResponse.json({
         pdfs: [
@@ -58,13 +58,11 @@ export async function POST(req) {
       });
     }
 
-    // ZIP con PDF dentro
     if (contentType.includes("zip")) {
       const zip = new AdmZip(buffer);
-      const pdfFiles = zip
-        .getEntries()
-        .filter((entry) => entry.entryName.toLowerCase().endsWith(".pdf"));
-
+      const pdfFiles = zip.getEntries().filter((entry) =>
+        entry.entryName.toLowerCase().endsWith(".pdf")
+      );
       if (pdfFiles.length === 0) {
         return NextResponse.json({ error: "Nessun PDF trovato nello ZIP." }, { status: 404 });
       }
