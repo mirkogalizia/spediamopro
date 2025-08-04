@@ -293,6 +293,7 @@ export default function Page() {
           shopifyOrder: orders.find((o) => o.id === Number(selectedOrderId)),
           spedizione: { ...dataUpd.spedizione, ...details.spedizione },
           lastPayReason: !dataP.can_pay ? motivo : "",
+          evasa: false, // Nuovo campo per tracking evasa
         },
         ...prev.filter((el) => el.spedizione.id !== spedizione.id),
       ]);
@@ -312,7 +313,7 @@ export default function Page() {
     }
   };
 
-  // Stampa LDV (download diretto senza stampa automatica)
+  // Stampa LDV
   const handlePrintLdv = async (idSpedizione) => {
     setLoading(true);
     setErrore(null);
@@ -320,26 +321,61 @@ export default function Page() {
       const res = await fetch(`/api/spediamo?step=ldv&id=${idSpedizione}`, { method: "POST" });
       if (!res.ok) throw await res.json();
       const { ldv } = await res.json();
-
-      // Decodifica base64
       const byteChars = atob(ldv.b64);
-      const bytes = Uint8Array.from(byteChars, c => c.charCodeAt(0));
+      const bytes = Uint8Array.from(byteChars, (c) => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: ldv.type });
-
-      // Scarica il file
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      // Estensione file in base al content-type
-      const ext = ldv.type.includes("zip") ? "zip" : "pdf";
-      a.download = `ldv_${idSpedizione}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      // Download diretto senza stampa automatica:
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `etichetta_${idSpedizione}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
       URL.revokeObjectURL(url);
-
     } catch (err) {
       setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : err.toString());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Evadi ordine Shopify
+  const handleEvadi = async (spedizione) => {
+    if (
+      !spedizione ||
+      !spedizione.shopifyOrderId ||
+      !spedizione.tracking_number &&
+      !spedizione.corriere
+    ) {
+      alert("Mancano dati necessari per evadere (ordine, tracking, corriere).");
+      return;
+    }
+    setLoading(true);
+    setErrore(null);
+    try {
+      const res = await fetch("/api/shopify/fulfill-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: spedizione.shopifyOrderId,
+          trackingNumber: getTrackingLabel(spedizione),
+          carrierName: spedizione.corriere,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Errore fulfillment");
+      }
+      // Aggiorna stato evasa a true se successo
+      setSpedizioniCreate((prev) =>
+        prev.map((s) =>
+          s.spedizione.id === spedizione.spedizione.id ? { ...s, evasa: true } : s
+        )
+      );
+      alert(`Ordine #${spedizione.shopifyOrderId} evaso con successo!`);
+    } catch (err) {
+      setErrore(err.message || String(err));
     } finally {
       setLoading(false);
     }
@@ -526,11 +562,18 @@ export default function Page() {
             )}
           </div>
           {spedizioniCreate.length === 0 && <div style={historyEmpty}>Nessuna spedizione creata.</div>}
-          {spedizioniCreate.map(({ shopifyOrder, spedizione, lastPayReason }) => {
+          {spedizioniCreate.map(({ shopifyOrder, spedizione, lastPayReason, evasa }) => {
             const tracking = getTrackingLabel(spedizione);
             const trackingLink = spedizione.trackLink;
             return (
-              <div key={spedizione.id} style={historyCard}>
+              <div
+                key={spedizione.id}
+                style={{
+                  ...historyCard,
+                  backgroundColor: evasa ? "#d4edda" : "#f9f9f9", // verde chiaro se evasa, grigio altrimenti
+                  borderColor: evasa ? "#c3e6cb" : "#e0e0e0",
+                }}
+              >
                 <span>
                   <strong>{shopifyOrder?.name}</strong> · ID {spedizione.id}
                   {" · Tracking: "}
@@ -550,9 +593,16 @@ export default function Page() {
                     </span>
                   )}
                 </span>
-                <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>
-                  Stampa LDV
-                </button>
+                <div>
+                  <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>
+                    Stampa LDV
+                  </button>
+                  {!evasa && (
+                    <button onClick={() => handleEvadi({ spedizione, ...{ shopifyOrderId: shopifyOrder?.id, corriere: spedizione.corriere, tracking_number: tracking } })} style={buttonEvadi} disabled={loading}>
+                      Evadi
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -669,4 +719,14 @@ const buttonPrint = {
   color: "#fff",
   fontWeight: 600,
   cursor: "pointer",
+};
+const buttonEvadi = {
+  padding: "6px 12px",
+  borderRadius: 6,
+  border: "none",
+  background: "#007aff",
+  color: "#fff",
+  fontWeight: 600,
+  cursor: "pointer",
+  marginLeft: 8,
 };
