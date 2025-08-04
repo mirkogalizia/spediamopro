@@ -2,12 +2,12 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 
-// Rimuove gli accenti da una stringa
+// Utility: rimuove accenti
 function removeAccents(str) {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-// Icone SVG per corrieri
+// Icone corriere
 function getCorriereIcon(corriere) {
   const c = (corriere || '').toLowerCase();
   if (c.includes("brt")) return (
@@ -34,19 +34,27 @@ function getCorriereIcon(corriere) {
   if (c.includes("fedex")) return (
     <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#fff"/><text x="14" y="13" fill="#4D148C" fontSize="11" fontWeight="bold" textAnchor="middle">FedEx</text></svg>
   );
-  // Default: pacco/van generico
+  // Default
   return (
     <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ccc"/><text x="14" y="13" fill="#333" fontSize="11" fontWeight="bold" textAnchor="middle">Corriere</text></svg>
   );
 }
 
-// Utility tracking: segnacollo solo per BRT, altrimenti tracking_number/codice
+// Funzione tracking aggiornata
 function getTrackingLabel(spedizione) {
-  const corriere = (spedizione.corriere || "").toLowerCase();
-  if (corriere.includes("brt")) {
-    return spedizione.segnacollo || spedizione.tracking_number || spedizione.codice || "";
+  // 1. Prova tracking array (caso più affidabile)
+  if (Array.isArray(spedizione.tracking) && spedizione.tracking.length > 0) {
+    const t = spedizione.tracking.find(tk => tk.number);
+    if (t) return t.number;
   }
-  return spedizione.tracking_number || spedizione.codice || "";
+  // 2. Prova tracking_number_corriere
+  if (spedizione.tracking_number_corriere) return spedizione.tracking_number_corriere;
+  // 3. Prova tracking_number
+  if (spedizione.tracking_number) return spedizione.tracking_number;
+  // 4. fallback: segna collo o codice interno
+  if (spedizione.segnacollo) return spedizione.segnacollo;
+  if (spedizione.codice) return spedizione.codice;
+  return "";
 }
 
 const LS_KEY = "spediamo-pro-spedizioni";
@@ -88,6 +96,37 @@ export default function Page() {
   useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
   }, [spedizioniCreate]);
+
+  // Aggiornamento automatico tracking delle spedizioni storiche
+  useEffect(() => {
+    // Aggiorna solo quelle senza tracking valido
+    const aggiornaTracking = async () => {
+      try {
+        const daAggiornare = spedizioniCreate.filter(
+          (el) => !getTrackingLabel(el.spedizione)
+        );
+        if (daAggiornare.length === 0) return;
+        const spedizioniAggiornate = await Promise.all(
+          spedizioniCreate.map(async (el) => {
+            if (!getTrackingLabel(el.spedizione)) {
+              const res = await fetch(`/api/spediamo?step=details&id=${el.spedizione.id}`, { method: "POST" });
+              if (res.ok) {
+                const details = await res.json();
+                return { ...el, spedizione: { ...el.spedizione, ...details.spedizione } };
+              }
+            }
+            return el;
+          })
+        );
+        setSpedizioniCreate(spedizioniAggiornate);
+      } catch (err) {
+        setErrore("Errore durante l’aggiornamento tracking: " + err);
+      }
+    };
+
+    aggiornaTracking();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spedizioniCreate.length]);
 
   // Carica ordini Shopify
   const handleLoadOrders = async () => {
@@ -235,8 +274,13 @@ export default function Page() {
 
       // PAY
       const resP = await fetch(`/api/spediamo?step=pay&id=${spedizione.id}`, { method: "POST" });
-      if (!resP.ok) throw await resP.json();
-      const dataP = await resP.json();
+      let dataP;
+      try {
+        dataP = await resP.json();
+      } catch {
+        dataP = {};
+      }
+      if (!resP.ok) throw dataP;
 
       // DETTAGLIO TRACKING
       const resDetails = await fetch(`/api/spediamo?step=details&id=${spedizione.id}`, { method: "POST" });
@@ -245,20 +289,33 @@ export default function Page() {
         details = await resDetails.json();
       }
 
+      // --- MOTIVO PAY ---
+      const motivo =
+        dataP.message ||
+        dataP.error ||
+        (typeof dataP === "string" ? dataP : "") ||
+        JSON.stringify(dataP, null, 2);
+
       // Aggiorno storico (merge dati)
       setSpedizioniCreate((prev) => [
         {
           shopifyOrder: orders.find((o) => o.id === Number(selectedOrderId)),
           spedizione: { ...dataUpd.spedizione, ...details.spedizione },
+          lastPayReason: !dataP.can_pay ? motivo : "",
         },
         ...prev.filter((el) => el.spedizione.id !== spedizione.id),
       ]);
 
-      alert(
-        dataP.can_pay
-          ? `Spedizione #${spedizione.id} creata e pagata!`
-          : `Spedizione #${spedizione.id} creata ma NON pagata.`
-      );
+      // --- ALERT MIGLIORATO ---
+      if (dataP.can_pay) {
+        alert(`✅ Spedizione #${spedizione.id} creata e pagata!`);
+      } else {
+        alert(
+          `⚠️ Spedizione #${spedizione.id} creata ma NON pagata.\n\nMotivo:\n${motivo}`
+        );
+        // Log dettagliato per debug
+        console.warn("PAY NON RIUSCITO:", dataP);
+      }
     } catch (err) {
       setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : err.toString());
     } finally {
@@ -470,17 +527,28 @@ export default function Page() {
             )}
           </div>
           {spedizioniCreate.length === 0 && <div style={historyEmpty}>Nessuna spedizione creata.</div>}
-          {spedizioniCreate.map(({ shopifyOrder, spedizione }) => (
-            <div key={spedizione.id} style={historyCard}>
-              <span>
-                <strong>{shopifyOrder?.name}</strong> · ID {spedizione.id}
-                {getTrackingLabel(spedizione) && <> · Tracking: {getTrackingLabel(spedizione)}</>}
-              </span>
-              <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>
-                Stampa LDV
-              </button>
-            </div>
-          ))}
+          {spedizioniCreate.map(({ shopifyOrder, spedizione, lastPayReason }) => {
+            const tracking = getTrackingLabel(spedizione);
+            return (
+              <div key={spedizione.id} style={historyCard}>
+                <span>
+                  <strong>{shopifyOrder?.name}</strong> · ID {spedizione.id}
+                  {" · Tracking: "}
+                  {tracking
+                    ? tracking
+                    : <span style={{ color: "#999" }}>non ancora disponibile</span>}
+                  {lastPayReason && (
+                    <span style={{ color: "#ff3b30", fontSize: 13, marginLeft: 8 }}>
+                      (NON PAGATA: {lastPayReason})
+                    </span>
+                  )}
+                </span>
+                <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>
+                  Stampa LDV
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -492,7 +560,7 @@ const containerStyle = {
   minHeight: "100vh",
   background: "#f5f7fa",
   display: "flex",
-  flexDirection: "column",    // IMPORTANTE: verticale!
+  flexDirection: "column",
   justifyContent: "flex-start",
   alignItems: "center",
   padding: 24,
