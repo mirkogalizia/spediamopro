@@ -34,7 +34,6 @@ function getCorriereIcon(corriere) {
   if (c.includes("fedex")) return (
     <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#fff"/><text x="14" y="13" fill="#4D148C" fontSize="11" fontWeight="bold" textAnchor="middle">FedEx</text></svg>
   );
-  // Default
   return (
     <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ccc"/><text x="14" y="13" fill="#333" fontSize="11" fontWeight="bold" textAnchor="middle">Corriere</text></svg>
   );
@@ -53,61 +52,6 @@ function getTrackingLabel(spedizione) {
 }
 
 const LS_KEY = "spediamo-pro-spedizioni";
-
-function PrintLdvButton({ idSpedizione }) {
-  const [loading, setLoading] = useState(false);
-  const [errore, setErrore] = useState(null);
-
-  const handleDownloadLdv = async () => {
-    setLoading(true);
-    setErrore(null);
-    try {
-      const res = await fetch("/api/ldv-extract", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idSpedizione }),
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Errore durante il download LDV");
-      }
-
-      // risposta binaria (pdf o zip)
-      const blob = await res.blob();
-
-      // estrai filename da header content-disposition
-      const disposition = res.headers.get("content-disposition") || "";
-      let filename = `etichetta_${idSpedizione}.pdf`;
-      const match = disposition.match(/filename="?(.+?)"?($|;)/i);
-      if (match && match[1]) filename = match[1];
-
-      // crea url e forza download
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-
-    } catch (err) {
-      setErrore(err.message || String(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <>
-      <button onClick={handleDownloadLdv} disabled={loading} style={buttonPrint}>
-        {loading ? "Scaricando..." : "Stampa LDV"}
-      </button>
-      {errore && <div style={{ color: "red", marginTop: 8 }}>{errore}</div>}
-    </>
-  );
-}
 
 export default function Page() {
   const [orders, setOrders] = useState([]);
@@ -290,6 +234,7 @@ export default function Page() {
     setLoading(true);
     setErrore(null);
     try {
+      // CREATE
       const resC = await fetch(`/api/spediamo?step=create&id=${idSim}&shopifyOrderId=${selectedOrderId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -298,6 +243,7 @@ export default function Page() {
       if (!resC.ok) throw await resC.json();
       const { spedizione } = await resC.json();
 
+      // UPDATE
       const resU = await fetch(`/api/spediamo?step=update&id=${spedizione.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -317,6 +263,7 @@ export default function Page() {
       if (!resU.ok) throw await resU.json();
       const dataUpd = await resU.json();
 
+      // PAY
       const resP = await fetch(`/api/spediamo?step=pay&id=${spedizione.id}`, { method: "POST" });
       let dataP;
       try {
@@ -326,18 +273,21 @@ export default function Page() {
       }
       if (!resP.ok) throw dataP;
 
+      // DETTAGLIO TRACKING
       const resDetails = await fetch(`/api/spediamo?step=details&id=${spedizione.id}`, { method: "POST" });
       let details = {};
       if (resDetails.ok) {
         details = await resDetails.json();
       }
 
+      // --- MOTIVO PAY ---
       const motivo =
         dataP.message ||
         dataP.error ||
         (typeof dataP === "string" ? dataP : "") ||
         JSON.stringify(dataP, null, 2);
 
+      // Aggiorno storico (merge dati)
       setSpedizioniCreate((prev) => [
         {
           shopifyOrder: orders.find((o) => o.id === Number(selectedOrderId)),
@@ -362,7 +312,30 @@ export default function Page() {
     }
   };
 
-  // Cancella cache
+  // Stampa LDV
+  const handlePrintLdv = async (idSpedizione) => {
+    setLoading(true);
+    setErrore(null);
+    try {
+      const res = await fetch(`/api/spediamo?step=ldv&id=${idSpedizione}`, { method: "POST" });
+      if (!res.ok) throw await res.json();
+      const { ldv } = await res.json();
+      const byteChars = atob(ldv.b64);
+      const bytes = Uint8Array.from(byteChars, (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: ldv.type });
+      const url = URL.createObjectURL(blob);
+      const w = window.open("", "_blank");
+      w.document.write(
+        `<iframe src="${url}" style="width:100%;height:100vh;border:none;" onload="this.contentWindow.print()"></iframe>`
+      );
+    } catch (err) {
+      setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : err.toString());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cancella la cache delle spedizioni create
   const handleCancellaCache = () => {
     if (window.confirm("Vuoi davvero cancellare tutte le spedizioni salvate?")) {
       setSpedizioniCreate([]);
@@ -372,6 +345,7 @@ export default function Page() {
 
   return (
     <div style={containerStyle}>
+      {/* Logo */}
       <div style={logoWrapperStyle}>
         <Image
           src="/logo.png"
@@ -392,6 +366,7 @@ export default function Page() {
       <div style={cardStyle}>
         <h2 style={headerStyle}>Gestione Spedizioni Shopify</h2>
 
+        {/* Date range & Carica ordini */}
         <div style={rowStyle}>
           <div style={fieldStyle}>
             <label style={labelStyle}>Da</label>
@@ -406,6 +381,7 @@ export default function Page() {
           </button>
         </div>
 
+        {/* Cerca ordine */}
         <form style={searchRowStyle} onSubmit={handleSearchOrder}>
           <input type="text" placeholder="Parte del numero d'ordine…" value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} style={inputStyle} disabled={loading || orders.length === 0} />
           <button type="submit" disabled={loading || orders.length === 0} style={buttonPrimary}>
@@ -421,6 +397,7 @@ export default function Page() {
 
         {errore && <div style={errorStyle}>{errore}</div>}
 
+        {/* Form Simulazione */}
         {selectedOrderId && (
           <form onSubmit={handleSimula} style={simulateFormStyle}>
             <div style={rowStyle}>
@@ -504,6 +481,7 @@ export default function Page() {
           </form>
         )}
 
+        {/* Offerte disponibili */}
         {spedizioni.length > 0 && (
           <div style={offersContainer}>
             {spedizioni.map((s) => (
@@ -524,6 +502,7 @@ export default function Page() {
           </div>
         )}
 
+        {/* Spedizioni generate */}
         <div style={historyContainer}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 style={historyHeader}>Spedizioni storiche</h3>
@@ -561,7 +540,9 @@ export default function Page() {
                     </span>
                   )}
                 </span>
-                <PrintLdvButton idSpedizione={spedizione.id} />
+                <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>
+                  Stampa LDV
+                </button>
               </div>
             );
           })}
