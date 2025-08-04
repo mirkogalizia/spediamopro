@@ -22,14 +22,14 @@ export async function POST(req) {
       return NextResponse.json({ error: "AuthCode non configurato" }, { status: 500 });
     }
 
-    // Prendo token dinamico con authCode
+    // Prendi token dinamico con authCode
     const token = await getToken(authCode);
 
-    // Scarico LDV con token
+    // Scarica LDV con metodo GET (non POST)
     const ldvRes = await fetch(
       `https://core.spediamopro.com/api/v1/spedizione/${idSpedizione}/ldv`,
       {
-        method: "POST",
+        method: "GET", // CORRETTO: GET invece di POST
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -37,7 +37,7 @@ export async function POST(req) {
     );
 
     if (!ldvRes.ok) {
-      return NextResponse.json({ error: `Errore download LDV: ${ldvRes.statusText}` }, { status: 500 });
+      return NextResponse.json({ error: "Errore download LDV" }, { status: 500 });
     }
 
     const contentType = ldvRes.headers.get("content-type") || "";
@@ -75,7 +75,6 @@ export async function POST(req) {
       return NextResponse.json({ pdfs });
     }
 
-    // Formato non gestito
     return NextResponse.json({ error: "Formato file LDV non gestito." }, { status: 500 });
   } catch (err) {
     return NextResponse.json({ error: err.message || String(err) }, { status: 500 });
