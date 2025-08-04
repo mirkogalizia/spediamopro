@@ -52,6 +52,56 @@ function getTrackingLabel(spedizione) {
   return "";
 }
 
+// --- Componente Stampa LDV integrato ---
+function PrintLdvButton({ idSpedizione }) {
+  const [loading, setLoading] = useState(false);
+  const [errore, setErrore] = useState(null);
+
+  const handlePrintLdv = async () => {
+    setLoading(true);
+    setErrore(null);
+    try {
+      const res = await fetch("/api/ldv-extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idSpedizione }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Errore durante il download LDV");
+      }
+
+      data.pdfs.forEach(({ base64, filename }) => {
+        const byteChars = atob(base64);
+        const bytes = Uint8Array.from(byteChars, (c) => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+
+        const w = window.open("", "_blank");
+        w.document.write(
+          `<html><head><title>${filename}</title></head><body style="margin:0">
+           <iframe src="${url}" style="width:100%;height:100vh;border:none;" onload="this.contentWindow.print()"></iframe>
+           </body></html>`
+        );
+      });
+    } catch (err) {
+      setErrore(err.message || String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <button onClick={handlePrintLdv} disabled={loading} style={buttonPrint}>
+        {loading ? "Caricamento..." : "Stampa LDV"}
+      </button>
+      {errore && <div style={{ color: "red", marginTop: 8 }}>{errore}</div>}
+    </>
+  );
+}
+
 const LS_KEY = "spediamo-pro-spedizioni";
 
 export default function Page() {
@@ -235,7 +285,6 @@ export default function Page() {
     setLoading(true);
     setErrore(null);
     try {
-      // CREATE
       const resC = await fetch(`/api/spediamo?step=create&id=${idSim}&shopifyOrderId=${selectedOrderId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -244,7 +293,6 @@ export default function Page() {
       if (!resC.ok) throw await resC.json();
       const { spedizione } = await resC.json();
 
-      // UPDATE
       const resU = await fetch(`/api/spediamo?step=update&id=${spedizione.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -264,7 +312,6 @@ export default function Page() {
       if (!resU.ok) throw await resU.json();
       const dataUpd = await resU.json();
 
-      // PAY
       const resP = await fetch(`/api/spediamo?step=pay&id=${spedizione.id}`, { method: "POST" });
       let dataP;
       try {
@@ -274,21 +321,18 @@ export default function Page() {
       }
       if (!resP.ok) throw dataP;
 
-      // DETTAGLIO TRACKING
       const resDetails = await fetch(`/api/spediamo?step=details&id=${spedizione.id}`, { method: "POST" });
       let details = {};
       if (resDetails.ok) {
         details = await resDetails.json();
       }
 
-      // --- MOTIVO PAY ---
       const motivo =
         dataP.message ||
         dataP.error ||
         (typeof dataP === "string" ? dataP : "") ||
         JSON.stringify(dataP, null, 2);
 
-      // Aggiorno storico (merge dati)
       setSpedizioniCreate((prev) => [
         {
           shopifyOrder: orders.find((o) => o.id === Number(selectedOrderId)),
@@ -313,43 +357,12 @@ export default function Page() {
     }
   };
 
-  // Stampa LDV aggiornata per estrazione ZIP/PDF multipli
-  const handlePrintLdv = async (idSpedizione) => {
-    setLoading(true);
-    setErrore(null);
-    try {
-      const res = await fetch(`/api/ldv-extract`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idSpedizione }),
-      });
-      if (!res.ok) throw await res.json();
-      const { pdfs } = await res.json();
-
-      if (!pdfs || pdfs.length === 0) {
-        throw new Error("Nessun PDF disponibile per la spedizione");
-      }
-
-      // Stampa ogni PDF aprendo una finestra e forzando print
-      pdfs.forEach(({ filename, base64 }) => {
-        const byteChars = atob(base64);
-        const bytes = Uint8Array.from(byteChars, (c) => c.charCodeAt(0));
-        const blob = new Blob([bytes], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-
-        const win = window.open("", "_blank");
-        win.document.write(
-          `<html><head><title>${filename}</title></head><body style="margin:0">
-          <iframe src="${url}" style="width:100vw;height:100vh;border:none;" onload="window.frames[0].focus(); window.frames[0].print();"></iframe>
-          </body></html>`
-        );
-      });
-    } catch (err) {
-      setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : err.toString());
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Usato per la stampa LDV con estrazione automatica
+  // Qui usiamo il componente integrato sotto
+  // che richiama /api/ldv-extract
+  // e apre PDF direttamente
+  // Vedi componente PrintLdvButton in questo file
+  // Per favore non modificare!
 
   // Cancella la cache delle spedizioni create
   const handleCancellaCache = () => {
@@ -550,9 +563,7 @@ export default function Page() {
                     </span>
                   )}
                 </span>
-                <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>
-                  Stampa LDV
-                </button>
+                <PrintLdvButton idSpedizione={spedizione.id} />
               </div>
             );
           })}
