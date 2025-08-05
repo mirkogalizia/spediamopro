@@ -1,4 +1,6 @@
 export default async function handler(req, res) {
+  console.log("CHIAMATA A FULFILL-ORDER", req.body);
+
   if (req.method !== "POST") 
     return res.status(405).json({ error: "Only POST allowed" });
 
@@ -6,8 +8,10 @@ export default async function handler(req, res) {
   const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN;
 
   const { orderId, trackingNumber, carrierName } = req.body;
-  if (!orderId) 
+  if (!orderId) {
+    console.log("ERRORE: orderId mancante!");
     return res.status(400).json({ error: "Missing orderId" });
+  }
 
   try {
     // 1. Ottieni fulfillmentOrder e lineItems
@@ -50,11 +54,14 @@ export default async function handler(req, res) {
     try {
       data = await graphqlRes.json();
     } catch (err) {
+      console.log("ERRORE PARSING RISPOSTA SHOPIFY GRAPHQL:", err);
       return res.status(502).json({ error: "Errore parsing risposta Shopify (GraphQL)", details: err.message });
     }
 
-    if (!data?.data?.order?.fulfillmentOrders?.edges?.length)
+    if (!data?.data?.order?.fulfillmentOrders?.edges?.length) {
+      console.log("NESSUN FULFILLMENT ORDER TROVATO", data);
       return res.status(400).json({ error: "Nessun fulfillment order trovato per questo ordine" });
+    }
 
     const fulfillmentOrder = data.data.order.fulfillmentOrders.edges[0].node;
     const fulfillment_order_id = Number(fulfillmentOrder.legacyResourceId);
@@ -96,17 +103,21 @@ export default async function handler(req, res) {
     try {
       restData = await restRes.json();
     } catch (err) {
+      console.log("ERRORE PARSING RISPOSTA SHOPIFY REST:", err);
       return res.status(502).json({ error: "Risposta non valida da Shopify REST", details: err.message });
     }
 
     if (!restRes.ok || restData.errors) {
+      console.log("ERRORE DA SHOPIFY REST:", restData);
       return res.status(400).json({ error: restData.errors || restData || "Errore fulfillment Shopify" });
     }
 
     // Successo!
+    console.log("FULFILLMENT COMPLETATO CON SUCCESSO", restData);
     return res.status(200).json({ success: true, data: restData });
+
   } catch (err) {
-    // Qualsiasi errore JS imprevisto
+    console.log("CATCH GENERICO API FULFILL:", err);
     return res.status(500).json({ error: err.message || "Errore generico nel backend" });
   }
 }

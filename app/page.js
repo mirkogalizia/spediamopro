@@ -332,40 +332,49 @@ export default function Page() {
 
   // Evadi spedizione (fulfill ordine) con debug dettagliato e messaggi in UI
   const handleEvadiSpedizione = async (spedizioneObj) => {
-    setLoading(true);
-    setErrore(null);
+  setLoading(true);
+  setErrore(null);
+  try {
+    const res = await fetch("/api/shopify/fulfill-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        orderId: spedizioneObj.shopifyOrder.id,
+        trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
+        carrierName: spedizioneObj.spedizione.corriere || "Altro",
+      }),
+    });
+
+    let data;
     try {
-      const res = await fetch("/api/shopify/fulfill-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: spedizioneObj.shopifyOrder.id,
-          trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
-          carrierName: spedizioneObj.spedizione.corriere || "Altro",
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || data.success === false) {
-        throw new Error(data.error || "Errore evasione");
-      }
-
-      setSpedizioniCreate((prev) =>
-        prev.map((el) =>
-          el.spedizione.id === spedizioneObj.spedizione.id
-            ? { ...el, fulfilled: true }
-            : el
-        )
-      );
-
-      alert(`✅ Ordine evaso con successo!\nDettagli risposta:\n${JSON.stringify(data.data, null, 2)}`);
-    } catch (err) {
-      setErrore(err.message || "Errore evasione ordine");
-    } finally {
+      data = await res.json();
+    } catch (e) {
+      // Mostra la response come testo per capire il problema:
+      const rawText = await res.text();
+      setErrore("Risposta NON JSON dal backend: " + rawText);
       setLoading(false);
+      return;
     }
-  };
+
+    if (!res.ok || data.success === false) {
+      throw new Error(data.error || "Errore evasione");
+    }
+
+    setSpedizioniCreate((prev) =>
+      prev.map((el) =>
+        el.spedizione.id === spedizioneObj.spedizione.id
+          ? { ...el, fulfilled: true }
+          : el
+      )
+    );
+
+    alert(`✅ Ordine evaso con successo!\nDettagli risposta:\n${JSON.stringify(data.data, null, 2)}`);
+  } catch (err) {
+    setErrore(err.message || "Errore evasione ordine");
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Stampa LDV
   const handlePrintLdv = async (idSpedizione) => {
