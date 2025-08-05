@@ -349,9 +349,7 @@ export default function Page() {
     try {
       data = await res.json();
     } catch (e) {
-      // Mostra la response come testo per capire il problema:
-      const rawText = await res.text();
-      setErrore("Risposta NON JSON dal backend: " + rawText);
+      setErrore("Risposta NON JSON dal backend oppure vuota.");
       setLoading(false);
       return;
     }
