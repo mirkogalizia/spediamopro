@@ -13,12 +13,6 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Missing orderId" });
   }
 
-  // Helper per estrarre l’ID numerico dal GID
-  function extractNumber(gid) {
-    if (!gid) return null;
-    return Number(gid.split('/').pop());
-  }
-
   try {
     // 1. Ottieni fulfillmentOrder e lineItems
     const orderGID = orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`;
@@ -36,12 +30,11 @@ export default async function handler(req, res) {
                 edges {
                   node {
                     id
-                    status
                     lineItems(first: 10) {
                       edges {
                         node {
                           id
-                          lineItem { quantity }
+                          lineItem { id quantity }
                         }
                       }
                     }
@@ -68,17 +61,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Nessun fulfillment order trovato per questo ordine" });
     }
 
-    // Trova il primo fulfillmentOrder ancora "aperto"
-    const fulfillmentOrderNode = data.data.order.fulfillmentOrders.edges
-      .map(e => e.node)
-      .find(node => ["OPEN", "IN_PROGRESS", "SCHEDULED", "UNFULFILLED"].includes(node.status));
-    if (!fulfillmentOrderNode) {
-      return res.status(400).json({ error: "Nessun fulfillment order aperto trovato" });
-    }
-
-    const fulfillment_order_id = extractNumber(fulfillmentOrderNode.id);
-    const fulfillment_order_line_items = fulfillmentOrderNode.lineItems.edges.map(edge => ({
-      id: extractNumber(edge.node.id),
+    const fulfillmentOrder = data.data.order.fulfillmentOrders.edges[0].node;
+    const fulfillment_order_id = Number(fulfillmentOrder.id.split('/').pop());
+    const fulfillment_order_line_items = fulfillmentOrder.lineItems.edges.map(edge => ({
+      id: Number(edge.node.id.split('/').pop()),
       quantity: edge.node.lineItem.quantity
     }));
 
@@ -90,7 +76,6 @@ export default async function handler(req, res) {
           tracking_info: {
             number: trackingNumber,
             company: carrierName || "",
-            // url: puoi aggiungere qui il tracking link se vuoi
           }
         }),
         line_items_by_fulfillment_order: [
@@ -111,12 +96,15 @@ export default async function handler(req, res) {
       body: JSON.stringify(payload)
     });
 
+    // --- FIX: controlla tipo di risposta ---
     let restData = null;
-    try {
+    const contentType = restRes.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
       restData = await restRes.json();
-    } catch (err) {
-      console.log("ERRORE PARSING RISPOSTA SHOPIFY REST:", err);
-      return res.status(502).json({ error: "Risposta non valida da Shopify REST", details: err.message });
+    } else {
+      const text = await restRes.text();
+      console.log("ATTENZIONE: Shopify REST ha risposto senza JSON:", text);
+      return res.status(502).json({ error: "Shopify REST non ha risposto in JSON", details: text });
     }
 
     if (!restRes.ok || restData.errors) {
@@ -124,7 +112,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: restData.errors || restData || "Errore fulfillment Shopify" });
     }
 
-    // Successo!
     console.log("FULFILLMENT COMPLETATO CON SUCCESSO", restData);
     return res.status(200).json({ success: true, data: restData });
 
