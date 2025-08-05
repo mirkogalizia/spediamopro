@@ -335,24 +335,34 @@ export default function Page() {
   setLoading(true);
   setErrore(null);
   try {
+    // 1. Leggi il numero d'ordine visibile sulla riga
+    const orderName = spedizioneObj.shopifyOrder?.name || "";
+
+    // 2. Rifai la ricerca sull'elenco ordini caricato
+    const foundOrder = orders.find((o) => {
+      const plainName = (o.name || "").toLowerCase().replace(/#/g, "");
+      return plainName === orderName.toLowerCase().replace(/#/g, "");
+    });
+
+    if (!foundOrder) {
+      throw new Error(`Impossibile trovare l’ordine ${orderName} tra gli ordini caricati`);
+    }
+
+    // 3. Usa l'id appena recuperato, sicuro
+    const orderId = foundOrder.id;
+
+    // 4. Chiamata backend come prima!
     const res = await fetch("/api/shopify/fulfill-order", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        orderId: spedizioneObj.shopifyOrder.id,
+        orderId: orderId, // <-- usi SEMPRE l’id "fresco"
         trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
         carrierName: spedizioneObj.spedizione.corriere || "Altro",
       }),
     });
 
-    let data;
-    try {
-      data = await res.json();
-    } catch (e) {
-      setErrore("Risposta NON JSON dal backend oppure vuota.");
-      setLoading(false);
-      return;
-    }
+    const data = await res.json();
 
     if (!res.ok || data.success === false) {
       throw new Error(data.error || "Errore evasione");
