@@ -335,13 +335,20 @@ export default function Page() {
   setLoading(true);
   setErrore(null);
   try {
-    // Recupera sempre l'orderId "fresco" dal nome
+    // Recupera sempre l'orderId dal nome
     const orderName = spedizioneObj.shopifyOrder?.name || "";
     const foundOrder = orders.find((o) => {
       const plainName = (o.name || "").toLowerCase().replace(/#/g, "");
       return plainName === orderName.toLowerCase().replace(/#/g, "");
     });
     if (!foundOrder) throw new Error(`Impossibile trovare l’ordine ${orderName}`);
+
+    // DEBUG log dei dati che mandi
+    console.log("Provo evadi: ", {
+      orderId: foundOrder.id,
+      trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
+      carrierName: spedizioneObj.spedizione.corriere || "Altro"
+    });
 
     const res = await fetch("/api/shopify/fulfill-order", {
       method: "POST",
@@ -353,8 +360,11 @@ export default function Page() {
       }),
     });
 
-    // --- FIX: controlla sempre che la risposta sia JSON ---
+    // Log del tipo risposta
     const contentType = res.headers.get("content-type");
+    console.log("Risposta fetch:", res.status, contentType);
+
+    // Prova a leggere la risposta
     let data;
     if (contentType && contentType.includes("application/json")) {
       data = await res.json();
@@ -375,7 +385,7 @@ export default function Page() {
       )
     );
 
-    alert(`✅ Ordine evaso con successo!\nDettagli risposta:\n${JSON.stringify(data.data, null, 2)}`);
+    alert(`✅ Ordine evaso con successo!\nDettagli risposta:\n${JSON.stringify(data, null, 2)}`);
   } catch (err) {
     setErrore(err.message || "Errore evasione ordine");
   } finally {
