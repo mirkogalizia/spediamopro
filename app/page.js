@@ -51,9 +51,7 @@ function getTrackingLabel(spedizione) {
   return "";
 }
 
-const LS_KEY = "spediamo-pro-spedizioni";
-
-// HoverButton component per hover effect sui bottoni
+// Pulsante con effetto hover
 function HoverButton({ style, onClick, children, disabled }) {
   const [hover, setHover] = useState(false);
   const hoverStyle = hover ? { filter: "brightness(85%)" } : {};
@@ -69,6 +67,8 @@ function HoverButton({ style, onClick, children, disabled }) {
     </button>
   );
 }
+
+const LS_KEY = "spediamo-pro-spedizioni";
 
 export default function Page() {
   const [orders, setOrders] = useState([]);
@@ -330,7 +330,7 @@ export default function Page() {
     }
   };
 
-  // Evadi spedizione (fulfill ordine)
+  // Evadi spedizione (fulfill ordine) con debug dettagliato e messaggi in UI
   const handleEvadiSpedizione = async (spedizioneObj) => {
     setLoading(true);
     setErrore(null);
@@ -344,12 +344,13 @@ export default function Page() {
           carrierName: spedizioneObj.spedizione.corriere || "Altro",
         }),
       });
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.error || "Errore evasione");
-      }
+
       const data = await res.json();
-      // Segna la spedizione come evasa in cache (stato fulfilled = true)
+
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || "Errore evasione");
+      }
+
       setSpedizioniCreate((prev) =>
         prev.map((el) =>
           el.spedizione.id === spedizioneObj.spedizione.id
@@ -357,7 +358,8 @@ export default function Page() {
             : el
         )
       );
-      alert("✅ Ordine evaso con successo!");
+
+      alert(`✅ Ordine evaso con successo!\nDettagli risposta:\n${JSON.stringify(data.data, null, 2)}`);
     } catch (err) {
       setErrore(err.message || "Errore evasione ordine");
     } finally {
@@ -377,10 +379,9 @@ export default function Page() {
       const bytes = Uint8Array.from(byteChars, (c) => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: ldv.type });
       const url = URL.createObjectURL(blob);
-      // Scarica il file senza stampa automatica:
       const a = document.createElement("a");
       a.href = url;
-      a.download = `ldv_${idSpedizione}.zip`; // usa estensione zip o pdf a seconda del tipo
+      a.download = `ldv_${idSpedizione}.zip`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -392,7 +393,7 @@ export default function Page() {
     }
   };
 
-  // Cancella la cache delle spedizioni create
+  // Cancella cache spedizioni create
   const handleCancellaCache = () => {
     if (window.confirm("Vuoi davvero cancellare tutte le spedizioni salvate?")) {
       setSpedizioniCreate([]);
@@ -402,20 +403,13 @@ export default function Page() {
 
   return (
     <div style={containerStyle}>
-      {/* Logo */}
       <div style={logoWrapperStyle}>
         <Image
           src="/logo.png"
           alt="Logo"
           width={220}
           height={90}
-          style={{
-            width: "220px",
-            height: "auto",
-            objectFit: "contain",
-            filter: "drop-shadow(0 2px 14px #bbb8)",
-            maxWidth: "95vw"
-          }}
+          style={{ width: "220px", height: "auto", objectFit: "contain", filter: "drop-shadow(0 2px 14px #bbb8)", maxWidth: "95vw" }}
           priority
         />
       </div>
@@ -423,7 +417,6 @@ export default function Page() {
       <div style={cardStyle}>
         <h2 style={headerStyle}>Gestione Spedizioni Shopify</h2>
 
-        {/* Date range & Carica ordini */}
         <div style={rowStyle}>
           <div style={fieldStyle}>
             <label style={labelStyle}>Da</label>
@@ -433,112 +426,37 @@ export default function Page() {
             <label style={labelStyle}>A</label>
             <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={inputStyle} min={dateFrom} max={new Date().toISOString().split("T")[0]} />
           </div>
-          <button onClick={handleLoadOrders} disabled={loading} style={buttonPrimary}>
-            {loading ? "Carica..." : "Carica ordini"}
-          </button>
+          <button onClick={handleLoadOrders} disabled={loading} style={buttonPrimary}>{loading ? "Carica..." : "Carica ordini"}</button>
         </div>
 
-        {/* Cerca ordine */}
         <form style={searchRowStyle} onSubmit={handleSearchOrder}>
           <input type="text" placeholder="Parte del numero d'ordine…" value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} style={inputStyle} disabled={loading || orders.length === 0} />
-          <button type="submit" disabled={loading || orders.length === 0} style={buttonPrimary}>
-            Cerca
-          </button>
+          <button type="submit" disabled={loading || orders.length === 0} style={buttonPrimary}>Cerca</button>
         </form>
 
-        {selectedOrderId && (
-          <div style={foundStyle}>
-            Ordine trovato: <strong>{orders.find((o) => o.id === Number(selectedOrderId))?.name}</strong>
-          </div>
-        )}
+        {selectedOrderId && <div style={foundStyle}>Ordine trovato: <strong>{orders.find((o) => o.id === Number(selectedOrderId))?.name}</strong></div>}
 
         {errore && <div style={errorStyle}>{errore}</div>}
 
-        {/* Form Simulazione */}
         {selectedOrderId && (
           <form onSubmit={handleSimula} style={simulateFormStyle}>
             <div style={rowStyle}>
-              <input
-                name="nome"
-                placeholder="Destinatario"
-                value={form.nome}
-                onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                required
-                style={inputStyle}
-              />
-              <input
-                name="telefono"
-                placeholder="Telefono"
-                value={form.telefono}
-                onChange={(e) => setForm({ ...form, telefono: e.target.value })}
-                required
-                style={inputStyle}
-              />
+              <input name="nome" placeholder="Destinatario" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required style={inputStyle} />
+              <input name="telefono" placeholder="Telefono" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} required style={inputStyle} />
             </div>
-            <input
-              name="email"
-              placeholder="Email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              required
-              style={inputStyle}
-              type="email"
-            />
-            <input
-              name="indirizzo"
-              placeholder="Indirizzo (Via, Numero)"
-              value={form.indirizzo}
-              onChange={(e) => setForm({ ...form, indirizzo: removeAccents(e.target.value) })}
-              required
-              style={inputStyle}
-            />
-            <input
-              name="indirizzo2"
-              placeholder="Indirizzo 2"
-              value={form.indirizzo2}
-              onChange={(e) => setForm({ ...form, indirizzo2: removeAccents(e.target.value) })}
-              style={inputStyle}
-            />
+            <input name="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required style={inputStyle} type="email" />
+            <input name="indirizzo" placeholder="Indirizzo (Via, Numero)" value={form.indirizzo} onChange={(e) => setForm({ ...form, indirizzo: removeAccents(e.target.value) })} required style={inputStyle} />
+            <input name="indirizzo2" placeholder="Indirizzo 2" value={form.indirizzo2} onChange={(e) => setForm({ ...form, indirizzo2: removeAccents(e.target.value) })} style={inputStyle} />
             <div style={rowStyle}>
-              <input
-                name="capDest"
-                placeholder="CAP"
-                value={form.capDestinatario}
-                onChange={(e) => setForm({ ...form, capDestinatario: e.target.value })}
-                required
-                style={smallInput}
-              />
-              <input
-                name="citta"
-                placeholder="Città"
-                value={form.cittaDestinatario}
-                onChange={(e) => setForm({ ...form, cittaDestinatario: e.target.value })}
-                required
-                style={inputStyle}
-              />
-              <input
-                name="prov"
-                placeholder="Prov"
-                value={form.provinciaDestinatario}
-                onChange={(e) => setForm({ ...form, provinciaDestinatario: e.target.value })}
-                required
-                style={smallInput}
-              />
-              <input
-                name="naz"
-                placeholder="Nazione"
-                value={form.nazioneDestinatario}
-                readOnly
-                style={smallInput}
-              />
+              <input name="capDest" placeholder="CAP" value={form.capDestinatario} onChange={(e) => setForm({ ...form, capDestinatario: e.target.value })} required style={smallInput} />
+              <input name="citta" placeholder="Città" value={form.cittaDestinatario} onChange={(e) => setForm({ ...form, cittaDestinatario: e.target.value })} required style={inputStyle} />
+              <input name="prov" placeholder="Prov" value={form.provinciaDestinatario} onChange={(e) => setForm({ ...form, provinciaDestinatario: e.target.value })} required style={smallInput} />
+              <input name="naz" placeholder="Nazione" value={form.nazioneDestinatario} readOnly style={smallInput} />
             </div>
-            <button type="submit" disabled={loading} style={buttonSecondary}>
-              {loading ? "Simulando..." : "Simula spedizione"}
-            </button>
+            <button type="submit" disabled={loading} style={buttonSecondary}>{loading ? "Simulando..." : "Simula spedizione"}</button>
           </form>
         )}
 
-        {/* Offerte disponibili */}
         {spedizioni.length > 0 && (
           <div style={offersContainer}>
             {spedizioni.map((s) => (
@@ -550,26 +468,18 @@ export default function Page() {
                 </div>
                 <div style={offerActions}>
                   <div style={offerPrice}>{parseFloat(s.tariffa).toFixed(2)} €</div>
-                  <HoverButton onClick={() => handleCreaECompletaEPaga(s.id)} style={buttonCreate} disabled={loading}>
-                    Crea & paga
-                  </HoverButton>
+                  <HoverButton onClick={() => handleCreaECompletaEPaga(s.id)} style={buttonCreate} disabled={loading}>Crea & paga</HoverButton>
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Spedizioni generate */}
         <div style={historyContainer}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 style={historyHeader}>Spedizioni storiche</h3>
             {spedizioniCreate.length > 0 && (
-              <button
-                style={{ ...buttonSecondary, background: "#ff3b30", color: "#fff", fontSize: 14, padding: "6px 16px" }}
-                onClick={handleCancellaCache}
-              >
-                Cancella cache
-              </button>
+              <button style={{ ...buttonSecondary, background: "#ff3b30", color: "#fff", fontSize: 14, padding: "6px 16px" }} onClick={handleCancellaCache}>Cancella cache</button>
             )}
           </div>
           {spedizioniCreate.length === 0 && <div style={historyEmpty}>Nessuna spedizione creata.</div>}
@@ -581,7 +491,7 @@ export default function Page() {
                 key={spedizione.id}
                 style={{
                   ...historyCard,
-                  backgroundColor: fulfilled ? "#e6ffe6" : "#fff3cd", // verde chiaro se evaso, giallo se no
+                  backgroundColor: fulfilled ? "#e6ffe6" : "#fff3cd",
                   borderColor: fulfilled ? "#28a745" : "#ffc107",
                   display: "flex",
                   justifyContent: "space-between",
@@ -591,16 +501,15 @@ export default function Page() {
                 <span>
                   <strong>{shopifyOrder?.name}</strong> · ID {spedizione.id}
                   {" · Tracking: "}
-                  {trackingLink && tracking
-                    ? (
-                      <a href={trackingLink} target="_blank" rel="noopener noreferrer" style={{ color: "#0a84ff", fontWeight: 700 }}>
-                        {tracking}
-                      </a>
-                    )
-                    : tracking
-                      ? <span style={{ fontWeight: 600 }}>{tracking}</span>
-                      : <span style={{ color: "#999" }}>non ancora disponibile</span>
-                  }
+                  {trackingLink && tracking ? (
+                    <a href={trackingLink} target="_blank" rel="noopener noreferrer" style={{ color: "#0a84ff", fontWeight: 700 }}>
+                      {tracking}
+                    </a>
+                  ) : tracking ? (
+                    <span style={{ fontWeight: 600 }}>{tracking}</span>
+                  ) : (
+                    <span style={{ color: "#999" }}>non ancora disponibile</span>
+                  )}
                   {lastPayReason && (
                     <span style={{ color: "#ff3b30", fontSize: 13, marginLeft: 8 }}>
                       (NON PAGATA: {lastPayReason})
@@ -608,13 +517,9 @@ export default function Page() {
                   )}
                 </span>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <HoverButton onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint} disabled={loading}>
-                    Stampa LDV
-                  </HoverButton>
+                  <HoverButton onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint} disabled={loading}>Stampa LDV</HoverButton>
                   {!fulfilled && (
-                    <HoverButton onClick={() => handleEvadiSpedizione({ shopifyOrder, spedizione })} style={buttonEvadi} disabled={loading}>
-                      Evadi
-                    </HoverButton>
+                    <HoverButton onClick={() => handleEvadiSpedizione({ shopifyOrder, spedizione })} style={buttonEvadi} disabled={loading}>Evadi</HoverButton>
                   )}
                 </div>
               </div>
@@ -627,6 +532,7 @@ export default function Page() {
 }
 
 // --- STILI ---
+
 const containerStyle = {
   minHeight: "100vh",
   background: "#f5f7fa",
@@ -638,6 +544,7 @@ const containerStyle = {
   fontFamily: "-apple-system, BlinkMacSystemFont, SF Pro Display, sans-serif",
   color: "#333",
 };
+
 const logoWrapperStyle = {
   width: "100%",
   display: "flex",
@@ -645,6 +552,7 @@ const logoWrapperStyle = {
   alignItems: "center",
   marginBottom: 32,
 };
+
 const cardStyle = {
   background: "#fff",
   borderRadius: 16,
@@ -656,10 +564,15 @@ const cardStyle = {
   flexDirection: "column",
   gap: 24,
 };
+
 const headerStyle = { fontSize: 24, fontWeight: 700 };
+
 const rowStyle = { display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" };
+
 const fieldStyle = { flex: 1, display: "flex", flexDirection: "column" };
+
 const labelStyle = { marginBottom: 4, fontSize: 14, color: "#555" };
+
 const inputStyle = {
   padding: "10px 14px",
   borderRadius: 8,
@@ -669,7 +582,9 @@ const inputStyle = {
   color: "#333",
   flex: 1,
 };
+
 const smallInput = { ...inputStyle, maxWidth: 90 };
+
 const buttonPrimary = {
   padding: "10px 16px",
   borderRadius: 8,
@@ -680,6 +595,7 @@ const buttonPrimary = {
   cursor: "pointer",
   transition: "background-color 0.3s ease",
 };
+
 const buttonSecondary = {
   padding: "12px 20px",
   borderRadius: 8,
@@ -690,6 +606,7 @@ const buttonSecondary = {
   cursor: "pointer",
   transition: "background-color 0.3s ease",
 };
+
 const buttonCreate = {
   padding: "8px 14px",
   borderRadius: 8,
@@ -700,6 +617,7 @@ const buttonCreate = {
   cursor: "pointer",
   transition: "background-color 0.3s ease",
 };
+
 const offerCard = {
   background: "#fafafa",
   borderRadius: 12,
@@ -709,22 +627,34 @@ const offerCard = {
   alignItems: "center",
   boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
 };
+
 const offerActions = { display: "flex", alignItems: "center", gap: 12 };
+
 const offerPrice = { fontWeight: 700 };
+
 const offersContainer = { display: "flex", flexDirection: "column", gap: 12 };
+
 const searchRowStyle = { display: "flex", gap: 12 };
+
 const foundStyle = { fontSize: 16, color: "#0a84ff" };
+
 const errorStyle = { color: "#ff3b30", fontSize: 14 };
+
 const simulateFormStyle = { display: "flex", flexDirection: "column", gap: 12 };
+
 const historyContainer = { marginTop: 24, display: "flex", flexDirection: "column", gap: 12 };
+
 const historyHeader = { fontSize: 18, fontWeight: 600 };
+
 const historyEmpty = { color: "#777" };
+
 const historyCard = {
   background: "#f9f9f9",
   borderRadius: 10,
   padding: 12,
   border: "1px solid #e0e0e0",
 };
+
 const buttonPrint = {
   padding: "8px 16px",
   borderRadius: 8,
@@ -737,6 +667,7 @@ const buttonPrint = {
   textAlign: "center",
   transition: "background-color 0.3s ease",
 };
+
 const buttonEvadi = {
   padding: "8px 16px",
   borderRadius: 8,
