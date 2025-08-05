@@ -53,6 +53,23 @@ function getTrackingLabel(spedizione) {
 
 const LS_KEY = "spediamo-pro-spedizioni";
 
+// HoverButton component per hover effect sui bottoni
+function HoverButton({ style, onClick, children, disabled }) {
+  const [hover, setHover] = useState(false);
+  const hoverStyle = hover ? { filter: "brightness(85%)" } : {};
+  return (
+    <button
+      style={{ ...style, ...hoverStyle }}
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function Page() {
   const [orders, setOrders] = useState([]);
   const [orderQuery, setOrderQuery] = useState("");
@@ -533,9 +550,9 @@ export default function Page() {
                 </div>
                 <div style={offerActions}>
                   <div style={offerPrice}>{parseFloat(s.tariffa).toFixed(2)} €</div>
-                  <button onClick={() => handleCreaECompletaEPaga(s.id)} disabled={loading} style={buttonCreate}>
+                  <HoverButton onClick={() => handleCreaECompletaEPaga(s.id)} style={buttonCreate} disabled={loading}>
                     Crea & paga
-                  </button>
+                  </HoverButton>
                 </div>
               </div>
             ))}
@@ -566,6 +583,9 @@ export default function Page() {
                   ...historyCard,
                   backgroundColor: fulfilled ? "#e6ffe6" : "#fff3cd", // verde chiaro se evaso, giallo se no
                   borderColor: fulfilled ? "#28a745" : "#ffc107",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
                 }}
               >
                 <span>
@@ -587,14 +607,14 @@ export default function Page() {
                     </span>
                   )}
                 </span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <HoverButton onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint} disabled={loading}>
                     Stampa LDV
-                  </button>
+                  </HoverButton>
                   {!fulfilled && (
-                    <button onClick={() => handleEvadiSpedizione({ shopifyOrder, spedizione })} style={buttonEvadi}>
+                    <HoverButton onClick={() => handleEvadiSpedizione({ shopifyOrder, spedizione })} style={buttonEvadi} disabled={loading}>
                       Evadi
-                    </button>
+                    </HoverButton>
                   )}
                 </div>
               </div>
@@ -658,6 +678,7 @@ const buttonPrimary = {
   color: "#fff",
   fontWeight: 600,
   cursor: "pointer",
+  transition: "background-color 0.3s ease",
 };
 const buttonSecondary = {
   padding: "12px 20px",
@@ -667,6 +688,7 @@ const buttonSecondary = {
   color: "#fff",
   fontWeight: 600,
   cursor: "pointer",
+  transition: "background-color 0.3s ease",
 };
 const buttonCreate = {
   padding: "8px 14px",
@@ -676,6 +698,7 @@ const buttonCreate = {
   color: "#fff",
   fontWeight: 600,
   cursor: "pointer",
+  transition: "background-color 0.3s ease",
 };
 const offerCard = {
   background: "#fafafa",
@@ -700,26 +723,29 @@ const historyCard = {
   background: "#f9f9f9",
   borderRadius: 10,
   padding: 12,
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
   border: "1px solid #e0e0e0",
 };
 const buttonPrint = {
-  padding: "6px 12px",
-  borderRadius: 6,
+  padding: "8px 16px",
+  borderRadius: 8,
   border: "none",
   background: "#ff9500",
   color: "#fff",
   fontWeight: 600,
   cursor: "pointer",
+  minWidth: 90,
+  textAlign: "center",
+  transition: "background-color 0.3s ease",
 };
 const buttonEvadi = {
-  padding: "6px 12px",
-  borderRadius: 6,
+  padding: "8px 16px",
+  borderRadius: 8,
   border: "none",
   background: "#28a745",
   color: "#fff",
   fontWeight: 600,
   cursor: "pointer",
+  minWidth: 90,
+  textAlign: "center",
+  transition: "background-color 0.3s ease",
 };
