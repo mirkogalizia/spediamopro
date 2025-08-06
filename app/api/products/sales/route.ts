@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 
-// Usa solo variabili ambiente!
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
 const SHOPIFY_API_VERSION = "2023-10";
 
-// Mappa prodotto madre BLANKS: <nome tipologia> → <product_id>
 const BLANKS_PRODUCTS: Record<string, string> = {
   "t shirt": "10086015861002",
   "felpa cappuccio": "10086022217994",
@@ -16,7 +14,6 @@ const TYPE_ALIASES: Record<string, string> = {
   "felpa cappuccio": "felpa cappuccio",
   "t shirt": "t shirt",
   "t-shirt": "t shirt",
-  // aggiungi altri alias se serve
 };
 
 function getPageInfo(link: string | null): string | null {
@@ -25,12 +22,8 @@ function getPageInfo(link: string | null): string | null {
   return match ? match[1] : null;
 }
 
-// Normalizza variante in formato "taglia/colore" lowercase senza spazi extra
 function normalizeVariant(variant: string) {
-  return variant
-    .toLowerCase()
-    .replace(/\s*\/\s*/, "/")
-    .trim();
+  return variant.toLowerCase().replace(/\s*\/\s*/, "/").trim();
 }
 
 export async function GET() {
@@ -70,11 +63,11 @@ export async function GET() {
       blanksStockMap[type] = {};
       for (const variant of data.product.variants) {
         const normVar = normalizeVariant(variant.title);
-        blanksStockMap[type][normVar] = variant.inventory_quantity || 0;
+        blanksStockMap[type][normVar] = variant.inventory_quantity ?? 0;
       }
     }
 
-    // 3) Scarica venduto per tipologia e variante normalizzata (ultimi 30 giorni)
+    // 3) Scarica venduto ultimi 30 giorni per tipologia e variante normalizzata
     const START_DATE = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const soldMap: Record<string, Record<string, number>> = {};
     let orderCursor: string | null = null;
@@ -91,7 +84,7 @@ export async function GET() {
         for (const item of order.line_items || []) {
           const typeRaw = productTypeMap[String(item.product_id)] || "unknown";
           const type = TYPE_ALIASES[typeRaw] || typeRaw;
-          if (!(type in BLANKS_PRODUCTS)) continue; // Solo blanks configurati
+          if (!(type in BLANKS_PRODUCTS)) continue;
           const variantNorm = normalizeVariant(item.variant_title || "unknown");
           soldMap[type] = soldMap[type] || {};
           soldMap[type][variantNorm] = (soldMap[type][variantNorm] || 0) + (item.quantity || 0);
@@ -100,7 +93,7 @@ export async function GET() {
       orderCursor = getPageInfo(res.headers.get("link"));
     } while (orderCursor);
 
-    // 4) Combina stock e venduto (venduto = 0 se assente)
+    // 4) Combina stock e venduto
     const rows = Object.entries(blanksStockMap).map(([tipologia, stockVariants]) => {
       const soldVariants = soldMap[tipologia] || {};
       return {
