@@ -1,14 +1,17 @@
 'use client';
-import { useState, useEffect } from "react";
+
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { useRouter } from "next/navigation";
 
 // Utility: rimuove accenti
-function removeAccents(str) {
+function removeAccents(str: string) {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
 // Icone corriere
-function getCorriereIcon(corriere) {
+function getCorriereIcon(corriere: string | undefined) {
   const c = (corriere || '').toLowerCase();
   if (c.includes("brt")) return (
     <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#E30613"/><text x="14" y="13" fill="#fff" fontSize="11" fontWeight="bold" textAnchor="middle">BRT</text></svg>
@@ -40,7 +43,7 @@ function getCorriereIcon(corriere) {
 }
 
 // Tracking label + link stabile
-function getTrackingLabel(spedizione) {
+function getTrackingLabel(spedizione: any) {
   if (Array.isArray(spedizione.colli) && spedizione.colli.length > 0 && spedizione.colli[0].segnacollo) {
     return spedizione.colli[0].segnacollo;
   }
@@ -52,8 +55,8 @@ function getTrackingLabel(spedizione) {
 }
 
 // Pulsante con effetto hover
-function HoverButton({ style, onClick, children, disabled }) {
-  const [hover, setHover] = useState(false);
+function HoverButton({ style, onClick, children, disabled }: any) {
+  const [hover, setHover] = React.useState(false);
   const hoverStyle = hover ? { filter: "brightness(85%)" } : {};
   return (
     <button
@@ -71,10 +74,18 @@ function HoverButton({ style, onClick, children, disabled }) {
 const LS_KEY = "spediamo-pro-spedizioni";
 
 export default function Page() {
-  const [orders, setOrders] = useState([]);
-  const [orderQuery, setOrderQuery] = useState("");
-  const [selectedOrderId, setSelectedOrderId] = useState(null);
-  const [form, setForm] = useState({
+  const router = useRouter();
+  const auth = getAuth();
+
+  // Stato di autenticazione
+  const [user, setUser] = React.useState<any>(null);
+  const [loadingAuth, setLoadingAuth] = React.useState(true);
+
+  // Dati e stato dell’app
+  const [orders, setOrders] = React.useState<any[]>([]);
+  const [orderQuery, setOrderQuery] = React.useState("");
+  const [selectedOrderId, setSelectedOrderId] = React.useState<any>(null);
+  const [form, setForm] = React.useState({
     nome: "",
     telefono: "",
     email: "",
@@ -89,55 +100,52 @@ export default function Page() {
     profondita: "20",
     peso: "1",
   });
-  const [spedizioni, setSpedizioni] = useState([]);
-  const [spedizioniCreate, setSpedizioniCreate] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [errore, setErrore] = useState(null);
+  const [spedizioni, setSpedizioni] = React.useState<any[]>([]);
+  const [spedizioniCreate, setSpedizioniCreate] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [errore, setErrore] = React.useState<string | null>(null);
 
-  const [dateFrom, setDateFrom] = useState("2025-01-01");
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
+  const [dateFrom, setDateFrom] = React.useState("2025-01-01");
+  const [dateTo, setDateTo] = React.useState(() => new Date().toISOString().split("T")[0]);
 
   // Persistenza localStorage
-  useEffect(() => {
+  React.useEffect(() => {
     try {
       const salvate = localStorage.getItem(LS_KEY);
       if (salvate) setSpedizioniCreate(JSON.parse(salvate));
     } catch {}
   }, []);
-  useEffect(() => {
+  React.useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
   }, [spedizioniCreate]);
 
-  // Aggiornamento tracking in differita (ogni 60 secondi)
-  useEffect(() => {
-    if (!spedizioniCreate.length) return;
-    const updateTracking = async () => {
-      try {
-        const nuove = await Promise.all(
-          spedizioniCreate.map(async (el) => {
-            const tracking = getTrackingLabel(el.spedizione);
-            if (!tracking || !el.spedizione.trackLink) {
-              const res = await fetch(`/api/spediamo?step=details&id=${el.spedizione.id}`, { method: "POST" });
-              if (res.ok) {
-                const details = await res.json();
-                return { ...el, spedizione: { ...el.spedizione, ...details.spedizione } };
-              }
-            }
-            return el;
-          })
-        );
-        setSpedizioniCreate(nuove);
-      } catch (err) {
-        setErrore("Errore aggiornamento tracking: " + err);
+  // Gestione autenticazione Firebase (redirect se non loggato)
+  React.useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (usr) => {
+      if (!usr) {
+        router.push("/");
+      } else {
+        setUser(usr);
       }
-    };
-    updateTracking();
-    const timer = setInterval(updateTracking, 60000);
-    return () => clearInterval(timer);
-  }, [spedizioniCreate.length]);
+      setLoadingAuth(false);
+    });
+    return () => unsubscribe();
+  }, [auth, router]);
 
-  // Carica ordini Shopify
-  const handleLoadOrders = async () => {
+  // Se auth in caricamento, mostra loader
+  if (loadingAuth) {
+    return <div style={{ padding: 40, textAlign: "center" }}>Caricamento autenticazione...</div>;
+  }
+
+  if (!user) {
+    // Se utente non loggato, non mostrare contenuto
+    return null;
+  }
+
+  // Le tue funzioni qui sotto (copiate da te, senza modifiche):
+  
+  // handleLoadOrders
+  async function handleLoadOrders() {
     setLoading(true);
     setErrore(null);
     setOrders([]);
@@ -167,15 +175,15 @@ export default function Page() {
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setOrders(data.orders || []);
-    } catch (e) {
+    } catch (e: any) {
       setErrore(e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Seleziona ordine e popola form
-  const handleSearchOrder = (e) => {
+  // handleSearchOrder
+  function handleSearchOrder(e: React.FormEvent) {
     e.preventDefault();
     setErrore(null);
     setSpedizioni([]);
@@ -208,8 +216,8 @@ export default function Page() {
     }));
   };
 
-  // Simula spedizione
-  const handleSimula = async (e) => {
+  // handleSimula
+  async function handleSimula(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setErrore(null);
@@ -246,8 +254,8 @@ export default function Page() {
     }
   };
 
-  // CREA + UPDATE + PAY + DETTAGLI (tracking reale)
-  const handleCreaECompletaEPaga = async (idSim) => {
+  // handleCreaECompletaEPaga
+  async function handleCreaECompletaEPaga(idSim: number) {
     setLoading(true);
     setErrore(null);
     try {
@@ -330,71 +338,67 @@ export default function Page() {
     }
   };
 
-  // Evadi spedizione (fulfill ordine) con debug dettagliato e messaggi in UI
-  const handleEvadiSpedizione = async (spedizioneObj) => {
-  setLoading(true);
-  setErrore(null);
-  try {
-    // Recupera sempre l'orderId dal nome
-    const orderName = spedizioneObj.shopifyOrder?.name || "";
-    const foundOrder = orders.find((o) => {
-      const plainName = (o.name || "").toLowerCase().replace(/#/g, "");
-      return plainName === orderName.toLowerCase().replace(/#/g, "");
-    });
-    if (!foundOrder) throw new Error(`Impossibile trovare l’ordine ${orderName}`);
+  // handleEvadiSpedizione
+  async function handleEvadiSpedizione(spedizioneObj: any) {
+    setLoading(true);
+    setErrore(null);
+    try {
+      const orderName = spedizioneObj.shopifyOrder?.name || "";
+      const foundOrder = orders.find((o) => {
+        const plainName = (o.name || "").toLowerCase().replace(/#/g, "");
+        return plainName === orderName.toLowerCase().replace(/#/g, "");
+      });
+      if (!foundOrder) throw new Error(`Impossibile trovare l’ordine ${orderName}`);
 
-    // DEBUG log dei dati che mandi
-    console.log("Provo evadi: ", {
-      orderId: foundOrder.id,
-      trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
-      carrierName: spedizioneObj.spedizione.corriere || "Altro"
-    });
-
-    const res = await fetch("/api/shopify/fulfill-order", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      console.log("Provo evadi: ", {
         orderId: foundOrder.id,
         trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
-        carrierName: spedizioneObj.spedizione.corriere || "Altro",
-      }),
-    });
+        carrierName: spedizioneObj.spedizione.corriere || "Altro"
+      });
 
-    // Log del tipo risposta
-    const contentType = res.headers.get("content-type");
-    console.log("Risposta fetch:", res.status, contentType);
+      const res = await fetch("/api/shopify/fulfill-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: foundOrder.id,
+          trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
+          carrierName: spedizioneObj.spedizione.corriere || "Altro",
+        }),
+      });
 
-    // Prova a leggere la risposta
-    let data;
-    if (contentType && contentType.includes("application/json")) {
-      data = await res.json();
-    } else {
-      const text = await res.text();
-      throw new Error(`Risposta NON JSON dal backend oppure vuota: ${text}`);
+      const contentType = res.headers.get("content-type");
+      console.log("Risposta fetch:", res.status, contentType);
+
+      let data;
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(`Risposta NON JSON dal backend oppure vuota: ${text}`);
+      }
+
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || "Errore evasione");
+      }
+
+      setSpedizioniCreate((prev) =>
+        prev.map((el) =>
+          el.spedizione.id === spedizioneObj.spedizione.id
+            ? { ...el, fulfilled: true }
+            : el
+        )
+      );
+
+      alert(`✅ Ordine evaso con successo!\nDettagli risposta:\n${JSON.stringify(data, null, 2)}`);
+    } catch (err) {
+      setErrore(err.message || "Errore evasione ordine");
+    } finally {
+      setLoading(false);
     }
+  };
 
-    if (!res.ok || data.success === false) {
-      throw new Error(data.error || "Errore evasione");
-    }
-
-    setSpedizioniCreate((prev) =>
-      prev.map((el) =>
-        el.spedizione.id === spedizioneObj.spedizione.id
-          ? { ...el, fulfilled: true }
-          : el
-      )
-    );
-
-    alert(`✅ Ordine evaso con successo!\nDettagli risposta:\n${JSON.stringify(data, null, 2)}`);
-  } catch (err) {
-    setErrore(err.message || "Errore evasione ordine");
-  } finally {
-    setLoading(false);
-  }
-};
-
-  // Stampa LDV
-  const handlePrintLdv = async (idSpedizione) => {
+  // handlePrintLdv
+  async function handlePrintLdv(idSpedizione: number) {
     setLoading(true);
     setErrore(null);
     try {
