@@ -3,7 +3,7 @@
 import React, { useEffect, useState, FormEvent } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { auth } from "../../../lib/firebase";  // il tuo file di config Firebase
+import { auth } from "/../../lib/firebase";  // il tuo file di config Firebase
 import { onAuthStateChanged, User } from "firebase/auth";
 
 type Spedizione = {
