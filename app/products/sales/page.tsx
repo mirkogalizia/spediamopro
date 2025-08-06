@@ -1,9 +1,9 @@
+// app/stock-forecast/page.tsx (o .js se preferisci, ma con tipi è meglio .tsx)
 "use client";
 
 import React, { useEffect, useState } from "react";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
-
 import {
   Box,
   Paper,
@@ -33,19 +33,20 @@ type TypeGroup = {
   variants: VariantData[];
 };
 
+const TAGLIE_ORDINATE = ["xs", "s", "m", "l", "xl"];
+
 function normalize(str: string | null | undefined) {
   if (!str) return "";
   return str.trim().toLowerCase();
 }
 
-const TAGLIE_ORDINATE = ["xs", "s", "m", "l", "xl"];
-
 export default function StockForecastByColorAndSize() {
   const router = useRouter();
-
   const [data, setData] = useState<TypeGroup[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const periodDays = 30;
 
   useEffect(() => {
@@ -54,6 +55,7 @@ export default function StockForecastByColorAndSize() {
       if (!user) {
         router.push('/login');
       }
+      setAuthLoading(false);
     });
     return () => unsubscribe();
   }, [router]);
@@ -65,7 +67,6 @@ export default function StockForecastByColorAndSize() {
       const res = await fetch('/api/products/sales');
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       const json: TypeGroup[] = await res.json();
-      console.log("Dati aggiornati ricevuti:", json);
       setData(json);
     } catch (e: any) {
       setError(e.message);
@@ -74,9 +75,9 @@ export default function StockForecastByColorAndSize() {
     }
   }
 
-  React.useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => {
+    if (!authLoading) fetchData();
+  }, [authLoading]);
 
   const handleRefresh = () => {
     fetchData();
@@ -95,9 +96,12 @@ export default function StockForecastByColorAndSize() {
     return grouped;
   }
 
+  if (authLoading) {
+    return <Box sx={{ height: "100vh", display: "flex", justifyContent: "center", alignItems: "center" }}>Caricamento autenticazione...</Box>;
+  }
+
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default", py: 6, px: 1, maxWidth: "1100px", mx: "auto" }}>
-      {/* Bottone Aggiorna in alto a destra */}
       <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 3 }}>
         <button
           onClick={handleRefresh}

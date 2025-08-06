@@ -2,10 +2,12 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../lib/firebaseClient";  // percorso relativo, adatta se serve
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const auth = getAuth();
+  const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,8 +37,7 @@ export default function LoginPage() {
 
       await signInWithEmailAndPassword(auth, email.trim(), password);
 
-      // Redirect alla pagina spedizioni
-      window.location.href = "/shipment";
+      router.push("/shipment"); // redirect dopo login
 
     } catch (err) {
       setError("Email o password errati");
