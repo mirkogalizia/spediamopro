@@ -3,7 +3,7 @@
 import React, { useEffect, useState, FormEvent } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { auth } from "../../lib/firebase";  // il tuo file di config Firebase
+import { auth } from "../../lib/firebase";           // importa auth da lib/firebase
 import { onAuthStateChanged, User } from "firebase/auth";
 
 type Spedizione = {
@@ -290,7 +290,6 @@ export default function Page() {
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
   useEffect(() => {
-    const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, (usr) => {
       if (!usr) {
         router.push("/login");
