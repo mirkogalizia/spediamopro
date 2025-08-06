@@ -1,9 +1,10 @@
-// app/stock-forecast/page.tsx (o .js se preferisci, ma con tipi è meglio .tsx)
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { auth } from "../../lib/firebase"; // importa auth dal tuo file firebase
+import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
+
 import {
   Box,
   Paper,
@@ -50,7 +51,6 @@ export default function StockForecastByColorAndSize() {
   const periodDays = 30;
 
   useEffect(() => {
-    const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) {
         router.push('/login');
@@ -97,7 +97,11 @@ export default function StockForecastByColorAndSize() {
   }
 
   if (authLoading) {
-    return <Box sx={{ height: "100vh", display: "flex", justifyContent: "center", alignItems: "center" }}>Caricamento autenticazione...</Box>;
+    return (
+      <Box sx={{ height: "100vh", display: "flex", justifyContent: "center", alignItems: "center" }}>
+        Caricamento autenticazione...
+      </Box>
+    );
   }
 
   return (
