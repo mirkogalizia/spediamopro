@@ -1,227 +1,50 @@
-"use client";
-
-import React, { useEffect, useState, FormEvent } from "react";
-import Image from "next/image";
+'use client';
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { auth } from "../../lib/firebase";           // importa auth da lib/firebase
-import { onAuthStateChanged, User } from "firebase/auth";
-
-type Spedizione = {
-  id: number;
-  corriere?: string;
-  tariffa?: string | number;
-  colli?: { segnacollo?: string }[];
-  tracking_number_corriere?: string;
-  tracking_number?: string;
-  segnacollo?: string;
-  codice?: string;
-  trackLink?: string;
-};
-
-type ShopifyOrder = {
-  id: number;
-  name?: string;
-  order_number?: number;
-  email?: string;
-  shipping_address?: {
-    first_name?: string;
-    last_name?: string;
-    phone?: string;
-    address1?: string;
-    address2?: string;
-    zip?: string;
-    city?: string;
-    province_code?: string;
-    province?: string;
-    country_code?: string;
-  };
-};
-
-type SpedizioneCreate = {
-  shopifyOrder?: ShopifyOrder;
-  spedizione: Spedizione;
-  lastPayReason?: string;
-  fulfilled: boolean;
-};
-
-type FormData = {
-  nome: string;
-  telefono: string;
-  email: string;
-  indirizzo: string;
-  indirizzo2: string;
-  capDestinatario: string;
-  cittaDestinatario: string;
-  provinciaDestinatario: string;
-  nazioneDestinatario: string;
-  altezza: string;
-  larghezza: string;
-  profondita: string;
-  peso: string;
-};
-
-const LS_KEY = "spediamo-pro-spedizioni";
+import { auth } from "../../lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import Image from "next/image";
 
 // Utility: rimuove accenti
-function removeAccents(str: string): string {
+function removeAccents(str) {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-// Icone corriere (come da tuo codice)
-function getCorriereIcon(corriere?: string) {
-  const c = (corriere || "").toLowerCase();
-  if (c.includes("brt"))
-    return (
-      <svg width="28" height="18" viewBox="0 0 28 18">
-        <rect width="28" height="18" rx="3" fill="#E30613" />
-        <text
-          x="14"
-          y="13"
-          fill="#fff"
-          fontSize="11"
-          fontWeight="bold"
-          textAnchor="middle"
-        >
-          BRT
-        </text>
-      </svg>
-    );
-  if (c.includes("gls"))
-    return (
-      <svg width="28" height="18" viewBox="0 0 28 18">
-        <rect width="28" height="18" rx="3" fill="#002776" />
-        <text
-          x="14"
-          y="13"
-          fill="#ffd200"
-          fontSize="12"
-          fontWeight="bold"
-          textAnchor="middle"
-        >
-          GLS
-        </text>
-      </svg>
-    );
-  if (c.includes("sda"))
-    return (
-      <svg width="28" height="18" viewBox="0 0 28 18">
-        <rect width="28" height="18" rx="3" fill="#003A7B" />
-        <text
-          x="14"
-          y="13"
-          fill="#fff"
-          fontSize="12"
-          fontWeight="bold"
-          textAnchor="middle"
-        >
-          SDA
-        </text>
-      </svg>
-    );
-  if (c.includes("poste"))
-    return (
-      <svg width="28" height="18" viewBox="0 0 28 18">
-        <rect width="28" height="18" rx="3" fill="#FFEB3B" />
-        <text
-          x="14"
-          y="13"
-          fill="#003366"
-          fontSize="11"
-          fontWeight="bold"
-          textAnchor="middle"
-        >
-          Poste
-        </text>
-      </svg>
-    );
-  if (c.includes("ups"))
-    return (
-      <svg width="28" height="18" viewBox="0 0 28 18">
-        <rect width="28" height="18" rx="3" fill="#351C15" />
-        <text
-          x="14"
-          y="13"
-          fill="#ffb500"
-          fontSize="12"
-          fontWeight="bold"
-          textAnchor="middle"
-        >
-          UPS
-        </text>
-      </svg>
-    );
-  if (c.includes("tnt"))
-    return (
-      <svg width="28" height="18" viewBox="0 0 28 18">
-        <rect width="28" height="18" rx="3" fill="#ff6c00" />
-        <text
-          x="14"
-          y="13"
-          fill="#fff"
-          fontSize="12"
-          fontWeight="bold"
-          textAnchor="middle"
-        >
-          TNT
-        </text>
-      </svg>
-    );
-  if (c.includes("dhl"))
-    return (
-      <svg width="28" height="18" viewBox="0 0 28 18">
-        <rect width="28" height="18" rx="3" fill="#FDE500" />
-        <text
-          x="14"
-          y="13"
-          fill="#D40511"
-          fontSize="12"
-          fontWeight="bold"
-          textAnchor="middle"
-        >
-          DHL
-        </text>
-      </svg>
-    );
-  if (c.includes("fedex"))
-    return (
-      <svg width="28" height="18" viewBox="0 0 28 18">
-        <rect width="28" height="18" rx="3" fill="#fff" />
-        <text
-          x="14"
-          y="13"
-          fill="#4D148C"
-          fontSize="11"
-          fontWeight="bold"
-          textAnchor="middle"
-        >
-          FedEx
-        </text>
-      </svg>
-    );
+// Icone corriere
+function getCorriereIcon(corriere) {
+  const c = (corriere || '').toLowerCase();
+  if (c.includes("brt")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#E30613"/><text x="14" y="13" fill="#fff" fontSize="11" fontWeight="bold" textAnchor="middle">BRT</text></svg>
+  );
+  if (c.includes("gls")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#002776"/><text x="14" y="13" fill="#ffd200" fontSize="12" fontWeight="bold" textAnchor="middle">GLS</text></svg>
+  );
+  if (c.includes("sda")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#003A7B"/><text x="14" y="13" fill="#fff" fontSize="12" fontWeight="bold" textAnchor="middle">SDA</text></svg>
+  );
+  if (c.includes("poste")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#FFEB3B"/><text x="14" y="13" fill="#003366" fontSize="11" fontWeight="bold" textAnchor="middle">Poste</text></svg>
+  );
+  if (c.includes("ups")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#351C15"/><text x="14" y="13" fill="#ffb500" fontSize="12" fontWeight="bold" textAnchor="middle">UPS</text></svg>
+  );
+  if (c.includes("tnt")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ff6c00"/><text x="14" y="13" fill="#fff" fontSize="12" fontWeight="bold" textAnchor="middle">TNT</text></svg>
+  );
+  if (c.includes("dhl")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#FDE500"/><text x="14" y="13" fill="#D40511" fontSize="12" fontWeight="bold" textAnchor="middle">DHL</text></svg>
+  );
+  if (c.includes("fedex")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#fff"/><text x="14" y="13" fill="#4D148C" fontSize="11" fontWeight="bold" textAnchor="middle">FedEx</text></svg>
+  );
   return (
-    <svg width="28" height="18" viewBox="0 0 28 18">
-      <rect width="28" height="18" rx="3" fill="#ccc" />
-      <text
-        x="14"
-        y="13"
-        fill="#333"
-        fontSize="11"
-        fontWeight="bold"
-        textAnchor="middle"
-      >
-        Corriere
-      </text>
-    </svg>
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ccc"/><text x="14" y="13" fill="#333" fontSize="11" fontWeight="bold" textAnchor="middle">Corriere</text></svg>
   );
 }
 
 // Tracking label + link stabile
-function getTrackingLabel(spedizione: Spedizione): string {
-  if (
-    Array.isArray(spedizione.colli) &&
-    spedizione.colli.length > 0 &&
-    spedizione.colli[0].segnacollo
-  ) {
+function getTrackingLabel(spedizione) {
+  if (Array.isArray(spedizione.colli) && spedizione.colli.length > 0 && spedizione.colli[0].segnacollo) {
     return spedizione.colli[0].segnacollo;
   }
   if (spedizione.tracking_number_corriere) return spedizione.tracking_number_corriere;
@@ -232,17 +55,7 @@ function getTrackingLabel(spedizione: Spedizione): string {
 }
 
 // Pulsante con effetto hover
-function HoverButton({
-  style,
-  onClick,
-  children,
-  disabled,
-}: {
-  style?: React.CSSProperties;
-  onClick?: () => void;
-  children: React.ReactNode;
-  disabled?: boolean;
-}) {
+function HoverButton({ style, onClick, children, disabled }) {
   const [hover, setHover] = useState(false);
   const hoverStyle = hover ? { filter: "brightness(85%)" } : {};
   return (
@@ -258,15 +71,28 @@ function HoverButton({
   );
 }
 
+const LS_KEY = "spediamo-pro-spedizioni";
+
 export default function Page() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [userChecked, setUserChecked] = useState(false);
 
-  const [orders, setOrders] = useState<ShopifyOrder[]>([]);
+  // --- CONTROLLO LOGIN FIREBASE ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (usr) => {
+      if (!usr) {
+        router.push("/login");
+      }
+      setUserChecked(true);
+    });
+    return () => unsubscribe();
+  }, [router]);
+  // --- FINE CONTROLLO LOGIN FIREBASE ---
+
+  const [orders, setOrders] = useState([]);
   const [orderQuery, setOrderQuery] = useState("");
-  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
-  const [form, setForm] = useState<FormData>({
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [form, setForm] = useState({
     nome: "",
     telefono: "",
     email: "",
@@ -281,27 +107,13 @@ export default function Page() {
     profondita: "20",
     peso: "1",
   });
-  const [spedizioni, setSpedizioni] = useState<Spedizione[]>([]);
-  const [spedizioniCreate, setSpedizioniCreate] = useState<SpedizioneCreate[]>([]);
+  const [spedizioni, setSpedizioni] = useState([]);
+  const [spedizioniCreate, setSpedizioniCreate] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [errore, setErrore] = useState<string | null>(null);
-
+  const [errore, setErrore] = useState(null);
   const [dateFrom, setDateFrom] = useState("2025-01-01");
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (usr) => {
-      if (!usr) {
-        router.push("/login");
-      } else {
-        setUser(usr);
-      }
-      setLoadingAuth(false);
-    });
-    return () => unsubscribe();
-  }, [router]);
-
-  // Persistenza localStorage
   useEffect(() => {
     try {
       const salvate = localStorage.getItem(LS_KEY);
@@ -312,7 +124,6 @@ export default function Page() {
     localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
   }, [spedizioniCreate]);
 
-  // Aggiornamento tracking in differita (ogni 60 secondi)
   useEffect(() => {
     if (!spedizioniCreate.length) return;
     const updateTracking = async () => {
@@ -340,7 +151,6 @@ export default function Page() {
     return () => clearInterval(timer);
   }, [spedizioniCreate.length]);
 
-  // Carica ordini Shopify
   const handleLoadOrders = async () => {
     setLoading(true);
     setErrore(null);
@@ -365,21 +175,20 @@ export default function Page() {
 
     try {
       if (!dateFrom || !dateTo) throw new Error("Specificare sia la data di inizio che di fine.");
-      if (dateFrom > dateTo) throw new Error("La data di inizio non può essere dopo la data di fine.");
+      if (dateFrom > dateTo)   throw new Error("La data di inizio non può essere dopo la data di fine.");
 
       const res = await fetch(`/api/shopify?from=${dateFrom}&to=${dateTo}`);
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setOrders(data.orders || []);
-    } catch (e: any) {
+    } catch (e) {
       setErrore(e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Seleziona ordine e popola form
-  const handleSearchOrder = (e: FormEvent) => {
+  const handleSearchOrder = (e) => {
     e.preventDefault();
     setErrore(null);
     setSpedizioni([]);
@@ -412,8 +221,7 @@ export default function Page() {
     }));
   };
 
-  // Simula spedizione
-  const handleSimula = async (e: FormEvent) => {
+  const handleSimula = async (e) => {
     e.preventDefault();
     setLoading(true);
     setErrore(null);
@@ -443,19 +251,17 @@ export default function Page() {
       if (!res.ok) throw await res.json();
       const data = await res.json();
       setSpedizioni(data.simulazione?.spedizioni || []);
-    } catch (err: any) {
+    } catch (err) {
       setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : err.toString());
     } finally {
       setLoading(false);
     }
   };
 
-  // CREA + UPDATE + PAY + DETTAGLI (tracking reale)
-  const handleCreaECompletaEPaga = async (idSim: number) => {
+  const handleCreaECompletaEPaga = async (idSim) => {
     setLoading(true);
     setErrore(null);
     try {
-      // CREATE
       const resC = await fetch(`/api/spediamo?step=create&id=${idSim}&shopifyOrderId=${selectedOrderId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -464,7 +270,6 @@ export default function Page() {
       if (!resC.ok) throw await resC.json();
       const { spedizione } = await resC.json();
 
-      // UPDATE
       const resU = await fetch(`/api/spediamo?step=update&id=${spedizione.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -484,7 +289,6 @@ export default function Page() {
       if (!resU.ok) throw await resU.json();
       const dataUpd = await resU.json();
 
-      // PAY
       const resP = await fetch(`/api/spediamo?step=pay&id=${spedizione.id}`, { method: "POST" });
       let dataP;
       try {
@@ -494,27 +298,24 @@ export default function Page() {
       }
       if (!resP.ok) throw dataP;
 
-      // DETTAGLIO TRACKING
       const resDetails = await fetch(`/api/spediamo?step=details&id=${spedizione.id}`, { method: "POST" });
       let details = {};
       if (resDetails.ok) {
         details = await resDetails.json();
       }
 
-      // --- MOTIVO PAY ---
       const motivo =
         dataP.message ||
         dataP.error ||
         (typeof dataP === "string" ? dataP : "") ||
         JSON.stringify(dataP, null, 2);
 
-      // Aggiorno storico (merge dati)
       setSpedizioniCreate((prev) => [
         {
           shopifyOrder: orders.find((o) => o.id === Number(selectedOrderId)),
           spedizione: { ...dataUpd.spedizione, ...details.spedizione },
           lastPayReason: !dataP.can_pay ? motivo : "",
-          fulfilled: false, // inizialmente non evaso
+          fulfilled: false,
         },
         ...prev.filter((el) => el.spedizione.id !== spedizione.id),
       ]);
@@ -527,15 +328,14 @@ export default function Page() {
         );
         console.warn("PAY NON RIUSCITO:", dataP);
       }
-    } catch (err: any) {
+    } catch (err) {
       setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : err.toString());
     } finally {
       setLoading(false);
     }
   };
 
-  // Evadi spedizione (fulfill ordine)
-  const handleEvadiSpedizione = async (spedizioneObj: SpedizioneCreate) => {
+  const handleEvadiSpedizione = async (spedizioneObj) => {
     setLoading(true);
     setErrore(null);
     try {
@@ -549,7 +349,7 @@ export default function Page() {
       console.log("Provo evadi: ", {
         orderId: foundOrder.id,
         trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
-        carrierName: spedizioneObj.spedizione.corriere || "Altro",
+        carrierName: spedizioneObj.spedizione.corriere || "Altro"
       });
 
       const res = await fetch("/api/shopify/fulfill-order", {
@@ -586,15 +386,14 @@ export default function Page() {
       );
 
       alert(`✅ Ordine evaso con successo!\nDettagli risposta:\n${JSON.stringify(data, null, 2)}`);
-    } catch (err: any) {
+    } catch (err) {
       setErrore(err.message || "Errore evasione ordine");
     } finally {
       setLoading(false);
     }
   };
 
-  // Stampa LDV
-  const handlePrintLdv = async (idSpedizione: number) => {
+  const handlePrintLdv = async (idSpedizione) => {
     setLoading(true);
     setErrore(null);
     try {
@@ -612,14 +411,13 @@ export default function Page() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    } catch (err: any) {
+    } catch (err) {
       setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : err.toString());
     } finally {
       setLoading(false);
     }
   };
 
-  // Cancella cache spedizioni create
   const handleCancellaCache = () => {
     if (window.confirm("Vuoi davvero cancellare tutte le spedizioni salvate?")) {
       setSpedizioniCreate([]);
@@ -627,14 +425,12 @@ export default function Page() {
     }
   };
 
-  if (loadingAuth) {
-    return <div style={{ padding: 40, textAlign: "center" }}>Caricamento...</div>;
+  // --- BLOCCO LOGIN: Mostra loading se non ha ancora controllato ---
+  if (!userChecked) {
+    return <div style={{ padding: 40, textAlign: "center" }}>Controllo login…</div>;
   }
 
-  if (!user) {
-    return <div style={{ padding: 40, textAlign: "center" }}>Devi effettuare il login per accedere</div>;
-  }
-
+  // --- RESTO DEL TUO RENDER ---
   return (
     <div style={containerStyle}>
       <div style={logoWrapperStyle}>
@@ -643,149 +439,50 @@ export default function Page() {
           alt="Logo"
           width={220}
           height={90}
-          style={{
-            width: "220px",
-            height: "auto",
-            objectFit: "contain",
-            filter: "drop-shadow(0 2px 14px #bbb8)",
-            maxWidth: "95vw",
-          }}
+          style={{ width: "220px", height: "auto", objectFit: "contain", filter: "drop-shadow(0 2px 14px #bbb8)", maxWidth: "95vw" }}
           priority
         />
       </div>
-
       <div style={cardStyle}>
         <h2 style={headerStyle}>Gestione Spedizioni Shopify</h2>
 
         <div style={rowStyle}>
           <div style={fieldStyle}>
             <label style={labelStyle}>Da</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              style={inputStyle}
-              max={dateTo}
-            />
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={inputStyle} max={dateTo} />
           </div>
           <div style={fieldStyle}>
             <label style={labelStyle}>A</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              style={inputStyle}
-              min={dateFrom}
-              max={new Date().toISOString().split("T")[0]}
-            />
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={inputStyle} min={dateFrom} max={new Date().toISOString().split("T")[0]} />
           </div>
-          <button onClick={handleLoadOrders} disabled={loading} style={buttonPrimary}>
-            {loading ? "Carica..." : "Carica ordini"}
-          </button>
+          <button onClick={handleLoadOrders} disabled={loading} style={buttonPrimary}>{loading ? "Carica..." : "Carica ordini"}</button>
         </div>
 
         <form style={searchRowStyle} onSubmit={handleSearchOrder}>
-          <input
-            type="text"
-            placeholder="Parte del numero d'ordine…"
-            value={orderQuery}
-            onChange={(e) => setOrderQuery(e.target.value)}
-            style={inputStyle}
-            disabled={loading || orders.length === 0}
-          />
-          <button type="submit" disabled={loading || orders.length === 0} style={buttonPrimary}>
-            Cerca
-          </button>
+          <input type="text" placeholder="Parte del numero d'ordine…" value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} style={inputStyle} disabled={loading || orders.length === 0} />
+          <button type="submit" disabled={loading || orders.length === 0} style={buttonPrimary}>Cerca</button>
         </form>
 
-        {selectedOrderId !== null && (
-          <div style={foundStyle}>
-            Ordine trovato: <strong>{orders.find((o) => o.id === selectedOrderId)?.name}</strong>
-          </div>
-        )}
+        {selectedOrderId && <div style={foundStyle}>Ordine trovato: <strong>{orders.find((o) => o.id === Number(selectedOrderId))?.name}</strong></div>}
 
         {errore && <div style={errorStyle}>{errore}</div>}
 
-        {selectedOrderId !== null && (
+        {selectedOrderId && (
           <form onSubmit={handleSimula} style={simulateFormStyle}>
             <div style={rowStyle}>
-              <input
-                name="nome"
-                placeholder="Destinatario"
-                value={form.nome}
-                onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                required
-                style={inputStyle}
-              />
-              <input
-                name="telefono"
-                placeholder="Telefono"
-                value={form.telefono}
-                onChange={(e) => setForm({ ...form, telefono: e.target.value })}
-                required
-                style={inputStyle}
-              />
+              <input name="nome" placeholder="Destinatario" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required style={inputStyle} />
+              <input name="telefono" placeholder="Telefono" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} required style={inputStyle} />
             </div>
-            <input
-              name="email"
-              placeholder="Email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              required
-              style={inputStyle}
-              type="email"
-            />
-            <input
-              name="indirizzo"
-              placeholder="Indirizzo (Via, Numero)"
-              value={form.indirizzo}
-              onChange={(e) => setForm({ ...form, indirizzo: removeAccents(e.target.value) })}
-              required
-              style={inputStyle}
-            />
-            <input
-              name="indirizzo2"
-              placeholder="Indirizzo 2"
-              value={form.indirizzo2}
-              onChange={(e) => setForm({ ...form, indirizzo2: removeAccents(e.target.value) })}
-              style={inputStyle}
-            />
+            <input name="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required style={inputStyle} type="email" />
+            <input name="indirizzo" placeholder="Indirizzo (Via, Numero)" value={form.indirizzo} onChange={(e) => setForm({ ...form, indirizzo: removeAccents(e.target.value) })} required style={inputStyle} />
+            <input name="indirizzo2" placeholder="Indirizzo 2" value={form.indirizzo2} onChange={(e) => setForm({ ...form, indirizzo2: removeAccents(e.target.value) })} style={inputStyle} />
             <div style={rowStyle}>
-              <input
-                name="capDest"
-                placeholder="CAP"
-                value={form.capDestinatario}
-                onChange={(e) => setForm({ ...form, capDestinatario: e.target.value })}
-                required
-                style={smallInput}
-              />
-              <input
-                name="citta"
-                placeholder="Città"
-                value={form.cittaDestinatario}
-                onChange={(e) => setForm({ ...form, cittaDestinatario: e.target.value })}
-                required
-                style={inputStyle}
-              />
-              <input
-                name="prov"
-                placeholder="Prov"
-                value={form.provinciaDestinatario}
-                onChange={(e) => setForm({ ...form, provinciaDestinatario: e.target.value })}
-                required
-                style={smallInput}
-              />
-              <input
-                name="naz"
-                placeholder="Nazione"
-                value={form.nazioneDestinatario}
-                readOnly
-                style={smallInput}
-              />
+              <input name="capDest" placeholder="CAP" value={form.capDestinatario} onChange={(e) => setForm({ ...form, capDestinatario: e.target.value })} required style={smallInput} />
+              <input name="citta" placeholder="Città" value={form.cittaDestinatario} onChange={(e) => setForm({ ...form, cittaDestinatario: e.target.value })} required style={inputStyle} />
+              <input name="prov" placeholder="Prov" value={form.provinciaDestinatario} onChange={(e) => setForm({ ...form, provinciaDestinatario: e.target.value })} required style={smallInput} />
+              <input name="naz" placeholder="Nazione" value={form.nazioneDestinatario} readOnly style={smallInput} />
             </div>
-            <button type="submit" disabled={loading} style={buttonSecondary}>
-              {loading ? "Simulando..." : "Simula spedizione"}
-            </button>
+            <button type="submit" disabled={loading} style={buttonSecondary}>{loading ? "Simulando..." : "Simula spedizione"}</button>
           </form>
         )}
 
@@ -799,14 +496,8 @@ export default function Page() {
                   <span style={{ fontSize: 12, color: "#999", marginLeft: 8 }}>ID {s.id}</span>
                 </div>
                 <div style={offerActions}>
-                  <div style={offerPrice}>{parseFloat(s.tariffa?.toString() ?? "0").toFixed(2)} €</div>
-                  <HoverButton
-                    onClick={() => handleCreaECompletaEPaga(s.id)}
-                    style={buttonCreate}
-                    disabled={loading}
-                  >
-                    Crea &amp; paga
-                  </HoverButton>
+                  <div style={offerPrice}>{parseFloat(s.tariffa).toFixed(2)} €</div>
+                  <HoverButton onClick={() => handleCreaECompletaEPaga(s.id)} style={buttonCreate} disabled={loading}>Crea & paga</HoverButton>
                 </div>
               </div>
             ))}
@@ -817,12 +508,7 @@ export default function Page() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 style={historyHeader}>Spedizioni storiche</h3>
             {spedizioniCreate.length > 0 && (
-              <button
-                style={{ ...buttonSecondary, background: "#ff3b30", color: "#fff", fontSize: 14, padding: "6px 16px" }}
-                onClick={handleCancellaCache}
-              >
-                Cancella cache
-              </button>
+              <button style={{ ...buttonSecondary, background: "#ff3b30", color: "#fff", fontSize: 14, padding: "6px 16px" }} onClick={handleCancellaCache}>Cancella cache</button>
             )}
           </div>
           {spedizioniCreate.length === 0 && <div style={historyEmpty}>Nessuna spedizione creata.</div>}
@@ -845,12 +531,7 @@ export default function Page() {
                   <strong>{shopifyOrder?.name}</strong> · ID {spedizione.id}
                   {" · Tracking: "}
                   {trackingLink && tracking ? (
-                    <a
-                      href={trackingLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: "#0a84ff", fontWeight: 700 }}
-                    >
+                    <a href={trackingLink} target="_blank" rel="noopener noreferrer" style={{ color: "#0a84ff", fontWeight: 700 }}>
                       {tracking}
                     </a>
                   ) : tracking ? (
@@ -865,21 +546,9 @@ export default function Page() {
                   )}
                 </span>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <HoverButton
-                    onClick={() => handlePrintLdv(spedizione.id)}
-                    style={buttonPrint}
-                    disabled={loading}
-                  >
-                    Stampa LDV
-                  </HoverButton>
+                  <HoverButton onClick={() => handlePrintLdv(spedizione.id)} style={buttonPrint} disabled={loading}>Stampa LDV</HoverButton>
                   {!fulfilled && (
-                    <HoverButton
-                      onClick={() => handleEvadiSpedizione({ shopifyOrder, spedizione, lastPayReason, fulfilled })}
-                      style={buttonEvadi}
-                      disabled={loading}
-                    >
-                      Evadi
-                    </HoverButton>
+                    <HoverButton onClick={() => handleEvadiSpedizione({ shopifyOrder, spedizione, lastPayReason, fulfilled })} style={buttonEvadi} disabled={loading}>Evadi</HoverButton>
                   )}
                 </div>
               </div>
@@ -892,8 +561,7 @@ export default function Page() {
 }
 
 // --- STILI ---
-
-const containerStyle: React.CSSProperties = {
+const containerStyle = {
   minHeight: "100vh",
   background: "#f5f7fa",
   display: "flex",
@@ -905,7 +573,7 @@ const containerStyle: React.CSSProperties = {
   color: "#333",
 };
 
-const logoWrapperStyle: React.CSSProperties = {
+const logoWrapperStyle = {
   width: "100%",
   display: "flex",
   justifyContent: "center",
@@ -913,7 +581,7 @@ const logoWrapperStyle: React.CSSProperties = {
   marginBottom: 32,
 };
 
-const cardStyle: React.CSSProperties = {
+const cardStyle = {
   background: "#fff",
   borderRadius: 16,
   padding: 32,
@@ -925,15 +593,11 @@ const cardStyle: React.CSSProperties = {
   gap: 24,
 };
 
-const headerStyle: React.CSSProperties = { fontSize: 24, fontWeight: 700 };
-
-const rowStyle: React.CSSProperties = { display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" };
-
-const fieldStyle: React.CSSProperties = { flex: 1, display: "flex", flexDirection: "column" };
-
-const labelStyle: React.CSSProperties = { marginBottom: 4, fontSize: 14, color: "#555" };
-
-const inputStyle: React.CSSProperties = {
+const headerStyle = { fontSize: 24, fontWeight: 700 };
+const rowStyle = { display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" };
+const fieldStyle = { flex: 1, display: "flex", flexDirection: "column" };
+const labelStyle = { marginBottom: 4, fontSize: 14, color: "#555" };
+const inputStyle = {
   padding: "10px 14px",
   borderRadius: 8,
   border: "1px solid #ccc",
@@ -942,10 +606,8 @@ const inputStyle: React.CSSProperties = {
   color: "#333",
   flex: 1,
 };
-
-const smallInput: React.CSSProperties = { ...inputStyle, maxWidth: 90 };
-
-const buttonPrimary: React.CSSProperties = {
+const smallInput = { ...inputStyle, maxWidth: 90 };
+const buttonPrimary = {
   padding: "10px 16px",
   borderRadius: 8,
   border: "none",
@@ -955,8 +617,7 @@ const buttonPrimary: React.CSSProperties = {
   cursor: "pointer",
   transition: "background-color 0.3s ease",
 };
-
-const buttonSecondary: React.CSSProperties = {
+const buttonSecondary = {
   padding: "12px 20px",
   borderRadius: 8,
   border: "none",
@@ -966,8 +627,7 @@ const buttonSecondary: React.CSSProperties = {
   cursor: "pointer",
   transition: "background-color 0.3s ease",
 };
-
-const buttonCreate: React.CSSProperties = {
+const buttonCreate = {
   padding: "8px 14px",
   borderRadius: 8,
   border: "none",
@@ -977,8 +637,7 @@ const buttonCreate: React.CSSProperties = {
   cursor: "pointer",
   transition: "background-color 0.3s ease",
 };
-
-const offerCard: React.CSSProperties = {
+const offerCard = {
   background: "#fafafa",
   borderRadius: 12,
   padding: 16,
@@ -987,35 +646,23 @@ const offerCard: React.CSSProperties = {
   alignItems: "center",
   boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
 };
-
-const offerActions: React.CSSProperties = { display: "flex", alignItems: "center", gap: 12 };
-
-const offerPrice: React.CSSProperties = { fontWeight: 700 };
-
-const offersContainer: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 12 };
-
-const searchRowStyle: React.CSSProperties = { display: "flex", gap: 12 };
-
-const foundStyle: React.CSSProperties = { fontSize: 16, color: "#0a84ff" };
-
-const errorStyle: React.CSSProperties = { color: "#ff3b30", fontSize: 14 };
-
-const simulateFormStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 12 };
-
-const historyContainer: React.CSSProperties = { marginTop: 24, display: "flex", flexDirection: "column", gap: 12 };
-
-const historyHeader: React.CSSProperties = { fontSize: 18, fontWeight: 600 };
-
-const historyEmpty: React.CSSProperties = { color: "#777" };
-
-const historyCard: React.CSSProperties = {
+const offerActions = { display: "flex", alignItems: "center", gap: 12 };
+const offerPrice = { fontWeight: 700 };
+const offersContainer = { display: "flex", flexDirection: "column", gap: 12 };
+const searchRowStyle = { display: "flex", gap: 12 };
+const foundStyle = { fontSize: 16, color: "#0a84ff" };
+const errorStyle = { color: "#ff3b30", fontSize: 14 };
+const simulateFormStyle = { display: "flex", flexDirection: "column", gap: 12 };
+const historyContainer = { marginTop: 24, display: "flex", flexDirection: "column", gap: 12 };
+const historyHeader = { fontSize: 18, fontWeight: 600 };
+const historyEmpty = { color: "#777" };
+const historyCard = {
   background: "#f9f9f9",
   borderRadius: 10,
   padding: 12,
   border: "1px solid #e0e0e0",
 };
-
-const buttonPrint: React.CSSProperties = {
+const buttonPrint = {
   padding: "8px 16px",
   borderRadius: 8,
   border: "none",
@@ -1027,8 +674,7 @@ const buttonPrint: React.CSSProperties = {
   textAlign: "center",
   transition: "background-color 0.3s ease",
 };
-
-const buttonEvadi: React.CSSProperties = {
+const buttonEvadi = {
   padding: "8px 16px",
   borderRadius: 8,
   border: "none",
