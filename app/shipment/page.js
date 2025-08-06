@@ -1,27 +1,45 @@
-"use client";
-
-import React, { useEffect, useState } from "react";
-import { auth } from "../../lib/firebase"; // Assumi che il path sia corretto
-import { onAuthStateChanged } from "firebase/auth";
-import { useRouter } from "next/navigation";
+'use client';
+import { useState, useEffect } from "react";
 import Image from "next/image";
 
-// --- Helpers ---
+// Utility: rimuove accenti
 function removeAccents(str) {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
+
+// Icone corriere
 function getCorriereIcon(corriere) {
   const c = (corriere || '').toLowerCase();
-  if (c.includes("brt")) return (<svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#E30613"/><text x="14" y="13" fill="#fff" fontSize="11" fontWeight="bold" textAnchor="middle">BRT</text></svg>);
-  if (c.includes("gls")) return (<svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#002776"/><text x="14" y="13" fill="#ffd200" fontSize="12" fontWeight="bold" textAnchor="middle">GLS</text></svg>);
-  if (c.includes("sda")) return (<svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#003A7B"/><text x="14" y="13" fill="#fff" fontSize="12" fontWeight="bold" textAnchor="middle">SDA</text></svg>);
-  if (c.includes("poste")) return (<svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#FFEB3B"/><text x="14" y="13" fill="#003366" fontSize="11" fontWeight="bold" textAnchor="middle">Poste</text></svg>);
-  if (c.includes("ups")) return (<svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#351C15"/><text x="14" y="13" fill="#ffb500" fontSize="12" fontWeight="bold" textAnchor="middle">UPS</text></svg>);
-  if (c.includes("tnt")) return (<svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ff6c00"/><text x="14" y="13" fill="#fff" fontSize="12" fontWeight="bold" textAnchor="middle">TNT</text></svg>);
-  if (c.includes("dhl")) return (<svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#FDE500"/><text x="14" y="13" fill="#D40511" fontSize="12" fontWeight="bold" textAnchor="middle">DHL</text></svg>);
-  if (c.includes("fedex")) return (<svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#fff"/><text x="14" y="13" fill="#4D148C" fontSize="11" fontWeight="bold" textAnchor="middle">FedEx</text></svg>);
-  return (<svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ccc"/><text x="14" y="13" fill="#333" fontSize="11" fontWeight="bold" textAnchor="middle">Corriere</text></svg>);
+  if (c.includes("brt")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#E30613"/><text x="14" y="13" fill="#fff" fontSize="11" fontWeight="bold" textAnchor="middle">BRT</text></svg>
+  );
+  if (c.includes("gls")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#002776"/><text x="14" y="13" fill="#ffd200" fontSize="12" fontWeight="bold" textAnchor="middle">GLS</text></svg>
+  );
+  if (c.includes("sda")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#003A7B"/><text x="14" y="13" fill="#fff" fontSize="12" fontWeight="bold" textAnchor="middle">SDA</text></svg>
+  );
+  if (c.includes("poste")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#FFEB3B"/><text x="14" y="13" fill="#003366" fontSize="11" fontWeight="bold" textAnchor="middle">Poste</text></svg>
+  );
+  if (c.includes("ups")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#351C15"/><text x="14" y="13" fill="#ffb500" fontSize="12" fontWeight="bold" textAnchor="middle">UPS</text></svg>
+  );
+  if (c.includes("tnt")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ff6c00"/><text x="14" y="13" fill="#fff" fontSize="12" fontWeight="bold" textAnchor="middle">TNT</text></svg>
+  );
+  if (c.includes("dhl")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#FDE500"/><text x="14" y="13" fill="#D40511" fontSize="12" fontWeight="bold" textAnchor="middle">DHL</text></svg>
+  );
+  if (c.includes("fedex")) return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#fff"/><text x="14" y="13" fill="#4D148C" fontSize="11" fontWeight="bold" textAnchor="middle">FedEx</text></svg>
+  );
+  return (
+    <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ccc"/><text x="14" y="13" fill="#333" fontSize="11" fontWeight="bold" textAnchor="middle">Corriere</text></svg>
+  );
 }
+
+// Tracking label + link stabile
 function getTrackingLabel(spedizione) {
   if (Array.isArray(spedizione.colli) && spedizione.colli.length > 0 && spedizione.colli[0].segnacollo) {
     return spedizione.colli[0].segnacollo;
@@ -32,6 +50,8 @@ function getTrackingLabel(spedizione) {
   if (spedizione.codice) return spedizione.codice;
   return "";
 }
+
+// Pulsante con effetto hover
 function HoverButton({ style, onClick, children, disabled }) {
   const [hover, setHover] = useState(false);
   const hoverStyle = hover ? { filter: "brightness(85%)" } : {};
@@ -51,11 +71,6 @@ function HoverButton({ style, onClick, children, disabled }) {
 const LS_KEY = "spediamo-pro-spedizioni";
 
 export default function Page() {
-  const router = useRouter();
-  const [loadingAuth, setLoadingAuth] = useState(true);
-  const [user, setUser] = useState(null);
-
-  // Stati
   const [orders, setOrders] = useState([]);
   const [orderQuery, setOrderQuery] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState(null);
@@ -82,30 +97,47 @@ export default function Page() {
   const [dateFrom, setDateFrom] = useState("2025-01-01");
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
-  // controllo login firebase
+  // Persistenza localStorage
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (usr) => {
-      if (!usr) {
-        router.push("/");
-      } else {
-        setUser(usr);
+    try {
+      const salvate = localStorage.getItem(LS_KEY);
+      if (salvate) setSpedizioniCreate(JSON.parse(salvate));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
+  }, [spedizioniCreate]);
+
+  // Aggiornamento tracking in differita (ogni 60 secondi)
+  useEffect(() => {
+    if (!spedizioniCreate.length) return;
+    const updateTracking = async () => {
+      try {
+        const nuove = await Promise.all(
+          spedizioniCreate.map(async (el) => {
+            const tracking = getTrackingLabel(el.spedizione);
+            if (!tracking || !el.spedizione.trackLink) {
+              const res = await fetch(`/api/spediamo?step=details&id=${el.spedizione.id}`, { method: "POST" });
+              if (res.ok) {
+                const details = await res.json();
+                return { ...el, spedizione: { ...el.spedizione, ...details.spedizione } };
+              }
+            }
+            return el;
+          })
+        );
+        setSpedizioniCreate(nuove);
+      } catch (err) {
+        setErrore("Errore aggiornamento tracking: " + err);
       }
-      setLoadingAuth(false);
-    });
-    return () => unsubscribe();
-  }, [router]);
+    };
+    updateTracking();
+    const timer = setInterval(updateTracking, 60000);
+    return () => clearInterval(timer);
+  }, [spedizioniCreate.length]);
 
-  if (loadingAuth) {
-    return <div style={{ padding: 40, textAlign: "center" }}>Caricamento...</div>;
-  }
-
-  if (!user) return null;
-
-  // Copia qui tutte le tue funzioni esistenti esattamente così come sono (handleLoadOrders, handleSearchOrder, handleSimula, handleCreaECompletaEPaga, handleEvadiSpedizione, handlePrintLdv, handleCancellaCache)
-
-  // Per esempio:
-
-  async function handleLoadOrders() {
+  // Carica ordini Shopify
+  const handleLoadOrders = async () => {
     setLoading(true);
     setErrore(null);
     setOrders([]);
@@ -129,7 +161,7 @@ export default function Page() {
 
     try {
       if (!dateFrom || !dateTo) throw new Error("Specificare sia la data di inizio che di fine.");
-      if (dateFrom > dateTo) throw new Error("La data di inizio non può essere dopo la data di fine.");
+      if (dateFrom > dateTo)   throw new Error("La data di inizio non può essere dopo la data di fine.");
 
       const res = await fetch(`/api/shopify?from=${dateFrom}&to=${dateTo}`);
       if (!res.ok) throw new Error(await res.text());
@@ -140,9 +172,10 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  function handleSearchOrder(e) {
+  // Seleziona ordine e popola form
+  const handleSearchOrder = (e) => {
     e.preventDefault();
     setErrore(null);
     setSpedizioni([]);
@@ -154,13 +187,11 @@ export default function Page() {
       const idStr = o.id?.toString() || "";
       return plainName.includes(term) || num.includes(term) || idStr === term;
     });
-
     if (!found) {
       setErrore(`Nessun ordine trovato per "${orderQuery}".`);
       return;
     }
     setSelectedOrderId(found.id);
-
     const ship = found.shipping_address || {};
     setForm((f) => ({
       ...f,
@@ -172,14 +203,13 @@ export default function Page() {
       capDestinatario: ship.zip || "",
       cittaDestinatario: removeAccents(ship.city || ""),
       provinciaDestinatario:
-        ship.country_code === "IT"
-          ? ship.province_code || ""
-          : ship.province || ship.province_code || "",
+        ship.country_code === "IT" ? ship.province_code || "" : ship.province || ship.province_code || "",
       nazioneDestinatario: ship.country_code || "",
     }));
-  }
+  };
 
-  async function handleSimula(e) {
+  // Simula spedizione
+  const handleSimula = async (e) => {
     e.preventDefault();
     setLoading(true);
     setErrore(null);
@@ -214,9 +244,10 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function handleCreaECompletaEPaga(idSim) {
+  // CREA + UPDATE + PAY + DETTAGLI (tracking reale)
+  const handleCreaECompletaEPaga = async (idSim) => {
     setLoading(true);
     setErrore(null);
     try {
@@ -279,7 +310,7 @@ export default function Page() {
           shopifyOrder: orders.find((o) => o.id === Number(selectedOrderId)),
           spedizione: { ...dataUpd.spedizione, ...details.spedizione },
           lastPayReason: !dataP.can_pay ? motivo : "",
-          fulfilled: false,
+          fulfilled: false, // inizialmente non evaso
         },
         ...prev.filter((el) => el.spedizione.id !== spedizione.id),
       ]);
@@ -287,7 +318,9 @@ export default function Page() {
       if (dataP.can_pay) {
         alert(`✅ Spedizione #${spedizione.id} creata e pagata!`);
       } else {
-        alert(`⚠️ Spedizione #${spedizione.id} creata ma NON pagata.\n\nMotivo:\n${motivo}`);
+        alert(
+          `⚠️ Spedizione #${spedizione.id} creata ma NON pagata.\n\nMotivo:\n${motivo}`
+        );
         console.warn("PAY NON RIUSCITO:", dataP);
       }
     } catch (err) {
@@ -295,63 +328,73 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function handleEvadiSpedizione(spedizioneObj) {
-    setLoading(true);
-    setErrore(null);
-    try {
-      const orderName = spedizioneObj.shopifyOrder?.name || "";
-      const foundOrder = orders.find((o) => {
-        const plainName = (o.name || "").toLowerCase().replace(/#/g, "");
-        return plainName === orderName.toLowerCase().replace(/#/g, "");
-      });
-      if (!foundOrder) throw new Error(`Impossibile trovare l’ordine ${orderName}`);
+  // Evadi spedizione (fulfill ordine) con debug dettagliato e messaggi in UI
+  const handleEvadiSpedizione = async (spedizioneObj) => {
+  setLoading(true);
+  setErrore(null);
+  try {
+    // Recupera sempre l'orderId dal nome
+    const orderName = spedizioneObj.shopifyOrder?.name || "";
+    const foundOrder = orders.find((o) => {
+      const plainName = (o.name || "").toLowerCase().replace(/#/g, "");
+      return plainName === orderName.toLowerCase().replace(/#/g, "");
+    });
+    if (!foundOrder) throw new Error(`Impossibile trovare l’ordine ${orderName}`);
 
-      console.log("Provo evadi: ", {
+    // DEBUG log dei dati che mandi
+    console.log("Provo evadi: ", {
+      orderId: foundOrder.id,
+      trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
+      carrierName: spedizioneObj.spedizione.corriere || "Altro"
+    });
+
+    const res = await fetch("/api/shopify/fulfill-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         orderId: foundOrder.id,
         trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
-        carrierName: spedizioneObj.spedizione.corriere || "Altro"
-      });
+        carrierName: spedizioneObj.spedizione.corriere || "Altro",
+      }),
+    });
 
-      const res = await fetch("/api/shopify/fulfill-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: foundOrder.id,
-          trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
-          carrierName: spedizioneObj.spedizione.corriere || "Altro",
-        }),
-      });
+    // Log del tipo risposta
+    const contentType = res.headers.get("content-type");
+    console.log("Risposta fetch:", res.status, contentType);
 
-      const contentType = res.headers.get("content-type");
-      let data;
-      if (contentType && contentType.includes("application/json")) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        throw new Error(`Risposta NON JSON dal backend oppure vuota: ${text}`);
-      }
-
-      if (!res.ok || data.success === false) {
-        throw new Error(data.error || "Errore evasione");
-      }
-
-      setSpedizioniCreate((prev) =>
-        prev.map((el) =>
-          el.spedizione.id === spedizioneObj.spedizione.id ? { ...el, fulfilled: true } : el
-        )
-      );
-
-      alert(`✅ Ordine evaso con successo!\nDettagli risposta:\n${JSON.stringify(data, null, 2)}`);
-    } catch (err) {
-      setErrore(err.message || "Errore evasione ordine");
-    } finally {
-      setLoading(false);
+    // Prova a leggere la risposta
+    let data;
+    if (contentType && contentType.includes("application/json")) {
+      data = await res.json();
+    } else {
+      const text = await res.text();
+      throw new Error(`Risposta NON JSON dal backend oppure vuota: ${text}`);
     }
-  }
 
-  async function handlePrintLdv(idSpedizione) {
+    if (!res.ok || data.success === false) {
+      throw new Error(data.error || "Errore evasione");
+    }
+
+    setSpedizioniCreate((prev) =>
+      prev.map((el) =>
+        el.spedizione.id === spedizioneObj.spedizione.id
+          ? { ...el, fulfilled: true }
+          : el
+      )
+    );
+
+    alert(`✅ Ordine evaso con successo!\nDettagli risposta:\n${JSON.stringify(data, null, 2)}`);
+  } catch (err) {
+    setErrore(err.message || "Errore evasione ordine");
+  } finally {
+    setLoading(false);
+  }
+};
+
+  // Stampa LDV
+  const handlePrintLdv = async (idSpedizione) => {
     setLoading(true);
     setErrore(null);
     try {
@@ -374,25 +417,15 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  function handleCancellaCache() {
+  // Cancella cache spedizioni create
+  const handleCancellaCache = () => {
     if (window.confirm("Vuoi davvero cancellare tutte le spedizioni salvate?")) {
       setSpedizioniCreate([]);
       localStorage.removeItem(LS_KEY);
     }
-  }
-
-  // Persistenza localStorage
-  useEffect(() => {
-    try {
-      const salvate = localStorage.getItem(LS_KEY);
-      if (salvate) setSpedizioniCreate(JSON.parse(salvate));
-    } catch {}
-  }, []);
-  useEffect(() => {
-    localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
-  }, [spedizioniCreate]);
+  };
 
   return (
     <div style={containerStyle}>
@@ -525,6 +558,7 @@ export default function Page() {
 }
 
 // --- STILI ---
+
 const containerStyle = {
   minHeight: "100vh",
   background: "#f5f7fa",
