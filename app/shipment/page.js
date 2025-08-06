@@ -1,6 +1,9 @@
-'use client';
-import { useState, useEffect } from "react";
+"use client";
+
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { useRouter } from "next/navigation";
 
 // Utility: rimuove accenti
 function removeAccents(str) {
@@ -71,6 +74,37 @@ function HoverButton({ style, onClick, children, disabled }) {
 const LS_KEY = "spediamo-pro-spedizioni";
 
 export default function Page() {
+  const router = useRouter();
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, (usr) => {
+      if (usr) {
+        setUser(usr);
+        setLoadingAuth(false);
+      } else {
+        setUser(null);
+        setLoadingAuth(false);
+        router.push("/");
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  // Durante caricamento Auth mostra loader
+  if (loadingAuth) {
+    return <div style={{ padding: 40, textAlign: "center" }}>Caricamento...</div>;
+  }
+
+  // Se non loggato non mostra nulla (reindirizza a login)
+  if (!user) {
+    return null;
+  }
+
+  // --- Qui inizia il codice originale mantenuto invariato ---
+
   const [orders, setOrders] = useState([]);
   const [orderQuery, setOrderQuery] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState(null);
@@ -332,66 +366,66 @@ export default function Page() {
 
   // Evadi spedizione (fulfill ordine) con debug dettagliato e messaggi in UI
   const handleEvadiSpedizione = async (spedizioneObj) => {
-  setLoading(true);
-  setErrore(null);
-  try {
-    // Recupera sempre l'orderId dal nome
-    const orderName = spedizioneObj.shopifyOrder?.name || "";
-    const foundOrder = orders.find((o) => {
-      const plainName = (o.name || "").toLowerCase().replace(/#/g, "");
-      return plainName === orderName.toLowerCase().replace(/#/g, "");
-    });
-    if (!foundOrder) throw new Error(`Impossibile trovare l’ordine ${orderName}`);
+    setLoading(true);
+    setErrore(null);
+    try {
+      // Recupera sempre l'orderId dal nome
+      const orderName = spedizioneObj.shopifyOrder?.name || "";
+      const foundOrder = orders.find((o) => {
+        const plainName = (o.name || "").toLowerCase().replace(/#/g, "");
+        return plainName === orderName.toLowerCase().replace(/#/g, "");
+      });
+      if (!foundOrder) throw new Error(`Impossibile trovare l’ordine ${orderName}`);
 
-    // DEBUG log dei dati che mandi
-    console.log("Provo evadi: ", {
-      orderId: foundOrder.id,
-      trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
-      carrierName: spedizioneObj.spedizione.corriere || "Altro"
-    });
-
-    const res = await fetch("/api/shopify/fulfill-order", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      // DEBUG log dei dati che mandi
+      console.log("Provo evadi: ", {
         orderId: foundOrder.id,
         trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
-        carrierName: spedizioneObj.spedizione.corriere || "Altro",
-      }),
-    });
+        carrierName: spedizioneObj.spedizione.corriere || "Altro"
+      });
 
-    // Log del tipo risposta
-    const contentType = res.headers.get("content-type");
-    console.log("Risposta fetch:", res.status, contentType);
+      const res = await fetch("/api/shopify/fulfill-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: foundOrder.id,
+          trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
+          carrierName: spedizioneObj.spedizione.corriere || "Altro",
+        }),
+      });
 
-    // Prova a leggere la risposta
-    let data;
-    if (contentType && contentType.includes("application/json")) {
-      data = await res.json();
-    } else {
-      const text = await res.text();
-      throw new Error(`Risposta NON JSON dal backend oppure vuota: ${text}`);
+      // Log del tipo risposta
+      const contentType = res.headers.get("content-type");
+      console.log("Risposta fetch:", res.status, contentType);
+
+      // Prova a leggere la risposta
+      let data;
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(`Risposta NON JSON dal backend oppure vuota: ${text}`);
+      }
+
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || "Errore evasione");
+      }
+
+      setSpedizioniCreate((prev) =>
+        prev.map((el) =>
+          el.spedizione.id === spedizioneObj.spedizione.id
+            ? { ...el, fulfilled: true }
+            : el
+        )
+      );
+
+      alert(`✅ Ordine evaso con successo!\nDettagli risposta:\n${JSON.stringify(data, null, 2)}`);
+    } catch (err) {
+      setErrore(err.message || "Errore evasione ordine");
+    } finally {
+      setLoading(false);
     }
-
-    if (!res.ok || data.success === false) {
-      throw new Error(data.error || "Errore evasione");
-    }
-
-    setSpedizioniCreate((prev) =>
-      prev.map((el) =>
-        el.spedizione.id === spedizioneObj.spedizione.id
-          ? { ...el, fulfilled: true }
-          : el
-      )
-    );
-
-    alert(`✅ Ordine evaso con successo!\nDettagli risposta:\n${JSON.stringify(data, null, 2)}`);
-  } catch (err) {
-    setErrore(err.message || "Errore evasione ordine");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   // Stampa LDV
   const handlePrintLdv = async (idSpedizione) => {
@@ -558,7 +592,6 @@ export default function Page() {
 }
 
 // --- STILI ---
-
 const containerStyle = {
   minHeight: "100vh",
   background: "#f5f7fa",

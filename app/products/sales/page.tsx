@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { useRouter } from "next/navigation";
+
 import {
   Box,
   Paper,
@@ -38,10 +41,22 @@ function normalize(str: string | null | undefined) {
 const TAGLIE_ORDINATE = ["xs", "s", "m", "l", "xl"];
 
 export default function StockForecastByColorAndSize() {
+  const router = useRouter();
+
   const [data, setData] = useState<TypeGroup[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const periodDays = 30;
+
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        router.push('/login');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
 
   async function fetchData() {
     setLoading(true);
@@ -59,7 +74,7 @@ export default function StockForecastByColorAndSize() {
     }
   }
 
-  useEffect(() => {
+  React.useEffect(() => {
     fetchData();
   }, []);
 
@@ -151,7 +166,7 @@ export default function StockForecastByColorAndSize() {
           </Typography>
           <Divider sx={{ mb: 4 }} />
 
-          {Object.entries(groupVariants(group.variants)).map(([colore, taglieObj], idxColore) => (
+          {Object.entries(groupVariants(group.variants)).map(([colore, taglieObj]) => (
             <Box key={colore} mb={4}>
               <Stack direction="row" alignItems="center" gap={1} mb={2}>
                 <ColorLensIcon sx={{ color: "#00c9a7" }} />
