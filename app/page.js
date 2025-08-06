@@ -1,16 +1,19 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
+import Image from "next/image";
+import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 
 export default function LoginPage() {
+  const auth = getAuth();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const ALLOWED_EMAILS = [
-    "tua@email.com",
-    "altro@email.com"
+    "notforresaleitalia1@gmail.com"
   ];
 
   const handleLogin = async (e) => {
@@ -30,10 +33,9 @@ export default function LoginPage() {
         return;
       }
 
-      // Inserisci qui la tua logica di login (es. Firebase)
-      // Esempio: await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, email.trim(), password);
 
-      // Redirect simulato (cambia con router se vuoi)
+      // Redirect alla pagina spedizioni
       window.location.href = "/shipment";
 
     } catch (err) {
@@ -43,28 +45,49 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={{
-      height: "100vh",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      background: "linear-gradient(135deg, #007aff, #0047b3)",
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen",
-    }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#f5f7fa",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 24,
+        fontFamily: "-apple-system, BlinkMacSystemFont, SF Pro Display, sans-serif",
+        color: "#333",
+        flexDirection: "column",
+      }}
+    >
+      <div style={{
+        width: 220,
+        marginBottom: 40,
+        filter: "drop-shadow(0 2px 14px #bbb8)",
+      }}>
+        <Image
+          src="/logo.png"
+          alt="Logo"
+          width={220}
+          height={90}
+          style={{ width: "100%", height: "auto", objectFit: "contain" }}
+          priority
+        />
+      </div>
+
       <form
         onSubmit={handleLogin}
         style={{
-          background: "white",
+          background: "#fff",
           padding: 32,
-          borderRadius: 24,
-          width: 320,
-          boxShadow: "0 12px 30px rgba(0,0,0,0.15)",
+          borderRadius: 16,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
+          width: "100%",
+          maxWidth: 360,
           display: "flex",
           flexDirection: "column",
           gap: 24,
         }}
       >
-        <h2 style={{ margin: 0, fontWeight: "700", color: "#007aff", textAlign: "center" }}>
+        <h2 style={{ margin: 0, fontWeight: 700, color: "#007aff", textAlign: "center" }}>
           Login SpediamoPro
         </h2>
 
@@ -76,8 +99,15 @@ export default function LoginPage() {
           disabled={loading}
           required
           autoFocus
-          style={{ padding: 12, fontSize: 16, borderRadius: 8, border: "1px solid #ccc" }}
+          style={{
+            padding: 14,
+            fontSize: 16,
+            borderRadius: 12,
+            border: "1px solid #ccc",
+            outlineColor: "#007aff",
+          }}
         />
+
         <input
           type="password"
           placeholder="Password"
@@ -85,10 +115,20 @@ export default function LoginPage() {
           onChange={e => setPassword(e.target.value)}
           disabled={loading}
           required
-          style={{ padding: 12, fontSize: 16, borderRadius: 8, border: "1px solid #ccc" }}
+          style={{
+            padding: 14,
+            fontSize: 16,
+            borderRadius: 12,
+            border: "1px solid #ccc",
+            outlineColor: "#007aff",
+          }}
         />
 
-        {error && <div style={{ color: "#d93025", fontWeight: "600", fontSize: 14 }}>{error}</div>}
+        {error && (
+          <div style={{ color: "#d93025", fontWeight: 600, fontSize: 14, textAlign: "center" }}>
+            {error}
+          </div>
+        )}
 
         <button
           type="submit"
@@ -96,15 +136,18 @@ export default function LoginPage() {
           style={{
             backgroundColor: "#007aff",
             color: "white",
-            fontWeight: "700",
-            padding: 14,
+            fontWeight: 700,
+            padding: 16,
             borderRadius: 12,
             border: "none",
             cursor: loading ? "not-allowed" : "pointer",
             userSelect: "none",
             fontSize: 16,
             boxShadow: "0 6px 12px rgba(0, 122, 255, 0.6)",
+            transition: "background-color 0.3s ease",
           }}
+          onMouseEnter={e => !loading && (e.currentTarget.style.backgroundColor = "#005bb5")}
+          onMouseLeave={e => !loading && (e.currentTarget.style.backgroundColor = "#007aff")}
         >
           {loading ? "Accesso in corso..." : "Accedi"}
         </button>
