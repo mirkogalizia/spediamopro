@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useEffect, useState } from "react";
 import {
   Box,
@@ -43,22 +41,29 @@ export default function StockForecastByColorAndSize() {
   const [loading, setLoading] = useState(true);
   const periodDays = 30;
 
-  useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      try {
-        const res = await fetch('/api/products/sales');
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        const json: TypeGroup[] = await res.json();
-        setData(json);
-      } catch (e: any) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
-      }
+  async function fetchData() {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/products/sales');
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const json: TypeGroup[] = await res.json();
+      console.log("Dati aggiornati ricevuti:", json);
+      setData(json);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
     }
+  }
+
+  useEffect(() => {
     fetchData();
   }, []);
+
+  const handleRefresh = () => {
+    fetchData();
+  };
 
   function groupVariants(variants: VariantData[]) {
     const grouped: Record<string, Record<string, VariantData[]>> = {};
@@ -75,6 +80,29 @@ export default function StockForecastByColorAndSize() {
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default", py: 6, px: 1, maxWidth: "1100px", mx: "auto" }}>
+      {/* Bottone Aggiorna in alto a destra */}
+      <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 3 }}>
+        <button
+          onClick={handleRefresh}
+          disabled={loading}
+          style={{
+            cursor: loading ? "not-allowed" : "pointer",
+            padding: "8px 16px",
+            borderRadius: 8,
+            border: "none",
+            backgroundColor: loading ? "#a0c8ff" : "#007aff",
+            color: "white",
+            fontWeight: "bold",
+            transition: "background-color 0.3s ease",
+            userSelect: "none",
+          }}
+          onMouseEnter={e => !loading && (e.currentTarget.style.backgroundColor = "#005bb5")}
+          onMouseLeave={e => !loading && (e.currentTarget.style.backgroundColor = "#007aff")}
+        >
+          {loading ? "Aggiornamento..." : "Aggiorna"}
+        </button>
+      </Box>
+
       <Typography
         variant="h3"
         fontWeight={800}
