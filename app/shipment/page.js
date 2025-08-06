@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
@@ -93,16 +93,30 @@ export default function Page() {
     return () => unsubscribe();
   }, [router]);
 
-  // Durante caricamento Auth mostra loader
   if (loadingAuth) {
     return <div style={{ padding: 40, textAlign: "center" }}>Caricamento...</div>;
   }
 
-  // Se non loggato non mostra nulla (reindirizza a login)
   if (!user) {
     return null;
   }
 
+  // --- CODICE ORIGINALE INVARIATO ---
+  // (Qui incolla tutto il codice che hai già)
+
+  // Tutto il resto come da te, invariato
+  // ...
+  // Puoi incollare tutto il tuo codice originale a partire da "const [orders, setOrders] = useState([]);" fino alla fine
+
+  // Esempio:
+  /*
+  const [orders, setOrders] = useState([]);
+  ...
+  return (
+    <div>...</div>
+  );
+  */
+}
   // --- Qui inizia il codice originale mantenuto invariato ---
 
   const [orders, setOrders] = useState([]);

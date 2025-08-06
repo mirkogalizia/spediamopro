@@ -1,13 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
-import { useRouter } from "next/navigation";  // Importa useRouter
+import React, { useState, useEffect } from "react";
 
 export default function LoginPage() {
-  const auth = getAuth();
-  const router = useRouter();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -18,7 +13,7 @@ export default function LoginPage() {
     "altro@email.com"
   ];
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
@@ -35,10 +30,11 @@ export default function LoginPage() {
         return;
       }
 
-      await signInWithEmailAndPassword(auth, email.trim(), password);
-      
-      // Redirect alla pagina spedizioni dopo login
-      router.push("/shipment");  // o "/shipments" se la tua cartella si chiama così
+      // Inserisci qui la tua logica di login (es. Firebase)
+      // Esempio: await signInWithEmailAndPassword(auth, email, password);
+
+      // Redirect simulato (cambia con router se vuoi)
+      window.location.href = "/shipment";
 
     } catch (err) {
       setError("Email o password errati");
