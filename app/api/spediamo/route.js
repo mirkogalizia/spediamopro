@@ -149,7 +149,7 @@ export async function POST(req) {
         emailMittente:          "info@notforresale.it",
         nominativoDestinatario: body.nome,
         consigneeAddressLine1:  body.indirizzo,
-        consigneeAddressLine2:  body.indirizzo2 || null,
+        consigneePresso:  body.indirizzo2 || null,
         comuneDestinatario:     body.cittaDestinatario,
         provinciaDestinatario:  body.provinciaDestinatario,
         capDestinatario:        body.capDestinatario,
