@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
-import Sidebar from './components/Sidebar'; // ✅ cambia path se Sidebar sta altrove
+import Sidebar from './components/Sidebar';
 
 const theme = createTheme({
   palette: {
@@ -18,7 +18,7 @@ const theme = createTheme({
 
 export default function RootLayout({ children }) {
   const pathname = usePathname();
-  const showSidebar = pathname !== '/login';
+  const showSidebar = pathname !== '/'; // 👈 nasconde la sidebar SOLO in home/login
 
   return (
     <html lang="it">
@@ -27,7 +27,9 @@ export default function RootLayout({ children }) {
           <CssBaseline />
           <div style={{ display: 'flex', minHeight: '100vh' }}>
             {showSidebar && <Sidebar />}
-            <main style={{ flex: 1, background: '#f5f5f7' }}>{children}</main>
+            <main style={{ flex: 1, minHeight: '100vh', background: '#f5f5f7' }}>
+              {children}
+            </main>
           </div>
         </ThemeProvider>
       </body>
