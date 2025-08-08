@@ -1,4 +1,3 @@
-// /app/login/page.tsx
 'use client';
 
 import React, { useState } from "react";
@@ -19,7 +18,7 @@ export default function LoginPage() {
     "notforresaleitalia1@gmail.com"
   ];
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
@@ -37,9 +36,7 @@ export default function LoginPage() {
       }
 
       await signInWithEmailAndPassword(auth, email.trim(), password);
-
-      router.push("/shipment"); // redirect dopo login
-
+      router.push("/shipment");
     } catch (err) {
       setError("Email o password errati");
       setLoading(false);

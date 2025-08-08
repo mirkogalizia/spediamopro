@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
 import { usePathname } from "next/navigation";
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
-import Sidebar from "./components/Sidebar"; // Assicurati che il path sia corretto!
+import Sidebar from "./components/Sidebar"; // Assicurati che il path sia corretto
 
 const theme = createTheme({
   palette: {
@@ -30,7 +30,7 @@ const theme = createTheme({
   },
 });
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }) {
   const pathname = usePathname();
   const showSidebar = pathname !== "/login";
 
