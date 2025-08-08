@@ -1,4 +1,6 @@
 "use client";
+
+import { usePathname } from "next/navigation";
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import Sidebar from "./components/Sidebar"; // Assicurati che il path sia corretto!
 
@@ -28,14 +30,17 @@ const theme = createTheme({
   },
 });
 
-export default function RootLayout({ children }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const showSidebar = pathname !== "/login";
+
   return (
     <html lang="it">
       <body>
         <ThemeProvider theme={theme}>
           <CssBaseline />
           <div style={{ display: "flex", minHeight: "100vh" }}>
-            <Sidebar />
+            {showSidebar && <Sidebar />}
             <main style={{ flex: 1, minHeight: "100vh", background: "#f5f5f7" }}>
               {children}
             </main>

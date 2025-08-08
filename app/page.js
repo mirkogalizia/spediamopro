@@ -1,9 +1,10 @@
-"use client";
+// /app/login/page.tsx
+'use client';
 
 import React, { useState } from "react";
 import Image from "next/image";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../lib/firebase";  // percorso relativo, adatta se serve
+import { auth } from "../../lib/firebase";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
@@ -18,7 +19,7 @@ export default function LoginPage() {
     "notforresaleitalia1@gmail.com"
   ];
 
-  const handleLogin = async (e) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
