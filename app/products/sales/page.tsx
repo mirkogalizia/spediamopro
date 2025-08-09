@@ -24,9 +24,9 @@ import {
 import ColorLensIcon from '@mui/icons-material/ColorLens';
 
 type VariantData = {
-  variante: string | null | undefined; // es: "M / Nero" o "Nero / M"
+  variante: string | null | undefined; // "M / Nero" o "Nero / M"
   venduto: number;                     // venduto ultimi 30 gg
-  stock: number;                       // stock attuale (dal prodotto blanks)
+  stock: number;                       // stock (verrà rimpiazzato dallo stock effettivo)
 };
 
 type TypeGroup = {
@@ -34,15 +34,21 @@ type TypeGroup = {
   variants: VariantData[];
 };
 
+type BlanksStockItem = {
+  variante: string; // "M / Nero"
+  stock: number;
+};
+
 const TAGLIE_ORDINATE = ["xs", "s", "m", "l", "xl"];
 const TAGLIE_SET = new Set(TAGLIE_ORDINATE);
+
+const periodDays = 30;
 
 function normalize(str: string | null | undefined) {
   if (!str) return "";
   return str.trim().toLowerCase();
 }
 
-// capisce cosa è TAGLIA e cosa è COLORE anche se invertiti, con spazi/maiuscole variabili
 function parseVariante(variante: string | null | undefined): { size: string; color: string } {
   const parts = (variante ?? "").split("/").map(p => p.trim()).filter(Boolean);
   if (parts.length === 0) return { size: "Sconosciuta", color: "Sconosciuto" };
@@ -57,53 +63,46 @@ function parseVariante(variante: string | null | undefined): { size: string; col
   const bIsSize = TAGLIE_SET.has(normalize(b));
   if (aIsSize && !bIsSize) return { size: a, color: b || "Sconosciuto" };
   if (!aIsSize && bIsSize) return { size: b, color: a || "Sconosciuto" };
-  // se entrambi/non entrambi risultano taglie, prendo il primo come size e il secondo come color fallback
   return { size: a || "Sconosciuta", color: b || "Sconosciuto" };
 }
 
-// Aggrega per COLORE -> TAGLIA:
-// - venduto: somma di tutte le righe stessa (taglia,colore)
-// - stock: NON si somma. Si prende il valore non-zero più recente visto; se tutti zero, 0.
-function aggregateByColorSize(variants: VariantData[]) {
-  const grouped: Record<string, Record<string, { venduto: number; stock: number }>> = {};
+// sommo il venduto per (colore, taglia)
+function aggregateSalesByColorSize(variants: VariantData[]) {
+  const grouped: Record<string, Record<string, number>> = {};
   for (const v of variants) {
     const { size, color } = parseVariante(v.variante);
     const taglia = size || "Sconosciuta";
     const colore = color || "Sconosciuto";
     if (!grouped[colore]) grouped[colore] = {};
-    if (!grouped[colore][taglia]) grouped[colore][taglia] = { venduto: 0, stock: 0 };
-
-    // sommo il venduto
-    grouped[colore][taglia].venduto += Number(v.venduto || 0);
-
-    // stock: prendo un solo valore (authoritative dal blanks), non sommo
-    const incoming = Number(v.stock || 0);
-    const current = Number(grouped[colore][taglia].stock || 0);
-    // preferisci un non-zero rispetto a zero; se current è 0 e arriva un valore >0, usalo.
-    // se current >0 lo lascio (già abbiamo un valore valido); in caso volessi "ultimo", togli questo if e assegna sempre.
-    if (current === 0 && incoming > 0) {
-      grouped[colore][taglia].stock = incoming;
-    }
-    // se vuoi invece l'ULTIMO valore visto (anche 0) decommenta la riga seguente e rimuovi l'if sopra:
-    // grouped[colore][taglia].stock = incoming;
+    if (!grouped[colore][taglia]) grouped[colore][taglia] = 0;
+    grouped[colore][taglia] += Number(v.venduto || 0);
   }
   return grouped;
 }
 
+// crea una mappa stock (colore->taglia->stock) a partire dall’array del blanks
+function mapStockByColorSize(items: BlanksStockItem[]) {
+  const map: Record<string, Record<string, number>> = {};
+  for (const it of items) {
+    const { size, color } = parseVariante(it.variante);
+    const taglia = size || "Sconosciuta";
+    const colore = color || "Sconosciuto";
+    if (!map[colore]) map[colore] = {};
+    map[colore][taglia] = Number(it.stock || 0); // authoritative dallo shop
+  }
+  return map;
+}
+
 export default function StockForecastByColorAndSize() {
   const router = useRouter();
-  const [data, setData] = useState<TypeGroup[]>([]);
+  const [groups, setGroups] = useState<TypeGroup[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(true);
 
-  const periodDays = 30;
-
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        router.push('/login');
-      }
+      if (!user) router.push('/login');
       setAuthLoading(false);
     });
     return () => unsubscribe();
@@ -113,12 +112,43 @@ export default function StockForecastByColorAndSize() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/products/sales');
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const json: TypeGroup[] = await res.json();
-      setData(json);
+      // 🔥 nessuna cache
+      const [salesRes, stockRes] = await Promise.all([
+        fetch('/api/products/sales', { cache: 'no-store' }),
+        fetch('/api/blanks/stock',  { cache: 'no-store' }),
+      ]);
+      if (!salesRes.ok) throw new Error(`API sales error: ${salesRes.status}`);
+      if (!stockRes.ok)  throw new Error(`API stock error: ${stockRes.status}`);
+
+      const salesJson: TypeGroup[] = await salesRes.json();                // venduto “grezzo”
+      const stockJson: BlanksStockItem[] = await stockRes.json();          // stock effettivo
+
+      // mappa stock per (colore, taglia)
+      const stockMap = mapStockByColorSize(stockJson);
+
+      // per ciascun gruppo, sostituisco lo stock con quello effettivo e sommo venduto per (colore, taglia)
+      const merged: TypeGroup[] = salesJson.map(group => {
+        const salesAgg = aggregateSalesByColorSize(group.variants);
+
+        // costruiamo variants “pronte” per tabella: prendo tutte le coppie (colore,taglia) presenti in salesAgg
+        const variantsForUI: VariantData[] = [];
+        Object.entries(salesAgg).forEach(([colore, taglie]) => {
+          Object.entries(taglie).forEach(([taglia, vendutoTot]) => {
+            const stockEffettivo = stockMap[colore]?.[taglia] ?? 0;
+            variantsForUI.push({
+              variante: `${taglia} / ${colore}`,
+              venduto: vendutoTot,
+              stock: stockEffettivo, // <- authoritative dal blanks
+            });
+          });
+        });
+
+        return { tipologia: group.tipologia, variants: variantsForUI };
+      });
+
+      setGroups(merged);
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message || 'Errore sconosciuto');
     } finally {
       setLoading(false);
     }
@@ -129,6 +159,7 @@ export default function StockForecastByColorAndSize() {
   }, [authLoading]);
 
   const handleRefresh = () => {
+    // forza un vero refetch da entrambe le API
     fetchData();
   };
 
@@ -193,8 +224,16 @@ export default function StockForecastByColorAndSize() {
         </Stack>
       )}
 
-      {!loading && data.map(group => {
-        const agg = aggregateByColorSize(group.variants);
+      {!loading && groups.map(group => {
+        // raggruppo per colore -> taglia per render (da variants già pronte)
+        const byColor: Record<string, Record<string, VariantData>> = {};
+        for (const v of group.variants) {
+          const { size, color } = parseVariante(v.variante);
+          const t = size || "Sconosciuta";
+          const c = color || "Sconosciuto";
+          if (!byColor[c]) byColor[c] = {};
+          byColor[c][t] = v;
+        }
 
         return (
           <Paper
@@ -213,7 +252,7 @@ export default function StockForecastByColorAndSize() {
             </Typography>
             <Divider sx={{ mb: 4 }} />
 
-            {Object.entries(agg).map(([colore, taglieObj]) => (
+            {Object.entries(byColor).map(([colore, taglieObj]) => (
               <Box key={colore} mb={4}>
                 <Stack direction="row" alignItems="center" gap={1} mb={2}>
                   <ColorLensIcon sx={{ color: "#00c9a7" }} />
@@ -234,23 +273,23 @@ export default function StockForecastByColorAndSize() {
                     </TableHead>
                     <TableBody>
                       {Object.entries(taglieObj)
-                        .sort(([tagliaA], [tagliaB]) => {
-                          const iA = TAGLIE_ORDINATE.indexOf((tagliaA || '').toLowerCase());
-                          const iB = TAGLIE_ORDINATE.indexOf((tagliaB || '').toLowerCase());
-                          if (iA === -1 && iB === -1) return (tagliaA || '').localeCompare(tagliaB || '');
+                        .sort(([a], [b]) => {
+                          const iA = TAGLIE_ORDINATE.indexOf((a || '').toLowerCase());
+                          const iB = TAGLIE_ORDINATE.indexOf((b || '').toLowerCase());
+                          if (iA === -1 && iB === -1) return (a || '').localeCompare(b || '');
                           if (iA === -1) return 1;
                           if (iB === -1) return -1;
                           return iA - iB;
                         })
-                        .map(([taglia, vals]) => {
-                          const vendutoTot = vals.venduto ?? 0;
-                          const stockSingolo = vals.stock ?? 0;
+                        .map(([taglia, v]) => {
+                          const vendutoTot = v.venduto ?? 0;
+                          const stockEff = v.stock ?? 0;
                           const dailyConsumption = vendutoTot / periodDays;
                           const daysRemaining =
-                            dailyConsumption > 0 ? Math.floor(stockSingolo / dailyConsumption) : "∞";
+                            dailyConsumption > 0 ? Math.floor(stockEff / dailyConsumption) : "∞";
                           const purchaseSuggestion =
                             dailyConsumption > 0
-                              ? Math.max(0, Math.ceil(dailyConsumption * 30 - stockSingolo))
+                              ? Math.max(0, Math.ceil(dailyConsumption * 30 - stockEff))
                               : 0;
 
                           return (
@@ -270,11 +309,11 @@ export default function StockForecastByColorAndSize() {
                               </TableCell>
                               <TableCell align="center">
                                 <Chip
-                                  label={stockSingolo}
+                                  label={stockEff}
                                   color={
-                                    stockSingolo === 0
+                                    stockEff === 0
                                       ? "error"
-                                      : stockSingolo <= 5
+                                      : stockEff <= 5
                                       ? "warning"
                                       : "success"
                                   }
