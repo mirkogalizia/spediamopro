@@ -1,113 +1,207 @@
+// app/api/products/sales/route.ts
 import { NextResponse } from "next/server";
+
+// —— Next: disattiva ogni cache server/CDN ——
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+// (opzionale, alcune versioni Next lo accettano)
+// export const fetchCache = "force-no-store";
 
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
 const SHOPIFY_API_VERSION = "2023-10";
 
+// ID dei 2 prodotti BLANKS da cui leggere lo STOCK reale (InventoryLevels)
 const BLANKS_PRODUCTS: Record<string, string> = {
   "t shirt": "10086015861002",
   "felpa cappuccio": "10086022217994",
 };
 
-const TYPE_ALIASES: Record<string, string> = {
-  "felpa hoodie": "felpa cappuccio",
-  "felpa cappuccio": "felpa cappuccio",
-  "t shirt": "t shirt",
-  "t-shirt": "t shirt",
-};
+// Riconoscimento tipologia *dal titolo* (match parziale, tollerante)
+const TYPE_MATCHERS: Array<{ type: "t shirt" | "felpa cappuccio"; patterns: RegExp[] }> = [
+  {
+    type: "t shirt",
+    patterns: [/\bt[\s\-]?shirt\b/i, /\btshirt\b/i, /\btee\b/i, /\bmaglietta\b/i],
+  },
+  {
+    type: "felpa cappuccio",
+    patterns: [
+      /\bfelpa\s*hoodie\b/i,
+      /\bhoodie\b/i,
+      /\bfelpa\s*con\s*cappuccio\b/i,
+      /\bfelpa\s*cappuccio\b/i,
+    ],
+  },
+];
+
+const TAGLIE_SET = new Set(["xs", "s", "m", "l", "xl"]);
 
 function getPageInfo(link: string | null): string | null {
   if (!link) return null;
-  const match = link.match(/<[^>]+page_info=([^&>]+)[^>]*>;\s*rel="next"/);
-  return match ? match[1] : null;
+  const m = link.match(/<[^>]+page_info=([^&>]+)[^>]*>;\s*rel="next"/);
+  return m ? m[1] : null;
 }
 
-function normalizeVariant(variant: string) {
-  return variant.toLowerCase().replace(/\s*\/\s*/, "/").trim();
+function normalizeStr(s: string | null | undefined) {
+  return (s || "").trim().toLowerCase();
 }
 
-export async function GET() {
+// ——— size/color parsing + chiave canonica ———
+function parseVarTitle(title: string | null | undefined): { size: string; color: string } {
+  const raw = (title ?? "").split("/").map(p => p.trim()).filter(Boolean);
+  if (raw.length === 0) return { size: "sconosciuta", color: "sconosciuto" };
+  if (raw.length === 1) {
+    const t0 = normalizeStr(raw[0]);
+    return TAGLIE_SET.has(t0) ? { size: t0, color: "sconosciuto" } : { size: "sconosciuta", color: t0 };
+  }
+  const [a, b] = raw;
+  const aIsSize = TAGLIE_SET.has(normalizeStr(a));
+  const bIsSize = TAGLIE_SET.has(normalizeStr(b));
+  if (aIsSize && !bIsSize) return { size: normalizeStr(a), color: normalizeStr(b || "sconosciuto") };
+  if (!aIsSize && bIsSize) return { size: normalizeStr(b), color: normalizeStr(a || "sconosciuto") };
+  return { size: normalizeStr(a || "sconosciuta"), color: normalizeStr(b || "sconosciuto") };
+}
+function canonicalVariant(title: string | null | undefined) {
+  const { size, color } = parseVarTitle(title);
+  return `${size}|${color}`; // es. "m|nero"
+}
+function prettyFromKey(key: string) {
+  const [sizeRaw = "", colorRaw = ""] = key.split("|");
+  const size = sizeRaw.toUpperCase();
+  const color = colorRaw ? colorRaw.charAt(0).toUpperCase() + colorRaw.slice(1) : "";
+  return `${size} / ${color}`;
+}
+
+async function shopifyGET(path: string) {
+  const url = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}${path}`;
+  const res = await fetch(url, {
+    headers: { "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText} - GET ${path} :: ${text}`);
+  }
+  return res;
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+function detectTypeFromTitle(s: string): "t shirt" | "felpa cappuccio" | null {
+  for (const m of TYPE_MATCHERS) if (m.patterns.some(rx => rx.test(s))) return m.type;
+  return null;
+}
+
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const debug = url.searchParams.get("debug") === "1";
+
   try {
-    // 1) Mappa product_id → tipologia normalizzata
-    const productTypeMap: Record<string, string> = {};
-    let productCursor: string | null = null;
-    do {
-      let url = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products.json?fields=id,product_type&limit=250`;
-      if (productCursor) url += `&page_info=${productCursor}`;
-      const res = await fetch(url, {
-        headers: { "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN },
-        cache: "no-store",
-      });
-      if (!res.ok) break;
-      const data = await res.json();
-      for (const p of data.products || []) {
-        const rawType = (p.product_type || "unknown").toLowerCase().trim();
-        const normalizedType = TYPE_ALIASES[rawType] || rawType;
-        productTypeMap[String(p.id)] = normalizedType;
-      }
-      productCursor = getPageInfo(res.headers.get("link"));
-    } while (productCursor);
+    // 1) STOCK dai BLANKS via InventoryLevels
+    type BlankVar = { key: string; inventory_item_id: string };
+    const blanksByType: Record<string, BlankVar[]> = {};
 
-    // 2) Scarica stock blanks e normalizza varianti
-    const blanksStockMap: Record<string, Record<string, number>> = {};
     for (const [type, prodId] of Object.entries(BLANKS_PRODUCTS)) {
-      const res = await fetch(
-        `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${prodId}.json`,
-        {
-          headers: { "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN },
-          cache: "no-store",
-        }
-      );
-      if (!res.ok) continue;
+      const res = await shopifyGET(`/products/${prodId}.json`);
       const data = await res.json();
-      blanksStockMap[type] = {};
-      for (const variant of data.product.variants) {
-        const normVar = normalizeVariant(variant.title);
-        blanksStockMap[type][normVar] = variant.inventory_quantity ?? 0;
+      const variants = (data.product?.variants || []) as Array<any>;
+      blanksByType[type] = variants.map(v => ({
+        key: canonicalVariant(v.title),
+        inventory_item_id: String(v.inventory_item_id),
+      }));
+    }
+
+    const allItems = Object.values(blanksByType).flat().map(v => v.inventory_item_id);
+    const stockByItem: Record<string, number> = {};
+    for (const batch of chunk(allItems, 50)) {
+      const res = await shopifyGET(`/inventory_levels.json?inventory_item_ids=${batch.join(",")}`);
+      const data = await res.json();
+      for (const lvl of data.inventory_levels || []) {
+        const id = String(lvl.inventory_item_id);
+        stockByItem[id] = (stockByItem[id] || 0) + Number(lvl.available ?? 0);
       }
     }
 
-    // 3) Scarica venduto ultimi 30 giorni per tipologia e variante normalizzata
+    const blanksStockMap: Record<string, Record<string, number>> = {};
+    for (const [type, list] of Object.entries(blanksByType)) {
+      blanksStockMap[type] = {};
+      for (const v of list) blanksStockMap[type][v.key] = stockByItem[v.inventory_item_id] || 0;
+    }
+
+    // 2) VENDUTO ultimi 30 giorni (dai titoli parziali)
     const START_DATE = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const soldMap: Record<string, Record<string, number>> = {};
-    let orderCursor: string | null = null;
+    const debugHits: any[] = [];
+    let cursor: string | null = null;
+
     do {
-      let url = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&created_at_min=${START_DATE}&fields=line_items,product_id,variant_title&limit=250`;
-      if (orderCursor) url += `&page_info=${orderCursor}`;
-      const res = await fetch(url, {
-        headers: { "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN },
-        cache: "no-store",
-      });
-      if (!res.ok) break;
+      let path = `/orders.json?status=any&financial_status=paid&created_at_min=${encodeURIComponent(
+        START_DATE
+      )}&fields=cancelled_at,line_items&limit=250`;
+      if (cursor) path += `&page_info=${cursor}`;
+
+      const res = await shopifyGET(path);
       const data = await res.json();
+
       for (const order of data.orders || []) {
+        if (order.cancelled_at) continue;
         for (const item of order.line_items || []) {
-          const typeRaw = productTypeMap[String(item.product_id)] || "unknown";
-          const type = TYPE_ALIASES[typeRaw] || typeRaw;
-          if (!(type in BLANKS_PRODUCTS)) continue;
-          const variantNorm = normalizeVariant(item.variant_title || "unknown");
-          soldMap[type] = soldMap[type] || {};
-          soldMap[type][variantNorm] = (soldMap[type][variantNorm] || 0) + (item.quantity || 0);
+          const text = `${item.name || ""} ${item.title || ""}`.toLowerCase();
+          const detected = detectTypeFromTitle(text);
+          if (!detected) {
+            if (debug) debugHits.push({ skip: true, reason: "no-type", text });
+            continue;
+          }
+          const key = canonicalVariant(item.variant_title || "");
+          const qty = Number(item.quantity || 0);
+          if (qty <= 0) continue;
+
+          soldMap[detected] = soldMap[detected] || {};
+          soldMap[detected][key] = (soldMap[detected][key] || 0) + qty;
+
+          if (debug) debugHits.push({ type: detected, key, qty, text });
         }
       }
-      orderCursor = getPageInfo(res.headers.get("link"));
-    } while (orderCursor);
+      cursor = getPageInfo(res.headers.get("link"));
+    } while (cursor);
 
-    // 4) Combina stock e venduto
-    const rows = Object.entries(blanksStockMap).map(([tipologia, stockVariants]) => {
-      const soldVariants = soldMap[tipologia] || {};
+    // 3) Output
+    const rows = Object.entries(blanksStockMap).map(([tipologia, stockByKey]) => {
+      const soldByKey = soldMap[tipologia] || {};
       return {
         tipologia,
-        variants: Object.entries(stockVariants).map(([variant, stock]) => ({
-          variante: variant,
+        variants: Object.entries(stockByKey).map(([key, stock]) => ({
+          variante: prettyFromKey(key),
           stock,
-          venduto: soldVariants[variant] || 0,
+          venduto: soldByKey[key] || 0,
         })),
       };
     });
 
-    return NextResponse.json(rows);
+    return NextResponse.json(debug ? { rows, __debug: debugHits.slice(0, 200) } : rows, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "CDN-Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store",
+      },
+    });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json(
+      { error: e.message || "Unknown error" },
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0",
+        },
+      }
+    );
   }
 }
