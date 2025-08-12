@@ -1,5 +1,7 @@
 // /app/api/spediamo/route.js
 import { getSpediamoToken } from "../../lib/spediamo";
+// 🔹 KPI hooks (NON bloccanti)
+import { kpiIncrementCount, kpiAddAmount } from "../../lib/kpi";
 
 function getQueryParams(req) {
   const url = new URL(req.url, "http://localhost");
@@ -8,6 +10,28 @@ function getQueryParams(req) {
     id:              url.searchParams.get("id"),
     shopifyOrderId:  url.searchParams.get("shopifyOrderId"),
   };
+}
+
+// helper locale per leggere importo e data senza cambiare la logica
+function readAmount(spedizione) {
+  if (!spedizione) return 0;
+  const cand = [
+    spedizione.totalToPay,
+    spedizione.total_price,
+    spedizione.totalPrice,
+    spedizione.grandTotal,
+    spedizione.amount,
+    spedizione.price,
+  ].filter((v) => typeof v === "number");
+  return cand.length ? cand[0] : 0;
+}
+function readCreatedAt(spedizione) {
+  return (
+    spedizione?.createdAt ||
+    spedizione?.creationDate ||
+    spedizione?.data ||
+    new Date().toISOString()
+  );
 }
 
 export async function POST(req) {
@@ -117,6 +141,18 @@ export async function POST(req) {
       });
       const data = await createRes.json();
       if (!createRes.ok) throw data;
+
+      // 🔹 KPI: incrementa il contatore giornaliero (idempotente per ID)
+      try {
+        const createdAt = readCreatedAt(data?.spedizione);
+        await kpiIncrementCount(String(id), createdAt);
+        // Se già qui hai l'importo, salva anche la somma
+        const amount = readAmount(data?.spedizione);
+        if (typeof amount === "number" && Number.isFinite(amount) && amount > 0) {
+          await kpiAddAmount(String(id), amount, createdAt);
+        }
+      } catch (_) { /* non bloccare la risposta */ }
+
       return new Response(JSON.stringify({ ok: true, spedizione: data.spedizione }), {
         status: 200,
         headers: { "Content-Type": "application/json" }
@@ -261,6 +297,16 @@ export async function POST(req) {
       });
       const data = await res.json();
       if (!res.ok) throw data;
+
+      // 🔹 KPI: se qui troviamo l'importo, aggiungiamo alla somma del giorno (idempotente)
+      try {
+        const createdAt = readCreatedAt(data?.spedizione);
+        const amount = readAmount(data?.spedizione);
+        if (typeof amount === "number" && Number.isFinite(amount) && amount > 0) {
+          await kpiAddAmount(String(id), amount, createdAt);
+        }
+      } catch (_) { /* non bloccare la risposta */ }
+
       return new Response(JSON.stringify({ ok: true, spedizione: data.spedizione }), {
         status: 200,
         headers: { "Content-Type": "application/json" }
@@ -281,4 +327,3 @@ export async function POST(req) {
     { status: 400, headers: { "Content-Type": "application/json" } }
   );
 }
-
