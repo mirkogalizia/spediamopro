@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
-import Sidebar from './components/Sidebar';
+import Sidebar from '@/components/Sidebar';
 
 const theme = createTheme({
   palette: {
