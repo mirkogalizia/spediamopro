@@ -1,8 +1,8 @@
-import type { ClassValue } from "clsx"
-import clsx from "clsx"
-import { twMerge } from "tailwind-merge"
+// lib/utils.ts
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 
-/** Unisce classi Tailwind evitando duplicati (usato da shadcn/ui) */
+/** Unisce classi Tailwind evitando duplicati e conflitti */
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
 }
