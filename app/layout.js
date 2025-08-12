@@ -20,6 +20,7 @@ const theme = createTheme({
 export default function RootLayout({ children }) {
   const pathname = usePathname();
   const showSidebar = pathname !== '/'; // 👈 nasconde la sidebar SOLO in home/login
+  const drawerWidth = 82; // = width del Drawer
 
   return (
     <html lang="it">
@@ -28,7 +29,12 @@ export default function RootLayout({ children }) {
           <CssBaseline />
           <div style={{ display: 'flex', minHeight: '100vh' }}>
             {showSidebar && <Sidebar />}
-            <main style={{ flex: 1, minHeight: '100vh', background: '#f5f5f7' }}>
+<main style={{
+              flex: 1,
+              minHeight: '100vh',
+              background: '#f5f5f7',
+              paddingLeft: showSidebar ? drawerWidth : 0,
+            }}>
               {children}
             </main>
           </div>
