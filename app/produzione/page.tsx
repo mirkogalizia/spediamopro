@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react'
 import Image from 'next/image'
+import OrderPopup from './components/OrderPopup'; // popup spedizione
 
 interface RigaProduzione {
   tipo_prodotto: string
@@ -54,6 +55,7 @@ export default function ProduzionePage() {
 
   const [excludeGrafica, setExcludeGrafica] = useState<Set<string>>(new Set())
   const [excludeBlank, setExcludeBlank] = useState<Set<string>>(new Set())
+  const [popupOrder, setPopupOrder] = useState<string | null>(null);
 
   const fetchProduzione = async () => {
     if (!from || !to) return;
@@ -79,26 +81,32 @@ export default function ProduzionePage() {
     localStorage.setItem('stampati', JSON.stringify(updated))
   }
 
-  const handleMissDTF = (grafica: string) => {
-    setExcludeGrafica(new Set([...Array.from(excludeGrafica), grafica]))
+  const handleMissDTF = (grafica: string, index: number) => {
+    const ordiniDaEscludere = new Set<string>();
+    for (let i = index; i < righe.length; i++) {
+      if (righe[i].grafica === grafica) {
+        ordiniDaEscludere.add(righe[i].order_name);
+      }
+    }
+    setExcludeGrafica(new Set([...excludeGrafica, ...ordiniDaEscludere]))
   }
 
-  const handleMissBlank = (tipo: string, taglia: string, colore: string) => {
-    const key = `${tipo}|||${taglia}|||${colore}`;
-    setExcludeBlank(new Set([...Array.from(excludeBlank), key]))
+  const handleMissBlank = (tipo: string, taglia: string, colore: string, index: number) => {
+    const ordiniDaEscludere = new Set<string>();
+    for (let i = index; i < righe.length; i++) {
+      const r = righe[i];
+      if (r.tipo_prodotto === tipo && r.taglia === taglia && r.colore === colore) {
+        ordiniDaEscludere.add(r.order_name);
+      }
+    }
+    setExcludeBlank(new Set([...excludeBlank, ...ordiniDaEscludere]))
   }
 
   const renderColorePallino = (nome: string) => {
     const colore = COLORI_MAP[nome.toUpperCase()] || '#999';
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <span style={{
-          width: 28,
-          height: 28,
-          borderRadius: '50%',
-          backgroundColor: colore,
-          border: '1px solid #ccc'
-        }}></span>
+        <span style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: colore, border: '1px solid #ccc' }}></span>
         <strong style={{ fontSize: '18px' }}>{nome}</strong>
       </div>
     );
@@ -110,7 +118,7 @@ export default function ProduzionePage() {
 
   const totaliMagazzino = useMemo(() => {
     const map = new Map<string, Map<string, number>>();
-    for (const riga of righe) {
+    for (const riga of righeFiltrate) {
       const tipo = riga.tipo_prodotto;
       const key = `${riga.colore.toUpperCase()} | ${riga.taglia.toUpperCase()}`;
       if (!map.has(tipo)) map.set(tipo, new Map());
@@ -118,12 +126,11 @@ export default function ProduzionePage() {
       inner.set(key, (inner.get(key) || 0) + 1);
     }
     return map;
-  }, [righe]);
+  }, [righeFiltrate]);
 
   const righeFiltrate = righe.filter(riga => {
-    if (excludeGrafica.has(riga.grafica)) return false;
-    const key = `${riga.tipo_prodotto}|||${riga.taglia}|||${riga.colore}`;
-    if (excludeBlank.has(key)) return false;
+    if (excludeGrafica.has(riga.order_name)) return false;
+    if (excludeBlank.has(riga.order_name)) return false;
     return true;
   });
 
@@ -139,16 +146,7 @@ export default function ProduzionePage() {
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           <button
             onClick={fetchProduzione}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#007aff',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '16px'
-            }}
+            style={{ padding: '10px 20px', backgroundColor: '#007aff', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '16px' }}
           >
             Carica ordini
           </button>
@@ -178,10 +176,11 @@ export default function ProduzionePage() {
                       key={riga.variant_id + '-' + riga.order_name}
                       style={{
                         borderBottom: '1px solid #eee',
-                        borderLeft: isStartOfOrderGroup(index) ? '4px solid #007aff' : '4px solid transparent'
+                        borderLeft: isStartOfOrderGroup(index) ? '4px solid #007aff' : '4px solid transparent',
+                        opacity: stampati[riga.variant_id] ? 0.3 : 1
                       }}
                     >
-                      <td style={{ padding: '20px', fontFamily: 'monospace', fontWeight: 'bold' }}>{riga.order_name}</td>
+                      <td style={{ padding: '20px', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer' }} onClick={() => setPopupOrder(riga.order_name)}>{riga.order_name}</td>
                       <td style={{ padding: '20px' }}>{riga.tipo_prodotto}</td>
                       <td style={{ padding: '20px' }}>{renderColorePallino(riga.colore)}</td>
                       <td style={{ padding: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>{riga.taglia}</td>
@@ -196,10 +195,10 @@ export default function ProduzionePage() {
                         </div>
                       </td>
                       <td style={{ textAlign: 'center' }}>
-                        <button onClick={() => handleMissDTF(riga.grafica)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
+                        <button onClick={() => handleMissDTF(riga.grafica, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
                       </td>
                       <td style={{ textAlign: 'center' }}>
-                        <button onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
+                        <button onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
                       </td>
                       <td style={{ padding: '20px', textAlign: 'right' }}>
                         <input
@@ -231,6 +230,7 @@ export default function ProduzionePage() {
           </>
         )}
       </div>
+      {popupOrder && <OrderPopup orderName={popupOrder} onClose={() => setPopupOrder(null)} />}
     </div>
   )
 }
