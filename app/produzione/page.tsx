@@ -54,9 +54,6 @@ export default function ProduzionePage() {
   const [to, setTo] = useState<string>('')
   const [popupOrder, setPopupOrder] = useState<string | null>(null)
 
-  const [excludeGrafica, setExcludeGrafica] = useState<Set<string>>(new Set())
-  const [excludeBlank, setExcludeBlank] = useState<Set<string>>(new Set())
-
   const fetchProduzione = async () => {
     if (!from || !to) return;
     setLoading(true);
@@ -82,16 +79,16 @@ export default function ProduzionePage() {
   }
 
   const handleMissDTF = (grafica: string, index: number) => {
-    const ordineRiferimento = righe[index].order_name
-    const nuovi = righe.slice(index).filter(r => r.order_name !== ordineRiferimento && r.grafica !== grafica)
-    setRighe(righe.slice(0, index).concat(nuovi))
+    const ordineRiferimento = righe[index].order_name;
+    const nuovi = righe.filter(r => r.order_name !== ordineRiferimento && r.grafica !== grafica);
+    setRighe(nuovi);
   }
 
   const handleMissBlank = (tipo: string, taglia: string, colore: string, index: number) => {
     const key = `${tipo}|||${taglia}|||${colore}`;
-    const ordineRiferimento = righe[index].order_name
-    const nuovi = righe.slice(index).filter(r => r.order_name !== ordineRiferimento && `${r.tipo_prodotto}|||${r.taglia}|||${r.colore}` !== key)
-    setRighe(righe.slice(0, index).concat(nuovi))
+    const ordineRiferimento = righe[index].order_name;
+    const nuovi = righe.filter(r => r.order_name !== ordineRiferimento && `${r.tipo_prodotto}|||${r.taglia}|||${r.colore}` !== key);
+    setRighe(nuovi);
   }
 
   const renderColorePallino = (nome: string) => {
@@ -121,8 +118,8 @@ export default function ProduzionePage() {
   }, [righe]);
 
   return (
-    <div style={{ padding: '64px 32px', display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: '100vh', fontFamily: 'Inter, sans-serif', background: '#f5f5f7' }}>
-      <div style={{ width: '100%', maxWidth: '1400px' }}>
+    <div style={{ padding: '64px 32px', fontFamily: 'Inter, sans-serif', background: '#f5f5f7', minHeight: '100vh' }}>
+      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
         <h1 style={{ fontSize: '36px', fontWeight: 700, marginBottom: '24px' }}>📦 Produzione</h1>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
@@ -130,102 +127,97 @@ export default function ProduzionePage() {
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           <label>A:</label>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          <button onClick={fetchProduzione} style={{ padding: '10px 20px', backgroundColor: '#007aff', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '16px' }}>Carica ordini</button>
+          <button onClick={fetchProduzione} style={{ padding: '10px 20px', backgroundColor: '#007aff', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Carica ordini</button>
         </div>
 
-        {loading ? (
-          <p style={{ color: '#888' }}>Caricamento in corso...</p>
-        ) : (
-          <>
-            <div style={{ overflowX: 'auto', background: 'white', borderRadius: '16px', boxShadow: '0 4px 24px rgba(0,0,0,0.05)' }}>
-              <table style={{ width: '100%', fontSize: '18px', borderCollapse: 'collapse' }}>
-                <thead style={{ background: '#f5f5f7' }}>
-                  <tr>
-                    <th style={{ padding: '20px', textAlign: 'left' }}>Ordine</th>
-                    <th style={{ padding: '20px', textAlign: 'left' }}>Tipo</th>
-                    <th style={{ padding: '20px', textAlign: 'left' }}>Colore</th>
-                    <th style={{ padding: '20px', textAlign: 'left' }}>Taglia</th>
-                    <th style={{ padding: '20px', textAlign: 'left' }}>Preview</th>
-                    <th style={{ padding: '20px', textAlign: 'center' }}>❌ Miss DTF</th>
-                    <th style={{ padding: '20px', textAlign: 'center' }}>❌ Miss Blank</th>
-                    <th style={{ padding: '20px', textAlign: 'right' }}>Stampato</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {righe.map((riga, index) => (
-                    <tr
-                      key={riga.variant_id + '-' + riga.order_name}
-                      style={{
-                        borderBottom: '1px solid #eee',
-                        borderLeft: isStartOfOrderGroup(index) ? '4px solid #007aff' : '4px solid transparent',
-                        opacity: stampati[riga.variant_id] ? 0.4 : 1
-                      }}
-                    >
-                      <td style={{ padding: '20px', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer' }} onClick={() => setPopupOrder(riga.order_name)}>{riga.order_name}</td>
-                      <td style={{ padding: '20px' }}>{riga.tipo_prodotto}</td>
-                      <td style={{ padding: '20px' }}>{renderColorePallino(riga.colore)}</td>
-                      <td style={{ padding: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>{riga.taglia}</td>
-                      <td style={{ padding: '20px' }}>
-                        <div style={{ width: '100px', height: '100px', position: 'relative' }}>
-                          <Image
-                            src={riga.immagine && riga.immagine !== '' ? riga.immagine : riga.immagine_prodotto!}
-                            alt={riga.grafica}
-                            fill
-                            style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
-                          />
-                        </div>
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <button onClick={() => handleMissDTF(riga.grafica, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <button onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
-                      </td>
-                      <td style={{ padding: '20px', textAlign: 'right' }}>
-                        <input
-                          type="checkbox"
-                          checked={!!stampati[riga.variant_id]}
-                          onChange={() => toggleStampato(riga.variant_id)}
-                          style={{ transform: 'scale(1.6)' }}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div style={{ marginTop: '32px', background: '#fff', borderRadius: '12px', padding: '24px', width: '100%', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px' }}>📦 Totale da prelevare a magazzino:</h2>
-              {Array.from(totaliMagazzino.entries()).map(([tipo, sottoMap]) => (
-                <div key={tipo} style={{ marginBottom: '16px' }}>
-                  <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>{tipo}</h3>
-                  <ul style={{ columns: 2, fontSize: '16px', lineHeight: '1.8', margin: 0, paddingLeft: '20px' }}>
-                    {Array.from(sottoMap.entries()).map(([chiave, quantita]) => (
-                      <li key={chiave}><strong>{quantita}×</strong> {chiave}</li>
-                    ))}
-                  </ul>
-                </div>
+        <div style={{ overflowX: 'auto', background: 'white', borderRadius: '16px' }}>
+          <table style={{ width: '100%', fontSize: '18px', borderCollapse: 'collapse' }}>
+            <thead style={{ background: '#f5f5f7' }}>
+              <tr>
+                <th style={{ padding: '20px', textAlign: 'left' }}>Ordine</th>
+                <th style={{ padding: '20px' }}>Tipo</th>
+                <th style={{ padding: '20px' }}>Colore</th>
+                <th style={{ padding: '20px' }}>Taglia</th>
+                <th style={{ padding: '20px' }}>Preview</th>
+                <th style={{ padding: '20px', textAlign: 'center' }}>❌ DTF</th>
+                <th style={{ padding: '20px', textAlign: 'center' }}>❌ Blank</th>
+                <th style={{ padding: '20px', textAlign: 'right' }}>Stampato</th>
+              </tr>
+            </thead>
+            <tbody>
+              {righe.map((riga, index) => (
+                <tr
+                  key={riga.variant_id + '-' + riga.order_name}
+                  style={{
+                    borderBottom: '1px solid #eee',
+                    borderLeft: isStartOfOrderGroup(index) ? '4px solid #007aff' : '4px solid transparent',
+                    opacity: stampati[riga.variant_id] ? 0.4 : 1
+                  }}
+                >
+                  <td style={{ padding: '20px', cursor: 'pointer' }} onClick={() => setPopupOrder(riga.order_name)}>{riga.order_name}</td>
+                  <td style={{ padding: '20px' }}>{riga.tipo_prodotto}</td>
+                  <td style={{ padding: '20px' }}>{renderColorePallino(riga.colore)}</td>
+                  <td style={{ padding: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>{riga.taglia}</td>
+                  <td style={{ padding: '20px' }}>
+                    <div style={{ width: '100px', height: '100px', position: 'relative' }}>
+                      <Image
+                        src={riga.immagine && riga.immagine !== '' ? riga.immagine : riga.immagine_prodotto!}
+                        alt={riga.grafica}
+                        fill
+                        style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
+                      />
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button onClick={() => handleMissDTF(riga.grafica, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
+                  </td>
+                  <td style={{ padding: '20px', textAlign: 'right' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!stampati[riga.variant_id]}
+                      onChange={() => toggleStampato(riga.variant_id)}
+                      style={{ transform: 'scale(1.6)' }}
+                    />
+                  </td>
+                </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ marginTop: '32px', background: '#fff', borderRadius: '12px', padding: '24px' }}>
+          <h2>📦 Totale da prelevare a magazzino:</h2>
+          {Array.from(totaliMagazzino.entries()).map(([tipo, sottoMap]) => (
+            <div key={tipo} style={{ marginBottom: '16px' }}>
+              <h3>{tipo}</h3>
+              <ul style={{ columns: 2, fontSize: '16px', lineHeight: '1.8', margin: 0, paddingLeft: '20px' }}>
+                {Array.from(sottoMap.entries()).map(([chiave, quantita]) => (
+                  <li key={chiave}><strong>{quantita}×</strong> {chiave}</li>
+                ))}
+              </ul>
             </div>
-          </>
+          ))}
+        </div>
+
+        {popupOrder && (
+          <OrderPopup
+            orderName={popupOrder}
+            onClose={() => setPopupOrder(null)}
+            onEvadi={() => {
+              setStampati(prev => {
+                const aggiornato = { ...prev }
+                righe.filter(r => r.order_name === popupOrder).forEach(r => aggiornato[r.variant_id] = true)
+                localStorage.setItem('stampati', JSON.stringify(aggiornato))
+                return aggiornato
+              })
+              setPopupOrder(null)
+            }}
+          />
         )}
       </div>
-     {popupOrder && (
-  <OrderPopup
-    orderName={popupOrder}
-    onClose={() => setPopupOrder(null)}
-    onEvadi={() => {
-      setStampati(prev => {
-        const aggiornato = { ...prev }
-        righe
-          .filter(r => r.order_name === popupOrder)
-          .forEach(r => aggiornato[r.variant_id] = true)
-        localStorage.setItem('stampati', JSON.stringify(aggiornato))
-        return aggiornato
-      })
-      // il popup si chiude già da dentro il componente → opzionale:
-      // setPopupOrder(null)
-    }}
-  />
-)}
+    </div>
+  )
+}
