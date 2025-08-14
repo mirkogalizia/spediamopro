@@ -202,21 +202,16 @@ export default function ProduzionePage() {
           ))}
         </div>
 
-        {popupOrder && (
-          <OrderPopup
-            orderName={popupOrder}
-            onClose={() => setPopupOrder(null)}
-            onEvadi={() => {
-              setStampati(prev => {
-                const aggiornato = { ...prev }
-                righe.filter(r => r.order_name === popupOrder).forEach(r => aggiornato[r.variant_id] = true)
-                localStorage.setItem('stampati', JSON.stringify(aggiornato))
-                return aggiornato
-              })
-              setPopupOrder(null)
-            }}
-          />
-        )}
+       {popupOrder && (
+  <OrderPopup
+    ordine={righe.find(r => r.order_name === popupOrder)}
+    onClose={() => setPopupOrder(null)}
+    onEvadi={() => {
+      setStampati(prev => [...prev, popupOrder])
+      setPopupOrder(null)
+    }}
+  />
+)}
       </div>
     </div>
   )
