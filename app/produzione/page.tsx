@@ -154,7 +154,7 @@ export default function ProduzionePage() {
                     <td style={{ padding: '20px' }}>
                       <div style={{ width: '100px', height: '100px', position: 'relative' }}>
                         <Image
-                          src={riga.immagine || riga.immagine_prodotto!}
+                          src={riga.immagine && riga.immagine !== '' ? riga.immagine : riga.immagine_prodotto!}
                           alt={riga.grafica}
                           fill
                           style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
