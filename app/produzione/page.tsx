@@ -97,12 +97,15 @@ export default function ProduzionePage() {
   }
 
   const totaliMagazzino = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, Map<string, number>>();
     for (const riga of righe) {
-      const key = `${riga.tipo_prodotto} | ${riga.colore.toUpperCase()} | ${riga.taglia.toUpperCase()}`;
-      map.set(key, (map.get(key) || 0) + 1);
+      const tipo = riga.tipo_prodotto;
+      const key = `${riga.colore.toUpperCase()} | ${riga.taglia.toUpperCase()}`;
+      if (!map.has(tipo)) map.set(tipo, new Map());
+      const inner = map.get(tipo)!;
+      inner.set(key, (inner.get(key) || 0) + 1);
     }
-    return Array.from(map.entries());
+    return map;
   }, [righe]);
 
   return (
@@ -187,11 +190,16 @@ export default function ProduzionePage() {
 
             <div style={{ marginTop: '32px', background: '#fff', borderRadius: '12px', padding: '24px', width: '100%', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
               <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px' }}>📦 Totale da prelevare a magazzino:</h2>
-              <ul style={{ columns: 2, fontSize: '16px', lineHeight: '1.8' }}>
-                {totaliMagazzino.map(([chiave, quantita]) => (
-                  <li key={chiave}><strong>{quantita}×</strong> {chiave}</li>
-                ))}
-              </ul>
+              {[...totaliMagazzino.entries()].map(([tipo, sottoMap]) => (
+                <div key={tipo} style={{ marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>{tipo}</h3>
+                  <ul style={{ columns: 2, fontSize: '16px', lineHeight: '1.8', margin: 0, paddingLeft: '20px' }}>
+                    {[...sottoMap.entries()].map(([chiave, quantita]) => (
+                      <li key={chiave}><strong>{quantita}×</strong> {chiave}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
           </>
         )}
@@ -199,4 +207,3 @@ export default function ProduzionePage() {
     </div>
   )
 }
-
