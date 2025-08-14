@@ -79,23 +79,27 @@ export default function ProduzionePage() {
   const renderColorePallino = (nome: string) => {
     const colore = COLORI_MAP[nome.toUpperCase()] || '#999';
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <span style={{
-          width: 16,
-          height: 16,
+          width: 28,
+          height: 28,
           borderRadius: '50%',
           backgroundColor: colore,
           border: '1px solid #ccc'
         }}></span>
-        <strong>{nome}</strong>
+        <strong style={{ fontSize: '18px' }}>{nome}</strong>
       </div>
     );
   }
 
+  const isStartOfOrderGroup = (index: number) => {
+    return index === 0 || righe[index].order_name !== righe[index - 1].order_name;
+  }
+
   return (
     <div style={{ padding: '64px 32px', display: 'flex', justifyContent: 'center', minHeight: '100vh', fontFamily: 'Inter, sans-serif', background: '#f5f5f7' }}>
-      <div style={{ width: '100%', maxWidth: '1200px' }}>
-        <h1 style={{ fontSize: '32px', fontWeight: 700, marginBottom: '24px' }}>📦 Produzione</h1>
+      <div style={{ width: '100%', maxWidth: '1400px' }}>
+        <h1 style={{ fontSize: '36px', fontWeight: 700, marginBottom: '24px' }}>📦 Produzione</h1>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
           <label>Da:</label>
@@ -105,13 +109,14 @@ export default function ProduzionePage() {
           <button
             onClick={fetchProduzione}
             style={{
-              padding: '8px 16px',
+              padding: '10px 20px',
               backgroundColor: '#007aff',
               color: '#fff',
               border: 'none',
               borderRadius: '8px',
               cursor: 'pointer',
-              fontWeight: 600
+              fontWeight: 600,
+              fontSize: '16px'
             }}
           >
             Carica ordini
@@ -122,44 +127,46 @@ export default function ProduzionePage() {
           <p style={{ color: '#888' }}>Caricamento in corso...</p>
         ) : (
           <div style={{ overflowX: 'auto', background: 'white', borderRadius: '16px', boxShadow: '0 4px 24px rgba(0,0,0,0.05)' }}>
-            <table style={{ width: '100%', fontSize: '16px', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: '18px', borderCollapse: 'collapse' }}>
               <thead style={{ background: '#f5f5f7' }}>
                 <tr>
-                  <th style={{ padding: '16px', textAlign: 'left' }}>Ordine</th>
-                  <th style={{ padding: '16px', textAlign: 'left' }}>Tipo</th>
-                  <th style={{ padding: '16px', textAlign: 'left' }}>Colore</th>
-                  <th style={{ padding: '16px', textAlign: 'left' }}>Taglia</th>
-                  <th style={{ padding: '16px', textAlign: 'left' }}>Preview</th>
-                  <th style={{ padding: '16px', textAlign: 'right' }}>Stampato</th>
+                  <th style={{ padding: '20px', textAlign: 'left' }}>Ordine</th>
+                  <th style={{ padding: '20px', textAlign: 'left' }}>Tipo</th>
+                  <th style={{ padding: '20px', textAlign: 'left' }}>Colore</th>
+                  <th style={{ padding: '20px', textAlign: 'left' }}>Taglia</th>
+                  <th style={{ padding: '20px', textAlign: 'left' }}>Preview</th>
+                  <th style={{ padding: '20px', textAlign: 'right' }}>Stampato</th>
                 </tr>
               </thead>
               <tbody>
                 {righe.map((riga, index) => (
-                  <tr key={riga.variant_id + '-' + riga.order_name} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '16px', fontFamily: 'monospace' }}>{riga.order_name}</td>
-                    <td style={{ padding: '16px' }}>{riga.tipo_prodotto}</td>
-                    <td style={{ padding: '16px' }}>{renderColorePallino(riga.colore)}</td>
-                    <td style={{ padding: '16px', fontWeight: 'bold', textTransform: 'uppercase' }}>{riga.taglia}</td>
-                    <td style={{ padding: '16px' }}>
-                      {(riga.immagine || riga.immagine_prodotto) ? (
-                        <div style={{ width: '60px', height: '60px', position: 'relative' }}>
-                          <Image
-                            src={riga.immagine || riga.immagine_prodotto!}
-                            alt={riga.grafica}
-                            fill
-                            style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
-                          />
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: '12px', color: '#ccc' }}>N/A</span>
-                      )}
+                  <tr
+                    key={riga.variant_id + '-' + riga.order_name}
+                    style={{
+                      borderBottom: '1px solid #eee',
+                      borderLeft: isStartOfOrderGroup(index) ? '4px solid #007aff' : '4px solid transparent'
+                    }}
+                  >
+                    <td style={{ padding: '20px', fontFamily: 'monospace', fontWeight: 'bold' }}>{riga.order_name}</td>
+                    <td style={{ padding: '20px' }}>{riga.tipo_prodotto}</td>
+                    <td style={{ padding: '20px' }}>{renderColorePallino(riga.colore)}</td>
+                    <td style={{ padding: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>{riga.taglia}</td>
+                    <td style={{ padding: '20px' }}>
+                      <div style={{ width: '100px', height: '100px', position: 'relative' }}>
+                        <Image
+                          src={riga.immagine || riga.immagine_prodotto!}
+                          alt={riga.grafica}
+                          fill
+                          style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
+                        />
+                      </div>
                     </td>
-                    <td style={{ padding: '16px', textAlign: 'right' }}>
+                    <td style={{ padding: '20px', textAlign: 'right' }}>
                       <input
                         type="checkbox"
                         checked={!!stampati[riga.variant_id]}
                         onChange={() => toggleStampato(riga.variant_id)}
-                        style={{ transform: 'scale(1.4)' }}
+                        style={{ transform: 'scale(1.6)' }}
                       />
                     </td>
                   </tr>
@@ -172,4 +179,3 @@ export default function ProduzionePage() {
     </div>
   )
 }
-
