@@ -1,139 +1,171 @@
-"use client";
+'use client';
 
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
-import { motion } from "framer-motion";
+import { auth } from "../../../lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { useRouter } from "next/navigation";
 
-function removeAccents(str: string) {
-  return str.normalize("NFD").replace(/[̀-ͯ]/g, "");
-}
-
-interface OrderPopupProps {
-  orderName: string;
-  onClose: () => void;
-  onEvadi: () => void;
-}
-
-export default function OrderPopup({ orderName, onClose, onEvadi }: OrderPopupProps) {
-  const [data, setData] = useState<any>(null);
-  const [step, setStep] = useState("fetch");
-  const [selectedCorriere, setSelectedCorriere] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchData = async () => {
-    const res = await fetch(`/api/spediamo?step=fetch&shopifyOrderName=${orderName}`);
-    const json = await res.json();
-    setData(json);
-  };
+export default function OrderPopup({ orderName, onClose, onEvadi }) {
+  const router = useRouter();
+  const [userChecked, setUserChecked] = useState(false);
 
   useEffect(() => {
-    fetchData();
+    const unsub = onAuthStateChanged(auth, usr => {
+      if (!usr) router.push("/login");
+      setUserChecked(true);
+    });
+    return () => unsub();
+  }, [router]);
+
+  function removeAccents(str) {
+    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
+
+  function getCorriereIcon(corriere) {
+    const c = (corriere || '').toLowerCase();
+    if (c.includes("brt")) return /*...*/;
+    if (c.includes("gls")) return /*...*/;
+    // replica come nella pagina principale ...
+    return (
+      <svg width="28" height="18" viewBox="0 0 28 18"><rect width="28" height="18" rx="3" fill="#ccc"/><text x="14" y="13" fill="#333" fontSize="11" fontWeight="bold" textAnchor="middle">Corriere</text></svg>
+    );
+  }
+
+  function getTrackingLabel(spedizione) {
+    if (spedizione.colli?.[0]?.segnacollo) return spedizione.colli[0].segnacollo;
+    return spedizione.tracking_number_corriere || spedizione.tracking_number || spedizione.segnacollo || spedizione.codice || "";
+  }
+
+  function HoverButton({ style, onClick, children, disabled }) {
+    const [hover, setHover] = useState(false);
+    return (
+      <button
+        style={{ ...style, filter: hover ? "brightness(85%)" : "none" }}
+        onClick={onClick}
+        disabled={disabled}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+      >
+        {children}
+      </button>
+    );
+  }
+
+  // Stati operativi mimic pagina principale
+  const [form, setForm] = useState({ nome: "", telefono: "", email: "", indirizzo: "", indirizzo2: "", capDestinatario: "", cittaDestinatario: "", provinciaDestinatario: "", nazioneDestinatario: "", altezza: "10", larghezza: "15", profondita: "20", peso: "1" });
+  const [spedizioni, setSpedizioni] = useState([]);
+  const [spedizioniCreate, setSpedizioniCreate] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [errore, setErrore] = useState(null);
+
+  useEffect(() => {
+    const hadir = async () => {
+      try {
+        const res = await fetch(`/api/shopify?name=${encodeURIComponent(orderName)}`);
+        const { orders } = await res.json();
+        const ord = orders?.[0];
+        const ship = ord?.shipping_address || {};
+        setForm(f => ({
+          ...f,
+          nome: `${ship.first_name || ""} ${ship.last_name || ""}`.trim(),
+          telefono: ship.phone || "",
+          email: ord.email || "",
+          indirizzo: removeAccents(ship.address1 || ""),
+          indirizzo2: removeAccents(ship.address2 || ""),
+          capDestinatario: ship.zip || "",
+          cittaDestinatario: removeAccents(ship.city || ""),
+          provinciaDestinatario: ship.country_code==="IT" ? ship.province_code || "" : ship.province || ship.province_code || "",
+          nazioneDestinatario: ship.country_code || "",
+        }));
+      } catch (e) {
+        setErrore("Caricamento ordine fallito");
+      }
+    };
+    hadir();
   }, [orderName]);
 
-  const simula = async () => {
-    if (!selectedCorriere) return;
+  const handleSimula = async () => {
     setLoading(true);
-    const res = await fetch(`/api/spediamo?step=simulate&id=${data?.id}&corriere=${selectedCorriere}`);
-    const json = await res.json();
-    setData(json);
-    setLoading(false);
-    setStep("simulato");
+    setErrore(null);
+    try {
+      const res = await fetch('/api/spediamo?step=simula', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(form) });
+      const data = await res.json();
+      setSpedizioni(data.simulazione?.spedizioni || []);
+    } catch (e) {
+      setErrore("Errore simulazione");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const crea = async () => {
+  const handleCreaECompletaEPaga = async (id) => {
     setLoading(true);
-    const res = await fetch(`/api/spediamo?step=create&id=${data?.id}&shopifyOrderId=${data?.shopifyOrderId}`);
-    const json = await res.json();
-    setData(json);
-    setLoading(false);
-    setStep("creato");
+    setErrore(null);
+    try {
+      // stessa logica: create, update, pay
+      await fetch(`/api/spediamo?step=create&id=${id}&shopifyOrderId=${orderName}`, { method: 'POST' });
+      await fetch(`/api/spediamo?step=update&id=${id}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(form) });
+      await fetch(`/api/spediamo?step=pay&id=${id}`, { method: 'POST' });
+      alert("Spedizione creata e pagata");
+    } catch (e) {
+      setErrore("Errore creazione spedizione");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const paga = async () => {
+  const handleEvadi = async (s) => {
     setLoading(true);
-    const res = await fetch(`/api/spediamo?step=pay&id=${data?.id}`);
-    const json = await res.json();
-    setData(json);
-    setLoading(false);
-    setStep("pagato");
+    setErrore(null);
+    try {
+      await fetch("/api/shopify/fulfill-order", { method: "POST", headers: {'Content-Type':'application/json'}, body: JSON.stringify({ orderId: orderName, trackingNumber: getTrackingLabel(s.spedizione), carrierName: s.spedizione.corriere }) });
+      alert("Ordine evaso correttamente");
+      onEvadi();
+    } catch (e) {
+      setErrore("Errore evasione");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const evadi = async () => {
-    setLoading(true);
-    const res = await fetch(`/api/spediamo?step=evadi&id=${data?.id}&shopifyOrderId=${data?.shopifyOrderId}`);
-    const json = await res.json();
-    setData(json);
-    setLoading(false);
-    setStep("evaso");
-    onEvadi();
-  };
+  if (!userChecked) return <div style={{ padding: 40, textAlign: "center" }}>Controllo login…</div>;
 
   return (
-    <motion.div
-      className="fixed top-0 left-0 w-screen h-screen bg-black bg-opacity-50 z-50 flex items-center justify-center"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full relative">
-        <button onClick={onClose} className="absolute top-2 right-2 text-gray-500">✕</button>
-        <h2 className="text-xl font-bold mb-4">Gestione ordine {orderName}</h2>
-
-        {!data ? (
-          <p>Caricamento dati ordine...</p>
-        ) : (
-          <div className="space-y-4">
-            <div>
-              <p><strong>Destinatario:</strong> {data.nome} {data.cognome}</p>
-              <p><strong>Indirizzo:</strong> {data.indirizzo}, {data.cap} {data.citta} ({data.provincia})</p>
+    <div style={{ position:'fixed', inset:0, background:'#0005', display:'flex', justifyContent:'center', alignItems:'center', zIndex:1000 }}>
+      <div style={{ background:'#fff', padding:24, borderRadius:16, width:'90%', maxWidth:600, maxHeight:'90vh', overflowY:'auto', fontFamily:"-apple-system, sans-serif" }}>
+        <h2 style={{ marginBottom:16 }}>Evasione ordine {orderName}</h2>
+        {errore && <div style={{ color:'red' }}>{errore}</div>}
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          <input placeholder="Destinatario" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} />
+          <input placeholder="Telefono" value={form.telefono} onChange={e => setForm({...form, telefono: e.target.value})} />
+          <input placeholder="Email" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
+          <input placeholder="Indirizzo" value={form.indirizzo} onChange={e => setForm({...form, indirizzo: removeAccents(e.target.value)})} />
+          <input placeholder="Indirizzo 2" value={form.indirizzo2} onChange={e => setForm({...form, indirizzo2: removeAccents(e.target.value)})} />
+          <input placeholder="CAP" value={form.capDestinatario} onChange={e => setForm({...form, capDestinatario: e.target.value})} />
+          <input placeholder="Città" value={form.cittaDestinatario} onChange={e => setForm({...form, cittaDestinatario: e.target.value})} />
+          <input placeholder="Provincia" value={form.provinciaDestinatario} onChange={e => setForm({...form, provinciaDestinatario: e.target.value})} />
+        </div>
+        <button onClick={handleSimula} disabled={loading} style={{ marginTop:16 }}>Simula spedizione</button>
+        {spedizioni.map(s => (
+          <div key={s.id} style={{ marginTop:12, border:'1px solid #ddd', padding:8, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              {getCorriereIcon(s.corriere)}
+              <span>{s.corriere}</span>
+              <span>{parseFloat(s.tariffa).toFixed(2)} €</span>
             </div>
-
-            {step === "fetch" && (
-              <>
-                <div>
-                  <label className="block mb-1 font-medium">Seleziona Corriere</label>
-                  <select value={selectedCorriere ?? ""} onChange={e => setSelectedCorriere(e.target.value)} className="border rounded p-2 w-full">
-                    <option value="">-- Seleziona --</option>
-                    <option value="poste">Poste Italiane</option>
-                    <option value="brt">BRT</option>
-                    <option value="gls">GLS</option>
-                  </select>
-                </div>
-                <button onClick={simula} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded" disabled={!selectedCorriere || loading}>
-                  Simula Spedizione
-                </button>
-              </>
-            )}
-
-            {step === "simulato" && (
-              <button onClick={crea} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded" disabled={loading}>
-                Crea spedizione
-              </button>
-            )}
-
-            {step === "creato" && (
-              <button onClick={paga} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded" disabled={loading}>
-                Paga spedizione
-              </button>
-            )}
-
-            {step === "pagato" && (
-              <>
-                {data?.tracking_url && (
-                  <a href={data.tracking_url} target="_blank" rel="noreferrer" className="text-blue-600 underline">
-                    ➜ Stampa Lettera di Vettura
-                  </a>
-                )}
-                <button onClick={evadi} className="bg-black text-white px-4 py-2 rounded mt-2" disabled={loading}>
-                  Evadi ordine su Shopify
-                </button>
-              </>
-            )}
-
-            {step === "evaso" && <p className="text-green-600">Ordine evaso con successo ✅</p>}
+            <HoverButton onClick={() => handleCreaECompletaEPaga(s.id)} style={{ background:'#34c759', color:'#fff', padding:'6px 12px', borderRadius:6 }} disabled={loading}>
+              Crea & paga
+            </HoverButton>
           </div>
+        ))}
+        {spedizioni.length > 0 && (
+          <button onClick={() => handleEvadi({ spedizione: spedizioni[0] })} disabled={loading} style={{ marginTop:16 }}>
+            Evadi ordine
+          </button>
         )}
+        <button onClick={onClose} style={{ marginTop:24, background:'none', color:'#007aff', border:'none', cursor:'pointer' }}>Chiudi</button>
       </div>
-    </motion.div>
+    </div>
   );
 }
