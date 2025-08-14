@@ -1,97 +1,81 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import Image from 'next/image'
+import { useState } from 'react'
+import { Button } from '@mui/material'
 
 export default function ProduzionePage() {
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [data, setData] = useState<any[]>([])
+  const [orders, setOrders] = useState([])
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const fetchData = async () => {
-    if (!startDate || !endDate) return
+  const fetchOrders = async () => {
+    if (!from || !to) return alert('Seleziona entrambe le date')
     setLoading(true)
-    try {
-      const res = await fetch(`/api/orders/produzione?from=${startDate}&to=${endDate}`)
-      const json = await res.json()
-      setData(json)
-    } catch (e) {
-      console.error('Errore caricamento ordini:', e)
-    } finally {
-      setLoading(false)
-    }
+    const res = await fetch(`/api/shopify/orders?from=${from}&to=${to}`)
+    const json = await res.json()
+    if (json.ok) setOrders(json.orders)
+    else alert('Errore caricamento ordini')
+    setLoading(false)
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-start p-6 bg-white text-black">
-      <h1 className="text-3xl font-semibold mb-4">Produzione</h1>
+    <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
+      <h1 style={{ fontSize: '32px', marginBottom: '24px' }}>Produzione</h1>
 
-      <div className="flex gap-4 mb-6">
-        <input
-          type="date"
-          className="border px-3 py-2 rounded"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-        />
-        <input
-          type="date"
-          className="border px-3 py-2 rounded"
-          value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
-        />
-        <button
-          onClick={fetchData}
-          className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
-        >
-          Carica ordini
-        </button>
+      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
+        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        <Button variant="contained" onClick={fetchOrders} disabled={loading}>
+          {loading ? 'Caricamento...' : 'Carica Ordini'}
+        </Button>
       </div>
 
-      {loading && <p>Caricamento in corso...</p>}
-
-      {!loading && data.length > 0 && (
-        <table className="w-full max-w-6xl border-collapse border text-sm">
-          <thead>
-            <tr className="bg-gray-200 text-left">
-              <th className="p-2 border">Data</th>
-              <th className="p-2 border">Ordine</th>
-              <th className="p-2 border">Tipologia</th>
-              <th className="p-2 border">Taglia</th>
-              <th className="p-2 border">Colore</th>
-              <th className="p-2 border">Preview</th>
-              <th className="p-2 border">Stampato</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((item, index) => (
-              <tr key={index} className="border-t">
-                <td className="p-2 border whitespace-nowrap">{item.data}</td>
-                <td className="p-2 border">{item.order}</td>
-                <td className="p-2 border">{item.tipologia}</td>
-                <td className="p-2 border uppercase">{item.taglia}</td>
-                <td className="p-2 border capitalize">{item.colore}</td>
-                <td className="p-2 border">
-                  <Image
-                    src={item.image || '/placeholder.png'}
-                    alt="preview"
-                    width={60}
-                    height={60}
-                    className="rounded border"
-                  />
+      <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '12px', overflow: 'hidden' }}>
+        <thead style={{ background: '#f1f1f1' }}>
+          <tr>
+            <th style={th}>Ordine</th>
+            <th style={th}>Prodotto</th>
+            <th style={th}>Taglia</th>
+            <th style={th}>Colore</th>
+            <th style={th}>Preview</th>
+            <th style={th}>Stampato</th>
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map((order) =>
+            order.line_items.map((item, idx) => (
+              <tr key={order.id + '-' + idx} style={{ borderBottom: '1px solid #eee' }}>
+                <td style={td}>{order.name}</td>
+                <td style={td}>{item.title}</td>
+                <td style={td}>{item.variant_title?.split(' / ')[0] || '-'}</td>
+                <td style={td}>{item.variant_title?.split(' / ')[1] || '-'}</td>
+                <td style={td}>
+                  {item.image?.src ? (
+                    <img src={item.image.src} alt="preview" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} />
+                  ) : (
+                    '—'
+                  )}
                 </td>
-                <td className="p-2 border text-center">
-                  <input type="checkbox" className="w-4 h-4" />
-                </td>
+                <td style={td}><input type="checkbox" /></td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {!loading && data.length === 0 && (
-        <p className="mt-4 text-gray-500">Nessun ordine trovato.</p>
-      )}
+            ))
+          )}
+        </tbody>
+      </table>
     </div>
   )
+}
+
+const th = {
+  textAlign: 'left',
+  padding: '12px',
+  fontWeight: 'bold',
+  fontSize: '14px',
+  background: '#fafafa',
+}
+
+const td = {
+  padding: '12px',
+  fontSize: '14px',
 }
