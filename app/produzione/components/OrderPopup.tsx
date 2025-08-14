@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Loader2 } from 'lucide-react'
 
@@ -9,32 +9,23 @@ function removeAccents(str: string) {
 }
 
 export default function OrderPopup({
-  orderName,
+  ordine,
   onClose,
   onEvadi,
 }: {
-  orderName: string
-  onClose: () => void
+  ordine: { order_name: string, shopify_order_id: string, indirizzo: string },
+  onClose: () => void,
   onEvadi: () => void
 }) {
-  const [indirizzo, setIndirizzo] = useState('')
   const [corrieri, setCorrieri] = useState([])
   const [selectedCorriere, setSelectedCorriere] = useState('')
   const [ldv, setLdv] = useState('')
   const [idSpedizione, setIdSpedizione] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const cercaIndirizzo = async () => {
-    setLoading(true)
-    const res = await fetch(`/api/shopify/indirizzo?orderName=${orderName}`)
-    const json = await res.json()
-    if (json && json.indirizzo) setIndirizzo(json.indirizzo)
-    setLoading(false)
-  }
-
   const simulaSpedizione = async () => {
     setLoading(true)
-    const res = await fetch(`/api/spediamo?step=simula&shopifyOrderId=${orderName}`)
+    const res = await fetch(`/api/spediamo?step=simula&shopifyOrderId=${ordine.shopify_order_id}`)
     const json = await res.json()
     if (json?.corrieri) setCorrieri(json.corrieri)
     setLoading(false)
@@ -44,7 +35,7 @@ export default function OrderPopup({
     if (!selectedCorriere) return
     setLoading(true)
     const res = await fetch(
-      `/api/spediamo?step=create&shopifyOrderId=${orderName}&corriere=${removeAccents(selectedCorriere)}`
+      `/api/spediamo?step=create&shopifyOrderId=${ordine.shopify_order_id}&corriere=${removeAccents(selectedCorriere)}`
     )
     const json = await res.json()
     if (json?.id) {
@@ -65,20 +56,16 @@ export default function OrderPopup({
   const evadiOrdine = async () => {
     if (!idSpedizione || !ldv) return
     setLoading(true)
-    await fetch(`/api/shopify/evadi?orderName=${orderName}&trackingUrl=${ldv}`)
+    await fetch(`/api/shopify/evadi?orderName=${ordine.order_name}&trackingUrl=${ldv}`)
     onEvadi()
     setLoading(false)
   }
-
-  useEffect(() => {
-    cercaIndirizzo()
-  }, [orderName])
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 w-full max-w-xl relative">
         <button onClick={onClose} className="absolute top-3 right-4 text-lg">×</button>
-        <h2 className="text-xl font-bold mb-2">Gestione ordine <span className="text-blue-600">{orderName}</span></h2>
+        <h2 className="text-xl font-bold mb-2">Gestione ordine <span className="text-blue-600">{ordine.order_name}</span></h2>
 
         {loading ? (
           <div className="flex items-center justify-center h-32">
@@ -86,9 +73,9 @@ export default function OrderPopup({
           </div>
         ) : (
           <>
-            {indirizzo && (
+            {ordine.indirizzo && (
               <div className="mb-4 text-sm border p-3 rounded">
-                <strong>Indirizzo:</strong><br />{indirizzo}
+                <strong>Indirizzo:</strong><br />{ordine.indirizzo}
               </div>
             )}
 
