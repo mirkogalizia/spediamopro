@@ -2,12 +2,14 @@
 import { Drawer, List, ListItem, ListItemIcon, ListItemText } from "@mui/material";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
+import FactoryIcon from "@mui/icons-material/Factory";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const nav = [
   { href: "/", label: "Spedizioni", icon: <LocalShippingIcon fontSize="large" /> },
   { href: "/products/sales", label: "Stock", icon: <Inventory2Icon fontSize="large" /> },
+  { href: "/produzione", label: "Produzione", icon: <FactoryIcon fontSize="large" /> },
 ];
 
 export default function Sidebar() {
