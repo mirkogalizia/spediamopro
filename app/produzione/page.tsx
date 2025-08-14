@@ -1,136 +1,130 @@
-"use client";
+'use client'
 
-import React, { useEffect, useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { DateRange } from "react-day-picker";
-import { format } from "date-fns";
-import { it } from "date-fns/locale";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import { CalendarIcon } from "lucide-react";
+import React, { useState } from 'react'
+import Image from 'next/image'
+
+interface RigaProduzione {
+  tipo_prodotto: string
+  taglia: string
+  colore: string
+  grafica: string
+  immagine: string | null
+  order_name: string
+  created_at: string
+  variant_id: number
+  variant_title: string
+}
 
 export default function ProduzionePage() {
-  const [date, setDate] = useState<DateRange | undefined>();
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [righe, setRighe] = useState<RigaProduzione[]>([])
+  const [stampati, setStampati] = useState<{ [key: number]: boolean }>({})
+  const [loading, setLoading] = useState(false)
+  const [from, setFrom] = useState<string>('')
+  const [to, setTo] = useState<string>('')
 
-  const fetchData = async () => {
-    if (!date?.from || !date?.to) return;
+  const fetchProduzione = async () => {
+    if (!from || !to) return;
     setLoading(true);
-    const res = await fetch("/api/produzione", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ from: date.from, to: date.to }),
-    });
-    const json = await res.json();
-    setData(json);
-    setLoading(false);
-  };
+    try {
+      const res = await fetch(`/api/produzione?from=${from}&to=${to}`)
+      const data = await res.json()
+      if (data.ok) {
+        setRighe(data.produzione)
+        const saved = localStorage.getItem('stampati')
+        if (saved) setStampati(JSON.parse(saved))
+      }
+    } catch (e) {
+      console.error('Errore fetch produzione:', e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const toggleStampato = (variant_id: number) => {
+    const updated = { ...stampati, [variant_id]: !stampati[variant_id] }
+    setStampati(updated)
+    localStorage.setItem('stampati', JSON.stringify(updated))
+  }
 
   return (
-    <div style={{ padding: 32, display: "flex", justifyContent: "center" }}>
-      <Card style={{ width: "100%", maxWidth: 1400 }}>
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold mb-2">Produzione</CardTitle>
-          <div className="flex items-center gap-4">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  id="date"
-                  variant={"outline"}
-                  className="w-[300px] justify-start text-left font-normal"
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {date?.from ? (
-                    date.to ? (
-                      <span>
-                        {format(date.from, "dd MMM yyyy", { locale: it })} -{" "}
-                        {format(date.to, "dd MMM yyyy", { locale: it })}
-                      </span>
-                    ) : (
-                      format(date.from, "dd MMM yyyy", { locale: it })
-                    )
-                  ) : (
-                    <span>Seleziona un intervallo</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  initialFocus
-                  mode="range"
-                  defaultMonth={new Date()}
-                  selected={date}
-                  onSelect={setDate}
-                  numberOfMonths={2}
-                />
-              </PopoverContent>
-            </Popover>
-            <Button onClick={fetchData} disabled={!date?.from || !date?.to || loading}>
-              {loading ? "Caricamento..." : "Carica ordini"}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Ordine</TableHead>
-                <TableHead>Prodotto</TableHead>
-                <TableHead>Colore</TableHead>
-                <TableHead>Taglia</TableHead>
-                <TableHead>Preview</TableHead>
-                <TableHead>Stampato</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map((item, i) => (
-                <TableRow key={i}>
-                  <TableCell>{item.orderNumber}</TableCell>
-                  <TableCell>{item.productType}</TableCell>
-                  <TableCell>{item.color}</TableCell>
-                  <TableCell>{item.size}</TableCell>
-                  <TableCell>
-                    {item.image ? (
-                      <img
-                        src={item.image}
-                        alt="Preview"
-                        style={{
-                          width: 64,
-                          height: 64,
-                          objectFit: "cover",
-                          borderRadius: 8,
-                        }}
+    <div style={{ padding: '64px 32px', display: 'flex', justifyContent: 'center', minHeight: '100vh', fontFamily: 'Inter, sans-serif', background: '#f5f5f7' }}>
+      <div style={{ width: '100%', maxWidth: '1200px' }}>
+        <h1 style={{ fontSize: '32px', fontWeight: 700, marginBottom: '24px' }}>📦 Produzione</h1>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+          <label>Da:</label>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <label>A:</label>
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          <button
+            onClick={fetchProduzione}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#007aff',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            Carica ordini
+          </button>
+        </div>
+
+        {loading ? (
+          <p style={{ color: '#888' }}>Caricamento in corso...</p>
+        ) : (
+          <div style={{ overflowX: 'auto', background: 'white', borderRadius: '16px', boxShadow: '0 4px 24px rgba(0,0,0,0.05)' }}>
+            <table style={{ width: '100%', fontSize: '15px', borderCollapse: 'collapse' }}>
+              <thead style={{ background: '#f5f5f7' }}>
+                <tr>
+                  <th style={{ padding: '16px', textAlign: 'left' }}>✓</th>
+                  <th style={{ padding: '16px', textAlign: 'left' }}>Ordine</th>
+                  <th style={{ padding: '16px', textAlign: 'left' }}>Tipo</th>
+                  <th style={{ padding: '16px', textAlign: 'left' }}>Colore</th>
+                  <th style={{ padding: '16px', textAlign: 'left' }}>Taglia</th>
+                  <th style={{ padding: '16px', textAlign: 'left' }}>Grafica</th>
+                  <th style={{ padding: '16px', textAlign: 'left' }}>Preview</th>
+                </tr>
+              </thead>
+              <tbody>
+                {righe.map((riga) => (
+                  <tr key={riga.variant_id + '-' + riga.order_name} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '16px' }}>
+                      <input
+                        type="checkbox"
+                        checked={!!stampati[riga.variant_id]}
+                        onChange={() => toggleStampato(riga.variant_id)}
+                        style={{ transform: 'scale(1.4)' }}
                       />
-                    ) : (
-                      <span style={{ fontStyle: "italic", color: "#999" }}>
-                        Nessuna immagine
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <input type="checkbox" />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                    </td>
+                    <td style={{ padding: '16px', fontFamily: 'monospace' }}>{riga.order_name}</td>
+                    <td style={{ padding: '16px' }}>{riga.tipo_prodotto}</td>
+                    <td style={{ padding: '16px', textTransform: 'capitalize' }}>{riga.colore}</td>
+                    <td style={{ padding: '16px', textTransform: 'uppercase' }}>{riga.taglia}</td>
+                    <td style={{ padding: '16px', color: '#666' }}>{riga.grafica}</td>
+                    <td style={{ padding: '16px' }}>
+                      {riga.immagine ? (
+                        <div style={{ width: '60px', height: '60px', position: 'relative' }}>
+                          <Image
+                            src={riga.immagine}
+                            alt={riga.grafica}
+                            fill
+                            style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
+                          />
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: '12px', color: '#ccc' }}>N/A</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
-  );
+  )
 }
