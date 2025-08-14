@@ -9,6 +9,7 @@ interface RigaProduzione {
   colore: string
   grafica: string
   immagine: string | null
+  immagine_prodotto: string | null // <- aggiunto per il fallback
   order_name: string
   created_at: string
   variant_id: number
@@ -105,10 +106,10 @@ export default function ProduzionePage() {
                     <td style={{ padding: '16px', textTransform: 'uppercase' }}>{riga.taglia}</td>
                     <td style={{ padding: '16px', color: '#666' }}>{riga.grafica}</td>
                     <td style={{ padding: '16px' }}>
-                      {riga.immagine ? (
+                      {(riga.immagine || riga.immagine_prodotto) ? (
                         <div style={{ width: '60px', height: '60px', position: 'relative' }}>
                           <Image
-                            src={riga.immagine}
+                            src={riga.immagine || riga.immagine_prodotto!}
                             alt={riga.grafica}
                             fill
                             style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
