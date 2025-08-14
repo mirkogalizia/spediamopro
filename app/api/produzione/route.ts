@@ -1,24 +1,23 @@
-// app/api/produzione/route.ts
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
-const SHOPIFY_API_VERSION = "2023-10";
+const SHOPIFY_API_VERSION = '2023-10';
 
-const TAGLIE_SET = new Set(["xs", "s", "m", "l", "xl"]);
+const TAGLIE_SET = new Set(['xs', 's', 'm', 'l', 'xl']);
 
 function parseVarTitle(title: string | null | undefined): { size: string; color: string } {
-  const raw = (title ?? "").split("/").map(p => p.trim()).filter(Boolean);
-  if (raw.length === 0) return { size: "", color: "" };
+  const raw = (title ?? '').split('/').map(p => p.trim()).filter(Boolean);
+  if (raw.length === 0) return { size: '', color: '' };
   if (raw.length === 1) {
     const t0 = raw[0].toLowerCase();
-    return TAGLIE_SET.has(t0) ? { size: t0, color: "" } : { size: "", color: t0 };
+    return TAGLIE_SET.has(t0) ? { size: t0, color: '' } : { size: '', color: t0 };
   }
-  const a = raw[0], b = raw[1];
+  const [a, b] = raw;
   const aIsSize = TAGLIE_SET.has(a.toLowerCase());
   const bIsSize = TAGLIE_SET.has(b.toLowerCase());
   if (aIsSize && !bIsSize) return { size: a, color: b };
@@ -29,8 +28,8 @@ function parseVarTitle(title: string | null | undefined): { size: string; color:
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const from = searchParams.get("from");
-    const to = searchParams.get("to");
+    const from = searchParams.get('from');
+    const to = searchParams.get('to');
 
     if (!from || !to) {
       return NextResponse.json({ ok: false, error: "'from' e 'to' sono obbligatori" }, { status: 400 });
@@ -44,10 +43,10 @@ export async function GET(req: Request) {
 
     while (nextUrl) {
       const response = await fetch(nextUrl, {
-        method: "GET",
+        method: 'GET',
         headers: {
-          "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-          "Content-Type": "application/json",
+          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+          'Content-Type': 'application/json',
         },
       });
 
@@ -59,13 +58,9 @@ export async function GET(req: Request) {
       const json = await response.json();
       allOrders.push(...(json.orders || []));
 
-      const linkHeader = response.headers.get("Link");
-      if (linkHeader) {
-        const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-        nextUrl = match && match[1] ? match[1] : null;
-      } else {
-        nextUrl = null;
-      }
+      const linkHeader = response.headers.get('Link');
+      const match = linkHeader?.match(/<([^>]+)>;\s*rel="next"/);
+      nextUrl = match?.[1] || null;
     }
 
     const produzioneRows: any[] = [];
@@ -73,32 +68,60 @@ export async function GET(req: Request) {
     for (const order of allOrders) {
       for (const item of order.line_items) {
         const variantId = item.variant_id;
-
-        // Recupera immagine variante
+        const productId = item.product_id;
         let variantImage = null;
+
+        // 1. Prova con /variants/{id}
         try {
           const variantRes = await fetch(
             `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/variants/${variantId}.json`,
             {
-              method: "GET",
+              method: 'GET',
               headers: {
-                "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-                "Content-Type": "application/json",
+                'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+                'Content-Type': 'application/json',
               },
             }
           );
+
           if (variantRes.ok) {
             const variantJson = await variantRes.json();
             variantImage = variantJson?.variant?.image?.src || null;
           }
-        } catch (err) {
-          console.warn(`Impossibile recuperare immagine per variante ${variantId}`);
+        } catch {}
+
+        // 2. Fallback da line item
+        if (!variantImage && item.image?.src) {
+          variantImage = item.image.src;
+        }
+
+        // 3. Fallback da product.images
+        if (!variantImage && productId) {
+          try {
+            const productRes = await fetch(
+              `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${productId}.json`,
+              {
+                method: 'GET',
+                headers: {
+                  'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
+            if (productRes.ok) {
+              const productJson = await productRes.json();
+              const image = productJson.product.images.find((img: any) =>
+                img.variant_ids.includes(variantId)
+              );
+              if (image) variantImage = image.src;
+            }
+          } catch {}
         }
 
         const { size, color } = parseVarTitle(item.variant_title);
 
         produzioneRows.push({
-          tipo_prodotto: item.product_type || item.title.split(" ")[0],
+          tipo_prodotto: item.product_type || item.title.split(' ')[0],
           variant_title: item.variant_title || '',
           taglia: size,
           colore: color,
@@ -114,8 +137,7 @@ export async function GET(req: Request) {
     produzioneRows.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
     return NextResponse.json({ ok: true, produzione: produzioneRows });
-
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message || "Errore interno server" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: e.message || 'Errore interno server' }, { status: 500 });
   }
 }
