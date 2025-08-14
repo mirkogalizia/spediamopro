@@ -211,15 +211,21 @@ export default function ProduzionePage() {
           </>
         )}
       </div>
-      {popupOrder && <OrderPopup orderName={popupOrder} onClose={() => setPopupOrder(null)} onEvadi={() => {
-        setStampati(prev => {
-          const aggiornato = { ...prev }
-          righe.filter(r => r.order_name === popupOrder).forEach(r => aggiornato[r.variant_id] = true)
-          localStorage.setItem('stampati', JSON.stringify(aggiornato))
-          return aggiornato
-        })
-        setPopupOrder(null)
-      }} />}
-    </div>
-  )
-}
+     {popupOrder && (
+  <OrderPopup
+    orderName={popupOrder}
+    onClose={() => setPopupOrder(null)}
+    onEvadi={() => {
+      setStampati(prev => {
+        const aggiornato = { ...prev }
+        righe
+          .filter(r => r.order_name === popupOrder)
+          .forEach(r => aggiornato[r.variant_id] = true)
+        localStorage.setItem('stampati', JSON.stringify(aggiornato))
+        return aggiornato
+      })
+      // il popup si chiude già da dentro il componente → opzionale:
+      // setPopupOrder(null)
+    }}
+  />
+)}
