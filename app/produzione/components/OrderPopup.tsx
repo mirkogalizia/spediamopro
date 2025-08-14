@@ -1,134 +1,130 @@
-"use client";
+'use client'
 
-import { useEffect, useState } from "react";
-import { removeAccents } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Loader2 } from 'lucide-react'
 
-export default function OrderPopup({ orderName, onClose, onEvadi }: { orderName: string, onClose: () => void, onEvadi: () => void }) {
-  const [form, setForm] = useState({
-    nome: "",
-    telefono: "",
-    email: "",
-    indirizzo: "",
-    indirizzo2: "",
-    capDestinatario: "",
-    cittaDestinatario: "",
-    provinciaDestinatario: "",
-    nazioneDestinatario: "",
-    corriere: "",
-    orderName,
-  });
-  const [corrieri, setCorrieri] = useState<string[]>([]);
-  const [etichetta, setEtichetta] = useState<string>("");
-  const [errore, setErrore] = useState<string>("");
-  const [loading, setLoading] = useState(false);
+function removeAccents(str: string) {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
 
-  useEffect(() => {
-    const hadir = async () => {
-      try {
-        const res = await fetch(`/api/shopify?name=${encodeURIComponent(orderName)}`);
-        const { orders } = await res.json();
-        const ord = orders?.[0];
-        if (!ord) {
-          setErrore("Ordine non trovato");
-          return;
-        }
+export default function OrderPopup({
+  orderName,
+  onClose,
+  onEvadi,
+}: {
+  orderName: string
+  onClose: () => void
+  onEvadi: () => void
+}) {
+  const [indirizzo, setIndirizzo] = useState('')
+  const [corrieri, setCorrieri] = useState([])
+  const [selectedCorriere, setSelectedCorriere] = useState('')
+  const [ldv, setLdv] = useState('')
+  const [idSpedizione, setIdSpedizione] = useState('')
+  const [loading, setLoading] = useState(false)
 
-        const ship = ord.shipping_address || {};
-        setForm(f => ({
-          ...f,
-          nome: `${ship.first_name || ""} ${ship.last_name || ""}`.trim(),
-          telefono: ship.phone || "",
-          email: ord.email || "",
-          indirizzo: removeAccents(ship.address1 || ""),
-          indirizzo2: removeAccents(ship.address2 || ""),
-          capDestinatario: ship.zip || "",
-          cittaDestinatario: removeAccents(ship.city || ""),
-          provinciaDestinatario: ship.country_code === "IT" ? ship.province_code || "" : ship.province || ship.province_code || "",
-          nazioneDestinatario: ship.country_code || "",
-        }));
-      } catch (e) {
-        console.error(e);
-        setErrore("Errore nel caricamento ordine");
-      }
-    };
-    hadir();
-  }, [orderName]);
+  const cercaIndirizzo = async () => {
+    setLoading(true)
+    const res = await fetch(`/api/shopify/indirizzo?orderName=${orderName}`)
+    const json = await res.json()
+    if (json && json.indirizzo) setIndirizzo(json.indirizzo)
+    setLoading(false)
+  }
 
-  const simula = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/spediamo?step=simulate", {
-        method: "POST",
-        body: JSON.stringify(form)
-      });
-      const data = await res.json();
-      if (data?.data?.tariffs) {
-        setCorrieri(data.data.tariffs.map((c: any) => c.carrier_name));
-      }
-    } catch (err) {
-      setErrore("Errore nella simulazione");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const simulaSpedizione = async () => {
+    setLoading(true)
+    const res = await fetch(`/api/spediamo?step=simula&shopifyOrderId=${orderName}`)
+    const json = await res.json()
+    if (json?.corrieri) setCorrieri(json.corrieri)
+    setLoading(false)
+  }
 
   const creaSpedizione = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/spediamo?step=create", {
-        method: "POST",
-        body: JSON.stringify(form)
-      });
-      const data = await res.json();
-      if (data?.data?.tracking_number && data?.data?.label_url) {
-        setEtichetta(data.data.label_url);
-      } else {
-        setErrore("Errore nella creazione della spedizione");
-      }
-    } catch (err) {
-      setErrore("Errore nella creazione della spedizione");
-    } finally {
-      setLoading(false);
+    if (!selectedCorriere) return
+    setLoading(true)
+    const res = await fetch(
+      `/api/spediamo?step=create&shopifyOrderId=${orderName}&corriere=${removeAccents(selectedCorriere)}`
+    )
+    const json = await res.json()
+    if (json?.id) {
+      setIdSpedizione(json.id)
+      await pagaSpedizione(json.id)
     }
-  };
+    setLoading(false)
+  }
+
+  const pagaSpedizione = async (id: string) => {
+    setLoading(true)
+    const res = await fetch(`/api/spediamo?step=pay&id=${id}`)
+    const json = await res.json()
+    if (json?.ldv) setLdv(json.ldv)
+    setLoading(false)
+  }
+
+  const evadiOrdine = async () => {
+    if (!idSpedizione || !ldv) return
+    setLoading(true)
+    await fetch(`/api/shopify/evadi?orderName=${orderName}&trackingUrl=${ldv}`)
+    onEvadi()
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    cercaIndirizzo()
+  }, [orderName])
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-xl p-6 rounded-xl shadow-xl">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Gestione ordine: {orderName}</h2>
-          <button onClick={onClose}>✕</button>
-        </div>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl p-6 w-full max-w-xl relative">
+        <button onClick={onClose} className="absolute top-3 right-4 text-lg">×</button>
+        <h2 className="text-xl font-bold mb-2">Gestione ordine <span className="text-blue-600">{orderName}</span></h2>
 
-        {errore && <p className="text-red-500 mb-4">{errore}</p>}
-
-        {!etichetta ? (
-          <>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <label className="block text-sm font-medium">Corriere</label>
-                <select
-                  className="w-full border rounded px-2 py-1"
-                  value={form.corriere}
-                  onChange={e => setForm(f => ({ ...f, corriere: e.target.value }))}
-                >
-                  <option value="">Seleziona</option>
-                  {corrieri.map((c, i) => <option key={i} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <Button onClick={simula} disabled={loading}>Simula {loading && <Loader2 className="animate-spin ml-2 w-4 h-4" />}</Button>
-              <Button onClick={creaSpedizione} disabled={loading}>Crea e Paga {loading && <Loader2 className="animate-spin ml-2 w-4 h-4" />}</Button>
-            </div>
-          </>
-        ) : (
-          <div className="space-y-4">
-            <a href={etichetta} target="_blank" className="text-blue-600 underline block">Scarica Lettera di Vettura</a>
-            <Button onClick={onEvadi}>Evadi Ordine</Button>
+        {loading ? (
+          <div className="flex items-center justify-center h-32">
+            <Loader2 className="animate-spin w-6 h-6" />
           </div>
+        ) : (
+          <>
+            {indirizzo && (
+              <div className="mb-4 text-sm border p-3 rounded">
+                <strong>Indirizzo:</strong><br />{indirizzo}
+              </div>
+            )}
+
+            {corrieri.length === 0 && (
+              <Button onClick={simulaSpedizione} className="w-full mb-3">Simula spedizione</Button>
+            )}
+
+            {corrieri.length > 0 && !idSpedizione && (
+              <>
+                <select
+                  value={selectedCorriere}
+                  onChange={(e) => setSelectedCorriere(e.target.value)}
+                  className="w-full p-2 border rounded mb-3"
+                >
+                  <option value="">Seleziona corriere</option>
+                  {corrieri.map((c: string) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <Button onClick={creaSpedizione} className="w-full">Crea e paga spedizione</Button>
+              </>
+            )}
+
+            {ldv && (
+              <div className="mt-4 space-y-2">
+                <a href={ldv} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline block">
+                  📦 Stampa Lettera di Vettura
+                </a>
+                <Button onClick={evadiOrdine} className="w-full bg-green-600 hover:bg-green-700">
+                  ✅ Evadi ordine
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
-  );
+  )
 }
