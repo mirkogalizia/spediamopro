@@ -12,6 +12,7 @@ interface RigaProduzione {
   order_name: string
   created_at: string
   variant_id: number
+  variant_title: string
 }
 
 export default function ProduzionePage() {
@@ -39,7 +40,15 @@ export default function ProduzionePage() {
         const res = await fetch(`/api/produzione?from=${from}&to=${to}`)
         const data = await res.json()
         if (data.ok) {
-          setRighe(data.produzione)
+          const righeConTagliaColore = data.produzione.map((r: any) => {
+            const parts = (r.variant_title || '').split('/').map((s: string) => s.trim())
+            return {
+              ...r,
+              taglia: parts.find((p: string) => /^(xs|s|m|l|xl)$/i.test(p)) || '',
+              colore: parts.find((p: string) => !/^(xs|s|m|l|xl)$/i.test(p)) || '',
+            }
+          })
+          setRighe(righeConTagliaColore)
           const saved = localStorage.getItem('stampati')
           if (saved) setStampati(JSON.parse(saved))
         }
@@ -60,63 +69,60 @@ export default function ProduzionePage() {
   }
 
   return (
-    <div className="p-8 pt-6 pl-[250px] bg-gray-50 min-h-screen font-sans">
-      <h1 className="text-3xl font-semibold text-gray-900 mb-6">📦 Produzione</h1>
+    <div style={{ padding: '64px 32px', maxWidth: '1200px', margin: '0 auto', fontFamily: 'Inter, sans-serif' }}>
+      <h1 style={{ fontSize: '32px', fontWeight: 700, marginBottom: '24px' }}>📦 Produzione</h1>
 
-      <div className="flex items-center gap-4 mb-4">
-        <label className="text-sm">Da:</label>
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="border p-2 rounded-md" />
-        <label className="text-sm">A:</label>
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="border p-2 rounded-md" />
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+        <label>Da:</label>
+        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        <label>A:</label>
+        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
       </div>
 
       {loading ? (
-        <p className="text-gray-500">Caricamento in corso...</p>
+        <p style={{ color: '#888' }}>Caricamento in corso...</p>
       ) : (
-        <div className="overflow-x-auto bg-white shadow-md rounded-xl">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-100 text-gray-700 text-left">
+        <div style={{ overflowX: 'auto', background: 'white', borderRadius: '16px', boxShadow: '0 4px 24px rgba(0,0,0,0.05)' }}>
+          <table style={{ width: '100%', fontSize: '15px', borderCollapse: 'collapse' }}>
+            <thead style={{ background: '#f5f5f7' }}>
               <tr>
-                <th className="px-4 py-3">Stampato</th>
-                <th className="px-4 py-3">Ordine</th>
-                <th className="px-4 py-3">Tipo</th>
-                <th className="px-4 py-3">Colore</th>
-                <th className="px-4 py-3">Taglia</th>
-                <th className="px-4 py-3">Grafica</th>
-                <th className="px-4 py-3">Preview</th>
+                <th style={{ padding: '16px', textAlign: 'left' }}>✓</th>
+                <th style={{ padding: '16px', textAlign: 'left' }}>Ordine</th>
+                <th style={{ padding: '16px', textAlign: 'left' }}>Tipo</th>
+                <th style={{ padding: '16px', textAlign: 'left' }}>Colore</th>
+                <th style={{ padding: '16px', textAlign: 'left' }}>Taglia</th>
+                <th style={{ padding: '16px', textAlign: 'left' }}>Grafica</th>
+                <th style={{ padding: '16px', textAlign: 'left' }}>Preview</th>
               </tr>
             </thead>
             <tbody>
               {righe.map((riga) => (
-                <tr
-                  key={riga.variant_id + '-' + riga.order_name}
-                  className="border-b hover:bg-gray-50 transition"
-                >
-                  <td className="px-4 py-3">
+                <tr key={riga.variant_id + '-' + riga.order_name} style={{ borderBottom: '1px solid #eee' }}>
+                  <td style={{ padding: '16px' }}>
                     <input
                       type="checkbox"
                       checked={!!stampati[riga.variant_id]}
                       onChange={() => toggleStampato(riga.variant_id)}
-                      className="scale-125 accent-green-600"
+                      style={{ transform: 'scale(1.4)' }}
                     />
                   </td>
-                  <td className="px-4 py-3 font-mono">{riga.order_name}</td>
-                  <td className="px-4 py-3">{riga.tipo_prodotto}</td>
-                  <td className="px-4 py-3 capitalize">{riga.colore}</td>
-                  <td className="px-4 py-3 uppercase">{riga.taglia}</td>
-                  <td className="px-4 py-3 text-gray-600">{riga.grafica}</td>
-                  <td className="px-4 py-3">
+                  <td style={{ padding: '16px', fontFamily: 'monospace' }}>{riga.order_name}</td>
+                  <td style={{ padding: '16px' }}>{riga.tipo_prodotto}</td>
+                  <td style={{ padding: '16px', textTransform: 'capitalize' }}>{riga.colore}</td>
+                  <td style={{ padding: '16px', textTransform: 'uppercase' }}>{riga.taglia}</td>
+                  <td style={{ padding: '16px', color: '#666' }}>{riga.grafica}</td>
+                  <td style={{ padding: '16px' }}>
                     {riga.immagine ? (
-                      <div className="w-14 h-14 relative">
+                      <div style={{ width: '60px', height: '60px', position: 'relative' }}>
                         <Image
                           src={riga.immagine}
                           alt={riga.grafica}
                           fill
-                          className="object-contain rounded-md border"
+                          style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
                         />
                       </div>
                     ) : (
-                      <span className="text-xs text-gray-400">N/A</span>
+                      <span style={{ fontSize: '12px', color: '#ccc' }}>N/A</span>
                     )}
                   </td>
                 </tr>
