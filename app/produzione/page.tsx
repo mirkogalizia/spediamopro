@@ -52,8 +52,8 @@ export default function ProduzionePage() {
   const [from, setFrom] = useState<string>('')
   const [to, setTo] = useState<string>('')
 
-  const [excludeGrafica, setExcludeGrafica] = useState<Set<string>>(new Set());
-  const [excludeBlank, setExcludeBlank] = useState<Set<string>>(new Set());
+  const [excludeGrafica, setExcludeGrafica] = useState<Set<string>>(new Set())
+  const [excludeBlank, setExcludeBlank] = useState<Set<string>>(new Set())
 
   const fetchProduzione = async () => {
     if (!from || !to) return;
@@ -79,6 +79,15 @@ export default function ProduzionePage() {
     localStorage.setItem('stampati', JSON.stringify(updated))
   }
 
+  const handleMissDTF = (grafica: string) => {
+    setExcludeGrafica(new Set([...Array.from(excludeGrafica), grafica]))
+  }
+
+  const handleMissBlank = (tipo: string, taglia: string, colore: string) => {
+    const key = `${tipo}|||${taglia}|||${colore}`;
+    setExcludeBlank(new Set([...Array.from(excludeBlank), key]))
+  }
+
   const renderColorePallino = (nome: string) => {
     const colore = COLORI_MAP[nome.toUpperCase()] || '#999';
     return (
@@ -99,25 +108,9 @@ export default function ProduzionePage() {
     return index === 0 || righe[index].order_name !== righe[index - 1].order_name;
   }
 
-  const filteredRighe = righe.filter((r) => {
-    if (excludeGrafica.has(r.grafica)) return false;
-    const blankKey = `${r.tipo_prodotto}|${r.taglia}|${r.colore}`;
-    if (excludeBlank.has(blankKey)) return false;
-    return true;
-  });
-
-  const handleMissDTF = (grafica: string) => {
-    setExcludeGrafica(new Set([...excludeGrafica, grafica]));
-  }
-
-  const handleMissBlank = (tipo: string, taglia: string, colore: string) => {
-    const key = `${tipo}|${taglia}|${colore}`;
-    setExcludeBlank(new Set([...excludeBlank, key]));
-  }
-
   const totaliMagazzino = useMemo(() => {
     const map = new Map<string, Map<string, number>>();
-    for (const riga of filteredRighe) {
+    for (const riga of righe) {
       const tipo = riga.tipo_prodotto;
       const key = `${riga.colore.toUpperCase()} | ${riga.taglia.toUpperCase()}`;
       if (!map.has(tipo)) map.set(tipo, new Map());
@@ -125,7 +118,14 @@ export default function ProduzionePage() {
       inner.set(key, (inner.get(key) || 0) + 1);
     }
     return map;
-  }, [filteredRighe]);
+  }, [righe]);
+
+  const righeFiltrate = righe.filter(riga => {
+    if (excludeGrafica.has(riga.grafica)) return false;
+    const key = `${riga.tipo_prodotto}|||${riga.taglia}|||${riga.colore}`;
+    if (excludeBlank.has(key)) return false;
+    return true;
+  });
 
   return (
     <div style={{ padding: '64px 32px', display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: '100vh', fontFamily: 'Inter, sans-serif', background: '#f5f5f7' }}>
@@ -167,13 +167,13 @@ export default function ProduzionePage() {
                     <th style={{ padding: '20px', textAlign: 'left' }}>Colore</th>
                     <th style={{ padding: '20px', textAlign: 'left' }}>Taglia</th>
                     <th style={{ padding: '20px', textAlign: 'left' }}>Preview</th>
-                    <th style={{ padding: '20px', textAlign: 'center' }}>❌ miss dtf</th>
-                    <th style={{ padding: '20px', textAlign: 'center' }}>❌ miss blank</th>
+                    <th style={{ padding: '20px', textAlign: 'center' }}>❌ Miss DTF</th>
+                    <th style={{ padding: '20px', textAlign: 'center' }}>❌ Miss Blank</th>
                     <th style={{ padding: '20px', textAlign: 'right' }}>Stampato</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRighe.map((riga, index) => (
+                  {righeFiltrate.map((riga, index) => (
                     <tr
                       key={riga.variant_id + '-' + riga.order_name}
                       style={{
@@ -195,11 +195,11 @@ export default function ProduzionePage() {
                           />
                         </div>
                       </td>
-                      <td style={{ padding: '20px', textAlign: 'center' }}>
-                        <button onClick={() => handleMissDTF(riga.grafica)} style={{ fontSize: '20px', color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
+                      <td style={{ textAlign: 'center' }}>
+                        <button onClick={() => handleMissDTF(riga.grafica)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
                       </td>
-                      <td style={{ padding: '20px', textAlign: 'center' }}>
-                        <button onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore)} style={{ fontSize: '20px', color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
+                      <td style={{ textAlign: 'center' }}>
+                        <button onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
                       </td>
                       <td style={{ padding: '20px', textAlign: 'right' }}>
                         <input
