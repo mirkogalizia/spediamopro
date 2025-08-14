@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import Image from 'next/image'
 
 interface RigaProduzione {
@@ -96,8 +96,17 @@ export default function ProduzionePage() {
     return index === 0 || righe[index].order_name !== righe[index - 1].order_name;
   }
 
+  const totaliMagazzino = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const riga of righe) {
+      const key = `${riga.tipo_prodotto} | ${riga.colore.toUpperCase()} | ${riga.taglia.toUpperCase()}`;
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    return Array.from(map.entries());
+  }, [righe]);
+
   return (
-    <div style={{ padding: '64px 32px', display: 'flex', justifyContent: 'center', minHeight: '100vh', fontFamily: 'Inter, sans-serif', background: '#f5f5f7' }}>
+    <div style={{ padding: '64px 32px', display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: '100vh', fontFamily: 'Inter, sans-serif', background: '#f5f5f7' }}>
       <div style={{ width: '100%', maxWidth: '1400px' }}>
         <h1 style={{ fontSize: '36px', fontWeight: 700, marginBottom: '24px' }}>📦 Produzione</h1>
 
@@ -126,56 +135,68 @@ export default function ProduzionePage() {
         {loading ? (
           <p style={{ color: '#888' }}>Caricamento in corso...</p>
         ) : (
-          <div style={{ overflowX: 'auto', background: 'white', borderRadius: '16px', boxShadow: '0 4px 24px rgba(0,0,0,0.05)' }}>
-            <table style={{ width: '100%', fontSize: '18px', borderCollapse: 'collapse' }}>
-              <thead style={{ background: '#f5f5f7' }}>
-                <tr>
-                  <th style={{ padding: '20px', textAlign: 'left' }}>Ordine</th>
-                  <th style={{ padding: '20px', textAlign: 'left' }}>Tipo</th>
-                  <th style={{ padding: '20px', textAlign: 'left' }}>Colore</th>
-                  <th style={{ padding: '20px', textAlign: 'left' }}>Taglia</th>
-                  <th style={{ padding: '20px', textAlign: 'left' }}>Preview</th>
-                  <th style={{ padding: '20px', textAlign: 'right' }}>Stampato</th>
-                </tr>
-              </thead>
-              <tbody>
-                {righe.map((riga, index) => (
-                  <tr
-                    key={riga.variant_id + '-' + riga.order_name}
-                    style={{
-                      borderBottom: '1px solid #eee',
-                      borderLeft: isStartOfOrderGroup(index) ? '4px solid #007aff' : '4px solid transparent'
-                    }}
-                  >
-                    <td style={{ padding: '20px', fontFamily: 'monospace', fontWeight: 'bold' }}>{riga.order_name}</td>
-                    <td style={{ padding: '20px' }}>{riga.tipo_prodotto}</td>
-                    <td style={{ padding: '20px' }}>{renderColorePallino(riga.colore)}</td>
-                    <td style={{ padding: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>{riga.taglia}</td>
-                    <td style={{ padding: '20px' }}>
-                      <div style={{ width: '100px', height: '100px', position: 'relative' }}>
-                        <Image
-                          src={riga.immagine && riga.immagine !== '' ? riga.immagine : riga.immagine_prodotto!}
-                          alt={riga.grafica}
-                          fill
-                          style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
-                        />
-                      </div>
-                    </td>
-                    <td style={{ padding: '20px', textAlign: 'right' }}>
-                      <input
-                        type="checkbox"
-                        checked={!!stampati[riga.variant_id]}
-                        onChange={() => toggleStampato(riga.variant_id)}
-                        style={{ transform: 'scale(1.6)' }}
-                      />
-                    </td>
+          <>
+            <div style={{ overflowX: 'auto', background: 'white', borderRadius: '16px', boxShadow: '0 4px 24px rgba(0,0,0,0.05)' }}>
+              <table style={{ width: '100%', fontSize: '18px', borderCollapse: 'collapse' }}>
+                <thead style={{ background: '#f5f5f7' }}>
+                  <tr>
+                    <th style={{ padding: '20px', textAlign: 'left' }}>Ordine</th>
+                    <th style={{ padding: '20px', textAlign: 'left' }}>Tipo</th>
+                    <th style={{ padding: '20px', textAlign: 'left' }}>Colore</th>
+                    <th style={{ padding: '20px', textAlign: 'left' }}>Taglia</th>
+                    <th style={{ padding: '20px', textAlign: 'left' }}>Preview</th>
+                    <th style={{ padding: '20px', textAlign: 'right' }}>Stampato</th>
                   </tr>
+                </thead>
+                <tbody>
+                  {righe.map((riga, index) => (
+                    <tr
+                      key={riga.variant_id + '-' + riga.order_name}
+                      style={{
+                        borderBottom: '1px solid #eee',
+                        borderLeft: isStartOfOrderGroup(index) ? '4px solid #007aff' : '4px solid transparent'
+                      }}
+                    >
+                      <td style={{ padding: '20px', fontFamily: 'monospace', fontWeight: 'bold' }}>{riga.order_name}</td>
+                      <td style={{ padding: '20px' }}>{riga.tipo_prodotto}</td>
+                      <td style={{ padding: '20px' }}>{renderColorePallino(riga.colore)}</td>
+                      <td style={{ padding: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>{riga.taglia}</td>
+                      <td style={{ padding: '20px' }}>
+                        <div style={{ width: '100px', height: '100px', position: 'relative' }}>
+                          <Image
+                            src={riga.immagine && riga.immagine !== '' ? riga.immagine : riga.immagine_prodotto!}
+                            alt={riga.grafica}
+                            fill
+                            style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
+                          />
+                        </div>
+                      </td>
+                      <td style={{ padding: '20px', textAlign: 'right' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!stampati[riga.variant_id]}
+                          onChange={() => toggleStampato(riga.variant_id)}
+                          style={{ transform: 'scale(1.6)' }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ marginTop: '32px', background: '#fff', borderRadius: '12px', padding: '24px', width: '100%', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px' }}>📦 Totale da prelevare a magazzino:</h2>
+              <ul style={{ columns: 2, fontSize: '16px', lineHeight: '1.8' }}>
+                {totaliMagazzino.map(([chiave, quantita]) => (
+                  <li key={chiave}><strong>{quantita}×</strong> {chiave}</li>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </ul>
+            </div>
+          </>
         )}
       </div>
     </div>
   )
 }
+
