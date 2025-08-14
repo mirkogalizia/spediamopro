@@ -1,133 +1,139 @@
-'use client'
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { getSpedizione, paySpedizione, printSpedizione, simulaSpedizione, evadiOrdine } from '../../utils';
+import React, { useEffect, useState } from "react";
+import Image from "next/image";
+import { motion } from "framer-motion";
 
-interface Props {
+function removeAccents(str: string) {
+  return str.normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+interface OrderPopupProps {
   orderName: string;
   onClose: () => void;
   onEvadi: () => void;
 }
 
-interface Simulazione {
-  id: number;
-  nome: string;
-  costo: string;
-}
+export default function OrderPopup({ orderName, onClose, onEvadi }: OrderPopupProps) {
+  const [data, setData] = useState<any>(null);
+  const [step, setStep] = useState("fetch");
+  const [selectedCorriere, setSelectedCorriere] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-export default function OrderPopup({ orderName, onClose, onEvadi }: Props) {
-  const [indirizzo, setIndirizzo] = useState<string>('');
-  const [simulazioni, setSimulazioni] = useState<Simulazione[]>([]);
-  const [selectedCorriere, setSelectedCorriere] = useState<number | null>(null);
-  const [spedizioneId, setSpedizioneId] = useState<number | null>(null);
-  const [caricamento, setCaricamento] = useState(false);
-  const [errore, setErrore] = useState<string | null>(null);
+  const fetchData = async () => {
+    const res = await fetch(`/api/spediamo?step=fetch&shopifyOrderName=${orderName}`);
+    const json = await res.json();
+    setData(json);
+  };
 
   useEffect(() => {
-    async function load() {
-      setCaricamento(true);
-      try {
-        const spedizione = await getSpedizione(orderName);
-        setIndirizzo(spedizione.indirizzo);
-        const risultati = await simulaSpedizione(orderName);
-        setSimulazioni(risultati);
-      } catch (e: any) {
-        setErrore(e.message || 'Errore durante il caricamento');
-      } finally {
-        setCaricamento(false);
-      }
-    }
-    load();
+    fetchData();
   }, [orderName]);
 
-  const handleCreaSpedizione = async () => {
-    if (selectedCorriere == null) return;
-    setCaricamento(true);
-    setErrore(null);
-    try {
-      const id = await paySpedizione(simulazioni[selectedCorriere].id);
-      setSpedizioneId(id);
-    } catch (e: any) {
-      setErrore(e.message || 'Errore durante il pagamento');
-    } finally {
-      setCaricamento(false);
-    }
+  const simula = async () => {
+    if (!selectedCorriere) return;
+    setLoading(true);
+    const res = await fetch(`/api/spediamo?step=simulate&id=${data?.id}&corriere=${selectedCorriere}`);
+    const json = await res.json();
+    setData(json);
+    setLoading(false);
+    setStep("simulato");
   };
 
-  const handleStampa = async () => {
-    if (!spedizioneId) return;
-    setCaricamento(true);
-    try {
-      await printSpedizione(spedizioneId);
-    } catch (e: any) {
-      setErrore(e.message || 'Errore durante la stampa');
-    } finally {
-      setCaricamento(false);
-    }
+  const crea = async () => {
+    setLoading(true);
+    const res = await fetch(`/api/spediamo?step=create&id=${data?.id}&shopifyOrderId=${data?.shopifyOrderId}`);
+    const json = await res.json();
+    setData(json);
+    setLoading(false);
+    setStep("creato");
   };
 
-  const handleEvadi = async () => {
-    setCaricamento(true);
-    try {
-      await evadiOrdine(orderName);
-      onEvadi();
-    } catch (e: any) {
-      setErrore(e.message || 'Errore durante evasione');
-    } finally {
-      setCaricamento(false);
-    }
+  const paga = async () => {
+    setLoading(true);
+    const res = await fetch(`/api/spediamo?step=pay&id=${data?.id}`);
+    const json = await res.json();
+    setData(json);
+    setLoading(false);
+    setStep("pagato");
+  };
+
+  const evadi = async () => {
+    setLoading(true);
+    const res = await fetch(`/api/spediamo?step=evadi&id=${data?.id}&shopifyOrderId=${data?.shopifyOrderId}`);
+    const json = await res.json();
+    setData(json);
+    setLoading(false);
+    setStep("evaso");
+    onEvadi();
   };
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.4)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
-      <div style={{ background: 'white', padding: 32, borderRadius: 16, width: '90%', maxWidth: 700, fontFamily: 'Inter, sans-serif' }}>
-        <h2 style={{ fontSize: 24, marginBottom: 16 }}>📦 Spedizione ordine <code>{orderName}</code></h2>
+    <motion.div
+      className="fixed top-0 left-0 w-screen h-screen bg-black bg-opacity-50 z-50 flex items-center justify-center"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full relative">
+        <button onClick={onClose} className="absolute top-2 right-2 text-gray-500">✕</button>
+        <h2 className="text-xl font-bold mb-4">Gestione ordine {orderName}</h2>
 
-        {errore && <p style={{ color: 'red' }}>{errore}</p>}
+        {!data ? (
+          <p>Caricamento dati ordine...</p>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <p><strong>Destinatario:</strong> {data.nome} {data.cognome}</p>
+              <p><strong>Indirizzo:</strong> {data.indirizzo}, {data.cap} {data.citta} ({data.provincia})</p>
+            </div>
 
-        {caricamento && <p>Caricamento...</p>}
-
-        {!caricamento && (
-          <>
-            <h3 style={{ fontSize: 18, marginBottom: 8 }}>📍 Indirizzo</h3>
-            <pre style={{ background: '#f9f9f9', padding: 12, borderRadius: 8 }}>{indirizzo}</pre>
-
-            <h3 style={{ fontSize: 18, marginTop: 24 }}>🚚 Simulazioni</h3>
-            <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
-              {simulazioni.map((sim, i) => (
-                <li key={sim.id} style={{ marginBottom: 8 }}>
-                  <label style={{ cursor: 'pointer' }}>
-                    <input
-                      type="radio"
-                      name="corriere"
-                      checked={selectedCorriere === i}
-                      onChange={() => setSelectedCorriere(i)}
-                    />{' '}
-                    <strong>{sim.nome}</strong> - {sim.costo}
-                  </label>
-                </li>
-              ))}
-            </ul>
-
-            {spedizioneId ? (
+            {step === "fetch" && (
               <>
-                <button onClick={handleStampa} style={{ padding: '10px 20px', marginRight: 12, background: '#007aff', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Stampa LDV</button>
-                <button onClick={handleEvadi} style={{ padding: '10px 20px', background: '#34c759', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Evadi ordine</button>
+                <div>
+                  <label className="block mb-1 font-medium">Seleziona Corriere</label>
+                  <select value={selectedCorriere ?? ""} onChange={e => setSelectedCorriere(e.target.value)} className="border rounded p-2 w-full">
+                    <option value="">-- Seleziona --</option>
+                    <option value="poste">Poste Italiane</option>
+                    <option value="brt">BRT</option>
+                    <option value="gls">GLS</option>
+                  </select>
+                </div>
+                <button onClick={simula} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded" disabled={!selectedCorriere || loading}>
+                  Simula Spedizione
+                </button>
               </>
-            ) : (
-              <button
-                onClick={handleCreaSpedizione}
-                disabled={selectedCorriere == null}
-                style={{ padding: '10px 20px', background: selectedCorriere != null ? '#ff9500' : '#ccc', color: 'white', border: 'none', borderRadius: 8, cursor: selectedCorriere != null ? 'pointer' : 'not-allowed' }}
-              >
-                Crea e paga spedizione
+            )}
+
+            {step === "simulato" && (
+              <button onClick={crea} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded" disabled={loading}>
+                Crea spedizione
               </button>
             )}
 
-            <button onClick={onClose} style={{ marginTop: 24, display: 'block', background: 'none', color: '#007aff', border: 'none', fontSize: 16, cursor: 'pointer' }}>Chiudi</button>
-          </>
+            {step === "creato" && (
+              <button onClick={paga} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded" disabled={loading}>
+                Paga spedizione
+              </button>
+            )}
+
+            {step === "pagato" && (
+              <>
+                {data?.tracking_url && (
+                  <a href={data.tracking_url} target="_blank" rel="noreferrer" className="text-blue-600 underline">
+                    ➜ Stampa Lettera di Vettura
+                  </a>
+                )}
+                <button onClick={evadi} className="bg-black text-white px-4 py-2 rounded mt-2" disabled={loading}>
+                  Evadi ordine su Shopify
+                </button>
+              </>
+            )}
+
+            {step === "evaso" && <p className="text-green-600">Ordine evaso con successo ✅</p>}
+          </div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
