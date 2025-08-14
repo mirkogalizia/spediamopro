@@ -53,61 +53,6 @@ export default function ProduzionePage() {
                   id="date"
                   variant={"outline"}
                   className="w-[300px] justify-start text-left font-normal"
-                >"use client";
-
-import React, { useEffect, useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { DateRange } from "react-day-picker";
-import { format } from "date-fns";
-import { it } from "date-fns/locale";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import { CalendarIcon } from "lucide-react";
-
-export default function ProduzionePage() {
-  const [date, setDate] = useState<DateRange | undefined>();
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetchData = async () => {
-    if (!date?.from || !date?.to) return;
-    setLoading(true);
-    const res = await fetch("/api/produzione", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ from: date.from, to: date.to }),
-    });
-    const json = await res.json();
-    setData(json);
-    setLoading(false);
-  };
-
-  return (
-    <div style={{ padding: 32, display: "flex", justifyContent: "center" }}>
-      <Card style={{ width: "100%", maxWidth: 1400 }}>
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold mb-2">Produzione</CardTitle>
-          <div className="flex items-center gap-4">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  id="date"
-                  variant={"outline"}
-                  className="w-[300px] justify-start text-left font-normal"
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {date?.from ? (
