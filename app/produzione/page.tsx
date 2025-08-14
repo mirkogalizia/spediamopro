@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react'
 import Image from 'next/image'
-import OrderPopup from './components/OrderPopup'; // popup spedizione
+import OrderPopup from './components/OrderPopup'
 
 interface RigaProduzione {
   tipo_prodotto: string
@@ -52,10 +52,10 @@ export default function ProduzionePage() {
   const [loading, setLoading] = useState(false)
   const [from, setFrom] = useState<string>('')
   const [to, setTo] = useState<string>('')
+  const [popupOrder, setPopupOrder] = useState<string | null>(null)
 
   const [excludeGrafica, setExcludeGrafica] = useState<Set<string>>(new Set())
   const [excludeBlank, setExcludeBlank] = useState<Set<string>>(new Set())
-  const [popupOrder, setPopupOrder] = useState<string | null>(null);
 
   const fetchProduzione = async () => {
     if (!from || !to) return;
@@ -82,24 +82,16 @@ export default function ProduzionePage() {
   }
 
   const handleMissDTF = (grafica: string, index: number) => {
-    const ordiniDaEscludere = new Set<string>();
-    for (let i = index; i < righe.length; i++) {
-      if (righe[i].grafica === grafica) {
-        ordiniDaEscludere.add(righe[i].order_name);
-      }
-    }
-    setExcludeGrafica(new Set([...excludeGrafica, ...ordiniDaEscludere]))
+    const ordineRiferimento = righe[index].order_name
+    const nuovi = righe.slice(index).filter(r => r.order_name !== ordineRiferimento && r.grafica !== grafica)
+    setRighe(righe.slice(0, index).concat(nuovi))
   }
 
   const handleMissBlank = (tipo: string, taglia: string, colore: string, index: number) => {
-    const ordiniDaEscludere = new Set<string>();
-    for (let i = index; i < righe.length; i++) {
-      const r = righe[i];
-      if (r.tipo_prodotto === tipo && r.taglia === taglia && r.colore === colore) {
-        ordiniDaEscludere.add(r.order_name);
-      }
-    }
-    setExcludeBlank(new Set([...excludeBlank, ...ordiniDaEscludere]))
+    const key = `${tipo}|||${taglia}|||${colore}`;
+    const ordineRiferimento = righe[index].order_name
+    const nuovi = righe.slice(index).filter(r => r.order_name !== ordineRiferimento && `${r.tipo_prodotto}|||${r.taglia}|||${r.colore}` !== key)
+    setRighe(righe.slice(0, index).concat(nuovi))
   }
 
   const renderColorePallino = (nome: string) => {
@@ -118,7 +110,7 @@ export default function ProduzionePage() {
 
   const totaliMagazzino = useMemo(() => {
     const map = new Map<string, Map<string, number>>();
-    for (const riga of righeFiltrate) {
+    for (const riga of righe) {
       const tipo = riga.tipo_prodotto;
       const key = `${riga.colore.toUpperCase()} | ${riga.taglia.toUpperCase()}`;
       if (!map.has(tipo)) map.set(tipo, new Map());
@@ -126,13 +118,7 @@ export default function ProduzionePage() {
       inner.set(key, (inner.get(key) || 0) + 1);
     }
     return map;
-  }, [righeFiltrate]);
-
-  const righeFiltrate = righe.filter(riga => {
-    if (excludeGrafica.has(riga.order_name)) return false;
-    if (excludeBlank.has(riga.order_name)) return false;
-    return true;
-  });
+  }, [righe]);
 
   return (
     <div style={{ padding: '64px 32px', display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: '100vh', fontFamily: 'Inter, sans-serif', background: '#f5f5f7' }}>
@@ -144,12 +130,7 @@ export default function ProduzionePage() {
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           <label>A:</label>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          <button
-            onClick={fetchProduzione}
-            style={{ padding: '10px 20px', backgroundColor: '#007aff', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '16px' }}
-          >
-            Carica ordini
-          </button>
+          <button onClick={fetchProduzione} style={{ padding: '10px 20px', backgroundColor: '#007aff', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '16px' }}>Carica ordini</button>
         </div>
 
         {loading ? (
@@ -171,13 +152,13 @@ export default function ProduzionePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {righeFiltrate.map((riga, index) => (
+                  {righe.map((riga, index) => (
                     <tr
                       key={riga.variant_id + '-' + riga.order_name}
                       style={{
                         borderBottom: '1px solid #eee',
                         borderLeft: isStartOfOrderGroup(index) ? '4px solid #007aff' : '4px solid transparent',
-                        opacity: stampati[riga.variant_id] ? 0.3 : 1
+                        opacity: stampati[riga.variant_id] ? 0.4 : 1
                       }}
                     >
                       <td style={{ padding: '20px', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer' }} onClick={() => setPopupOrder(riga.order_name)}>{riga.order_name}</td>
@@ -230,7 +211,15 @@ export default function ProduzionePage() {
           </>
         )}
       </div>
-      {popupOrder && <OrderPopup orderName={popupOrder} onClose={() => setPopupOrder(null)} />}
+      {popupOrder && <OrderPopup orderName={popupOrder} onClose={() => setPopupOrder(null)} onEvadi={() => {
+        setStampati(prev => {
+          const aggiornato = { ...prev }
+          righe.filter(r => r.order_name === popupOrder).forEach(r => aggiornato[r.variant_id] = true)
+          localStorage.setItem('stampati', JSON.stringify(aggiornato))
+          return aggiornato
+        })
+        setPopupOrder(null)
+      }} />}
     </div>
   )
 }
