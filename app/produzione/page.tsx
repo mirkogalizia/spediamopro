@@ -190,11 +190,11 @@ export default function ProduzionePage() {
 
             <div style={{ marginTop: '32px', background: '#fff', borderRadius: '12px', padding: '24px', width: '100%', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
               <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px' }}>📦 Totale da prelevare a magazzino:</h2>
-              {[...totaliMagazzino.entries()].map(([tipo, sottoMap]) => (
+              {Array.from(totaliMagazzino.entries()).map(([tipo, sottoMap]) => (
                 <div key={tipo} style={{ marginBottom: '16px' }}>
                   <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>{tipo}</h3>
                   <ul style={{ columns: 2, fontSize: '16px', lineHeight: '1.8', margin: 0, paddingLeft: '20px' }}>
-                    {[...sottoMap.entries()].map(([chiave, quantita]) => (
+                    {Array.from(sottoMap.entries()).map(([chiave, quantita]) => (
                       <li key={chiave}><strong>{quantita}×</strong> {chiave}</li>
                     ))}
                   </ul>
