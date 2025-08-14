@@ -1,136 +1,97 @@
-"use client";
+'use client'
 
-import React, { useEffect, useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { DateRange } from "react-day-picker";
-import { format } from "date-fns";
-import { it } from "date-fns/locale";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import { CalendarIcon } from "lucide-react";
+import { useEffect, useState } from 'react'
+import Image from 'next/image'
 
 export default function ProduzionePage() {
-  const [date, setDate] = useState<DateRange | undefined>();
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [data, setData] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
 
   const fetchData = async () => {
-    if (!date?.from || !date?.to) return;
-    setLoading(true);
-    const res = await fetch("/api/produzione", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ from: date.from, to: date.to }),
-    });
-    const json = await res.json();
-    setData(json);
-    setLoading(false);
-  };
+    if (!startDate || !endDate) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/orders/produzione?from=${startDate}&to=${endDate}`)
+      const json = await res.json()
+      setData(json)
+    } catch (e) {
+      console.error('Errore caricamento ordini:', e)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
-    <div style={{ padding: 32, display: "flex", justifyContent: "center" }}>
-      <Card style={{ width: "100%", maxWidth: 1400 }}>
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold mb-2">Produzione</CardTitle>
-          <div className="flex items-center gap-4">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  id="date"
-                  variant={"outline"}
-                  className="w-[300px] justify-start text-left font-normal"
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {date?.from ? (
-                    date.to ? (
-                      <span>
-                        {format(date.from, "dd MMM yyyy", { locale: it })} -{" "}
-                        {format(date.to, "dd MMM yyyy", { locale: it })}
-                      </span>
-                    ) : (
-                      format(date.from, "dd MMM yyyy", { locale: it })
-                    )
-                  ) : (
-                    <span>Seleziona un intervallo</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  initialFocus
-                  mode="range"
-                  defaultMonth={new Date()}
-                  selected={date}
-                  onSelect={setDate}
-                  numberOfMonths={2}
-                />
-              </PopoverContent>
-            </Popover>
-            <Button onClick={fetchData} disabled={!date?.from || !date?.to || loading}>
-              {loading ? "Caricamento..." : "Carica ordini"}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Ordine</TableHead>
-                <TableHead>Prodotto</TableHead>
-                <TableHead>Colore</TableHead>
-                <TableHead>Taglia</TableHead>
-                <TableHead>Preview</TableHead>
-                <TableHead>Stampato</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map((item, i) => (
-                <TableRow key={i}>
-                  <TableCell>{item.orderNumber}</TableCell>
-                  <TableCell>{item.productType}</TableCell>
-                  <TableCell>{item.color}</TableCell>
-                  <TableCell>{item.size}</TableCell>
-                  <TableCell>
-                    {item.image ? (
-                      <img
-                        src={item.image}
-                        alt="Preview"
-                        style={{
-                          width: 64,
-                          height: 64,
-                          objectFit: "cover",
-                          borderRadius: 8,
-                        }}
-                      />
-                    ) : (
-                      <span style={{ fontStyle: "italic", color: "#999" }}>
-                        Nessuna immagine
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <input type="checkbox" />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+    <div className="min-h-screen flex flex-col items-center justify-start p-6 bg-white text-black">
+      <h1 className="text-3xl font-semibold mb-4">Produzione</h1>
+
+      <div className="flex gap-4 mb-6">
+        <input
+          type="date"
+          className="border px-3 py-2 rounded"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+        />
+        <input
+          type="date"
+          className="border px-3 py-2 rounded"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+        />
+        <button
+          onClick={fetchData}
+          className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
+        >
+          Carica ordini
+        </button>
+      </div>
+
+      {loading && <p>Caricamento in corso...</p>}
+
+      {!loading && data.length > 0 && (
+        <table className="w-full max-w-6xl border-collapse border text-sm">
+          <thead>
+            <tr className="bg-gray-200 text-left">
+              <th className="p-2 border">Data</th>
+              <th className="p-2 border">Ordine</th>
+              <th className="p-2 border">Tipologia</th>
+              <th className="p-2 border">Taglia</th>
+              <th className="p-2 border">Colore</th>
+              <th className="p-2 border">Preview</th>
+              <th className="p-2 border">Stampato</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((item, index) => (
+              <tr key={index} className="border-t">
+                <td className="p-2 border whitespace-nowrap">{item.data}</td>
+                <td className="p-2 border">{item.order}</td>
+                <td className="p-2 border">{item.tipologia}</td>
+                <td className="p-2 border uppercase">{item.taglia}</td>
+                <td className="p-2 border capitalize">{item.colore}</td>
+                <td className="p-2 border">
+                  <Image
+                    src={item.image || '/placeholder.png'}
+                    alt="preview"
+                    width={60}
+                    height={60}
+                    className="rounded border"
+                  />
+                </td>
+                <td className="p-2 border text-center">
+                  <input type="checkbox" className="w-4 h-4" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {!loading && data.length === 0 && (
+        <p className="mt-4 text-gray-500">Nessun ordine trovato.</p>
+      )}
     </div>
-  );
+  )
 }
