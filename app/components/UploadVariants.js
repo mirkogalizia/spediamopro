@@ -1,59 +1,68 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import Papa from "papaparse";
-import { db } from "@/lib/firebase";
 import { collection, setDoc, doc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export default function UploadVariants() {
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState("");
+  const [uploadStatus, setUploadStatus] = useState("");
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
     if (!file) return;
 
-    setLoading(true);
-    setResult("");
+    setUploadStatus("⏳ Caricamento in corso...");
 
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: async (results) => {
-        let successCount = 0;
+      complete: async function (results) {
+        const data = results.data;
+        let count = 0;
 
-        for (const row of results.data) {
-          if (!row["Variant ID"]) continue;
-
-          try {
-            const id = row["Variant ID"].toString();
-            await setDoc(doc(db, "variants", id), {
-              variant_id: id,
+        for (const row of data) {
+          if (row["Variant ID"]) {
+            const docRef = doc(db, "variants", row["Variant ID"]);
+            await setDoc(docRef, {
               title: row["Title"],
               option1: row["Option1 Value"],
               option2: row["Option2 Value"],
+              variantId: row["Variant ID"],
               sku: row["Variant SKU"],
-              price: row["Variant Price"],
-              image: row["Image Src"],
             });
-            successCount++;
-          } catch (err) {
-            console.error("Errore su variante:", row, err);
+            count++;
           }
         }
 
-        setResult(`✅ ${successCount} righe caricate.`);
-        setLoading(false);
+        setUploadStatus(`✅ ${count} righe caricate.`);
+      },
+      error: function (error) {
+        console.error("Errore durante il parsing:", error);
+        setUploadStatus("❌ Errore durante il caricamento.");
       },
     });
   };
 
   return (
-    <div className="p-4 bg-white rounded-xl shadow-md w-full max-w-md mx-auto mt-10">
-      <h2 className="text-xl font-bold mb-4">Upload Varianti CSV</h2>
-      <input type="file" accept=".csv" onChange={handleFileUpload} />
-      {loading && <p className="mt-4 text-blue-500">Caricamento in corso...</p>}
-      {result && <p className="mt-4 text-green-600">{result}</p>}
+    <div className="fixed inset-0 flex items-center justify-center bg-white z-50 p-4">
+      <div className="max-w-md w-full bg-white border border-black shadow-lg rounded-xl p-6 text-center">
+        <h2 className="text-xl font-bold mb-4">Upload Varianti CSV</h2>
+        <input
+          type="file"
+          accept=".csv"
+          onChange={handleFileUpload}
+          className="block w-full text-sm text-gray-700
+                     file:mr-4 file:py-2 file:px-4
+                     file:rounded-md file:border-0
+                     file:text-sm file:font-semibold
+                     file:bg-black file:text-white
+                     hover:file:bg-gray-700"
+        />
+        {uploadStatus && (
+          <p className="mt-4 text-base font-medium">{uploadStatus}</p>
+        )}
+      </div>
     </div>
   );
 }
