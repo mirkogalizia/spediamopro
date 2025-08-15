@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { db } from '@/lib/firebase';
+import { db } from '../../lib/firebase'; // se ti trovi in /app/testfirestore/page.js
 import { collection, addDoc } from 'firebase/firestore';
 
 export default function TestFirestorePage() {
