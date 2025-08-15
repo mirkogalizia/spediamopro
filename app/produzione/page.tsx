@@ -2,7 +2,6 @@
 
 import React, { useState, useMemo } from 'react'
 import Image from 'next/image'
-import OrderPopup from './components/OrderPopup'
 
 interface RigaProduzione {
   tipo_prodotto: string
@@ -154,7 +153,7 @@ export default function ProduzionePage() {
                     opacity: stampati[riga.variant_id] ? 0.4 : 1
                   }}
                 >
-                  <td style={{ padding: '20px', cursor: 'pointer' }} onClick={() => setPopupOrder(riga.order_name)}>{riga.order_name}</td>
+                  <td style={{ padding: '20px' }}>{riga.order_name}</td>
                   <td style={{ padding: '20px' }}>{riga.tipo_prodotto}</td>
                   <td style={{ padding: '20px' }}>{renderColorePallino(riga.colore)}</td>
                   <td style={{ padding: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>{riga.taglia}</td>
@@ -201,23 +200,6 @@ export default function ProduzionePage() {
             </div>
           ))}
         </div>
-
-        {popupOrder && (
-          <OrderPopup
-            ordine={righe.find(r => r.order_name === popupOrder)!}
-            onClose={() => setPopupOrder(null)}
-            onEvadi={() => {
-              const variantiOrdine = righe.filter(r => r.order_name === popupOrder);
-              const updated = { ...stampati };
-              for (const r of variantiOrdine) {
-                updated[r.variant_id] = true;
-              }
-              setStampati(updated);
-              localStorage.setItem('stampati', JSON.stringify(updated));
-              setPopupOrder(null);
-            }}
-          />
-        )}
       </div>
     </div>
   )
