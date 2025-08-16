@@ -36,7 +36,7 @@ export default function UploadVariants() {
             inventory_quantity: Number(row["Variant Inventory Qty"] || 0),
             sku: row["Variant SKU"]?.trim() || "",
             numero_grafica: row["Handle"]?.trim() || "",
-            online: row["Published"]?.trim().toLowerCase() === "true",
+            online: (row["Published"] || "").trim().toLowerCase() === "true",
             timestamp: new Date(),
           };
 
@@ -71,37 +71,6 @@ export default function UploadVariants() {
       />
       {loading && <p className="mt-4 text-gray-600">Caricamento in corso...</p>}
       {status && <p className="mt-4 text-lg font-medium">{status}</p>}
-    </div>
-  );
-}          timestamp: new Date(),
-          };
-
-          try {
-            await setDoc(doc(db, "variants", variant_id), data);
-            successCount++;
-          } catch (err) {
-            console.error("❌ Errore scrittura:", err, data);
-          }
-        }
-
-        setStatus(`✅ ${successCount} varianti caricate su Firebase.`);
-      },
-    });
-  };
-
-  return (
-    <div className="flex flex-col items-center justify-center text-center">
-      <input
-        type="file"
-        accept=".csv"
-        onChange={handleFileUpload}
-        className="mb-4"
-      />
-      <Button variant="contained" color="primary" component="label">
-        Carica CSV
-        <input type="file" accept=".csv" hidden onChange={handleFileUpload} />
-      </Button>
-      {status && <Typography variant="body1" sx={{ mt: 3 }}>{status}</Typography>}
     </div>
   );
 }
