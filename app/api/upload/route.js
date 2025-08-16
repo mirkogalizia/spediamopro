@@ -6,7 +6,6 @@ const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN;
 const SHOPIFY_API_VERSION = '2023-10';
 
-// Service account JSON integrato inline per evitare errori di deploy su Vercel
 const serviceAccount = {
   type: "service_account",
   project_id: "spediamopro-a4936",
@@ -22,9 +21,7 @@ const serviceAccount = {
 };
 
 if (!getApps().length) {
-  initializeApp({
-    credential: cert(serviceAccount),
-  });
+  initializeApp({ credential: cert(serviceAccount) });
 }
 
 const db = getFirestore();
@@ -35,6 +32,7 @@ export async function GET() {
   try {
     let nextUrl = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=250`;
     let totalSaved = 0;
+    let totalSkipped = 0;
     let totalFailed = 0;
     let totalVariants = 0;
     const errors = [];
@@ -59,10 +57,29 @@ export async function GET() {
         for (const variant of product.variants || []) {
           totalVariants++;
           const variant_id = String(variant.id);
+          const ref = db.collection('variants').doc(variant_id);
+
+          // Controllo se già esiste e completo
+          const existing = await ref.get();
+          if (existing.exists) {
+            const data = existing.data();
+            if (
+              data &&
+              data.title &&
+              data.variant_title &&
+              data.inventory_quantity !== undefined &&
+              data.image
+            ) {
+              totalSkipped++;
+              continue;
+            }
+          }
+
           const docData = {
             variant_id,
             product_id: String(product.id),
             title: product.title,
+            variant_title: variant.title,
             taglia: variant.option1 || '',
             colore: variant.option2 || '',
             image: product.image?.src || '',
@@ -74,7 +91,7 @@ export async function GET() {
           };
 
           try {
-            await db.collection('variants').doc(variant_id).set(docData);
+            await ref.set(docData);
             totalSaved++;
             console.log(`✅ Salvato variant ${variant_id} (${docData.title})`);
           } catch (err) {
@@ -94,6 +111,7 @@ export async function GET() {
       ok: true,
       totalVariants,
       totalSaved,
+      totalSkipped,
       totalFailed,
       errors,
     });

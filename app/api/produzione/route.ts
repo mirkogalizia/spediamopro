@@ -1,4 +1,9 @@
+// ✅ Nuova versione ottimizzata della route produzione
+// /app/api/produzione/route.ts
+
 import { NextResponse } from 'next/server';
+import { db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -7,23 +12,6 @@ export const revalidate = 0;
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
 const SHOPIFY_API_VERSION = '2023-10';
-
-const TAGLIE_SET = new Set(['xs', 's', 'm', 'l', 'xl']);
-
-function parseVarTitle(title: string | null | undefined): { size: string; color: string } {
-  const raw = (title ?? '').split('/').map(p => p.trim()).filter(Boolean);
-  if (raw.length === 0) return { size: '', color: '' };
-  if (raw.length === 1) {
-    const t0 = raw[0].toLowerCase();
-    return TAGLIE_SET.has(t0) ? { size: t0, color: '' } : { size: '', color: t0 };
-  }
-  const [a, b] = raw;
-  const aIsSize = TAGLIE_SET.has(a.toLowerCase());
-  const bIsSize = TAGLIE_SET.has(b.toLowerCase());
-  if (aIsSize && !bIsSize) return { size: a, color: b };
-  if (!aIsSize && bIsSize) return { size: b, color: a };
-  return { size: a, color: b };
-}
 
 export async function GET(req: Request) {
   try {
@@ -67,69 +55,24 @@ export async function GET(req: Request) {
 
     for (const order of allOrders) {
       for (const item of order.line_items) {
-        const variantId = item.variant_id;
-        const productId = item.product_id;
-        let variantImage = null;
+        const variantId = String(item.variant_id);
+        const docRef = doc(db, 'variants', variantId);
+        const snap = await getDoc(docRef);
 
-        // 1. Prova con /variants/{id}
-        try {
-          const variantRes = await fetch(
-            `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/variants/${variantId}.json`,
-            {
-              method: 'GET',
-              headers: {
-                'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-                'Content-Type': 'application/json',
-              },
-            }
-          );
-
-          if (variantRes.ok) {
-            const variantJson = await variantRes.json();
-            variantImage = variantJson?.variant?.image?.src || null;
-          }
-        } catch {}
-
-        // 2. Fallback da line item
-        if (!variantImage && item.image?.src) {
-          variantImage = item.image.src;
-        }
-
-        // 3. Fallback da product.images
-        if (!variantImage && productId) {
-          try {
-            const productRes = await fetch(
-              `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${productId}.json`,
-              {
-                method: 'GET',
-                headers: {
-                  'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-                  'Content-Type': 'application/json',
-                },
-              }
-            );
-            if (productRes.ok) {
-              const productJson = await productRes.json();
-              const image = productJson.product.images.find((img: any) =>
-                img.variant_ids.includes(variantId)
-              );
-              if (image) variantImage = image.src;
-            }
-          } catch {}
-        }
-
-        const { size, color } = parseVarTitle(item.variant_title);
+        if (!snap.exists()) continue;
+        const v = snap.data();
 
         produzioneRows.push({
-          tipo_prodotto: item.product_type || item.title.split(' ')[0],
+          tipo_prodotto: v.tipo_prodotto || item.product_type || item.title.split(' ')[0],
           variant_title: item.variant_title || '',
-          taglia: size,
-          colore: color,
+          taglia: v.taglia || '',
+          colore: v.colore || '',
           grafica: item.title,
-          immagine: variantImage,
+          immagine: v.image || null,
+          immagine_prodotto: v.image || null,
           order_name: order.name,
           created_at: order.created_at,
-          variant_id: variantId,
+          variant_id: item.variant_id,
         });
       }
     }
