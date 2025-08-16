@@ -1,12 +1,13 @@
-'use client';
-import Papa from 'papaparse';
-import { useState } from 'react';
-import { db } from '@/lib/firebase';
-import { doc, setDoc, collection } from 'firebase/firestore';
-import { Button, Typography, Input } from '@mui/material';
+"use client";
+
+import { useState } from "react";
+import { Button, Typography } from "@mui/material";
+import Papa from "papaparse";
+import { db } from "@/lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
 
 export default function UploadVariants() {
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState("");
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -15,48 +16,53 @@ export default function UploadVariants() {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: async (results) => {
-        const rows = results.data;
-        setStatus(`📦 ${rows.length} righe lette, sto caricando...`);
-        console.log("Parsed rows:", rows);
+      complete: async function (results) {
+        const parsedData = results.data;
+        let successCount = 0;
 
-        let ok = 0;
-        for (let i = 0; i < rows.length; i++) {
-          const row = rows[i];
+        for (let row of parsedData) {
+          const variant_id = row["Variant ID"]?.toString()?.trim();
+          if (!variant_id) continue;
+
+          const data = {
+            variant_id,
+            title: row["Title"] || "",
+            taglia: row["Option1 Value"] || "",
+            colore: row["Option2 Value"] || "",
+            image: row["Image Src"] || "",
+            inventory_quantity: Number(row["Variant Inventory Qty"] || 0),
+            sku: row["Variant SKU"] || "",
+            numero_grafica: row["Handle"] || "",
+            online: (row["Published"] || "").toLowerCase() === "true",
+            timestamp: new Date(),
+          };
+
           try {
-            const docId = row["ID"] || `${Date.now()}-${i}`;
-            await setDoc(doc(collection(db, 'shopify_variants'), docId), {
-              title: row["Titolo"] || '',
-              sku: row["SKU"] || '',
-              colore: row["Colore"] || '',
-              taglia: row["Taglia"] || '',
-              inventory_quantity: parseInt(row["Quantità"] || '0'),
-              image: row["Immagine"] || '',
-              numero_grafica: row["Numero grafica"] || '',
-              online: row["Online"]?.toLowerCase() === 'true',
-              timestamp: new Date()
-            });
-            ok++;
+            await setDoc(doc(db, "variants", variant_id), data);
+            successCount++;
           } catch (err) {
-            console.error(`❌ Errore alla riga ${i}:`, err);
+            console.error("❌ Errore scrittura:", err, data);
           }
         }
 
-        setStatus(`✅ ${ok} righe caricate su Firestore`);
+        setStatus(`✅ ${successCount} varianti caricate su Firebase.`);
       },
-      error: (error) => {
-        console.error("Errore parsing CSV:", error);
-        setStatus("❌ Errore durante il parsing del CSV");
-      }
     });
   };
 
   return (
-    <div style={{ textAlign: 'center' }}>
-      <Input type="file" accept=".csv" onChange={handleFileUpload} />
-      <Typography variant="body1" style={{ marginTop: '1rem' }}>
-        {status}
-      </Typography>
+    <div className="flex flex-col items-center justify-center text-center">
+      <input
+        type="file"
+        accept=".csv"
+        onChange={handleFileUpload}
+        className="mb-4"
+      />
+      <Button variant="contained" color="primary" component="label">
+        Carica CSV
+        <input type="file" accept=".csv" hidden onChange={handleFileUpload} />
+      </Button>
+      {status && <Typography variant="body1" sx={{ mt: 3 }}>{status}</Typography>}
     </div>
   );
 }
