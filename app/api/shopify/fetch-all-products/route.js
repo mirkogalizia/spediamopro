@@ -1,4 +1,3 @@
-// app/api/shopify/fetch-all-products/route.js
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
 import { setDoc, doc } from 'firebase/firestore';
@@ -9,29 +8,24 @@ const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
 async function fetchAllProducts() {
   const products = [];
   let url = `https://${SHOPIFY_DOMAIN}/admin/api/2024-10/products.json?limit=250`;
-  let count = 0;
+  let tries = 0;
 
-  while (url) {
+  while (url && tries < 30) {
     const res = await fetch(url, {
       headers: {
         'X-Shopify-Access-Token': SHOPIFY_TOKEN,
         'Content-Type': 'application/json',
       },
-      next: { revalidate: 0 },
     });
 
-    if (!res.ok) {
-      throw new Error(`Errore Shopify: ${res.statusText}`);
-    }
-
+    if (!res.ok) throw new Error(`Errore Shopify: ${res.statusText}`);
     const data = await res.json();
     products.push(...data.products);
-    count += data.products.length;
 
-    // Cerca il link per la prossima pagina
-    const linkHeader = res.headers.get('link');
+    const linkHeader = res.headers.get("link");
     const nextLink = linkHeader?.match(/<([^>]+)>;\s*rel="next"/)?.[1];
     url = nextLink || null;
+    tries++;
   }
 
   return products;
@@ -41,7 +35,7 @@ export async function GET() {
   try {
     const products = await fetchAllProducts();
     let success = 0;
-    let errorList = [];
+    const errors = [];
 
     for (const product of products) {
       for (const variant of product.variants) {
@@ -55,24 +49,24 @@ export async function GET() {
           inventory_quantity: variant.inventory_quantity || 0,
           sku: variant.sku || "",
           numero_grafica: product.handle || "",
-          online: product.published_at !== null,
+          online: !!product.published_at,
           timestamp: new Date(),
         };
 
         try {
           await setDoc(doc(db, 'variants', variant_id), data);
           success++;
-        } catch (err) {
-          errorList.push({ variant_id, message: err.message });
+        } catch (e) {
+          errors.push({ variant_id, message: e.message });
         }
       }
     }
 
     return NextResponse.json({
-      message: `✅ ${success} varianti salvate. ❌ ${errorList.length} errori.`,
-      errors: errorList,
+      message: `✅ ${success} varianti caricate. ❌ ${errors.length} errori.`,
+      errors,
     });
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
