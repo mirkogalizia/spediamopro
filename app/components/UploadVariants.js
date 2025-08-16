@@ -1,50 +1,35 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import Papa from 'papaparse';
-import { collection, addDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { useState } from "react";
+import { parseAndUploadVariants } from "./parseAndUploadVariants";
 
 export default function UploadVariants() {
-  const [uploadStatus, setUploadStatus] = useState('');
+  const [status, setStatus] = useState("");
 
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
+  const handleUpload = async (e) => {
+    const file = e.target.files[0];
     if (!file) return;
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async function (results) {
-        const data = results.data;
-        let count = 0;
-
-        for (const row of data) {
-          try {
-            await addDoc(collection(db, 'variants'), row);
-            count++;
-          } catch (error) {
-            console.error('Errore nel salvataggio:', error);
-          }
-        }
-
-        setUploadStatus(`✅ ${count} righe caricate.`);
-      },
-    });
+    setStatus("⏳ Upload in corso...");
+    try {
+      const result = await parseAndUploadVariants(file);
+      setStatus(`✅ ${result.total} righe caricate correttamente.`);
+    } catch (error) {
+      console.error(error);
+      setStatus("❌ Errore durante l'upload.");
+    }
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-white px-4">
-      <div className="text-center space-y-6">
-        <h1 className="text-3xl font-bold">Upload Varianti CSV</h1>
-        <input
-          type="file"
-          accept=".csv"
-          onChange={handleFileUpload}
-          className="block mx-auto text-sm"
-        />
-        {uploadStatus && <p className="text-green-600 font-semibold">{uploadStatus}</p>}
-      </div>
+    <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+      <h1 className="text-xl font-bold mb-4">Upload Varianti Shopify</h1>
+      <input
+        type="file"
+        accept=".csv"
+        onChange={handleUpload}
+        className="border p-2 rounded"
+      />
+      <p className="mt-4">{status}</p>
     </div>
   );
 }
