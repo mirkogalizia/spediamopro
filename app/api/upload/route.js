@@ -1,69 +1,104 @@
-import { NextResponse } from "next/server";
-import admin from "firebase-admin";
-
-// ✅ Inizializzazione Firebase Admin solo una volta
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-    }),
-  });
-}
-
-const db = admin.firestore();
+import { NextResponse } from 'next/server';
+import { cert, getApps, initializeApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN;
-const SHOPIFY_API_VERSION = "2023-10";
+const SHOPIFY_API_VERSION = '2023-10';
 
-export const dynamic = "force-dynamic";
+// Service account JSON integrato inline per evitare errori di deploy su Vercel
+const serviceAccount = {
+  type: "service_account",
+  project_id: "spediamopro-a4936",
+  private_key_id: "cb272a15ea640ebbd0d0b48e582f6a22d26a6dc4",
+  private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+  client_email: "firebase-adminsdk-fbsvc@spediamopro-a4936.iam.gserviceaccount.com",
+  client_id: "114809406991123817846",
+  auth_uri: "https://accounts.google.com/o/oauth2/auth",
+  token_uri: "https://oauth2.googleapis.com/token",
+  auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+  client_x509_cert_url: "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40spediamopro-a4936.iam.gserviceaccount.com",
+  universe_domain: "googleapis.com"
+};
+
+if (!getApps().length) {
+  initializeApp({
+    credential: cert(serviceAccount),
+  });
+}
+
+const db = getFirestore();
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
     let nextUrl = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=250`;
     let totalSaved = 0;
     let totalFailed = 0;
-    let errors = [];
+    let totalVariants = 0;
+    const errors = [];
 
     while (nextUrl) {
       const res = await fetch(nextUrl, {
-        method: "GET",
+        method: 'GET',
         headers: {
-          "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-          "Content-Type": "application/json",
+          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+          'Content-Type': 'application/json',
         },
       });
 
       if (!res.ok) {
-        const errTxt = await res.text();
-        throw new Error(`Shopify API error ${res.status}: ${errTxt}`);
+        const errText = await res.text();
+        throw new Error(`Errore Shopify ${res.status}: ${errText}`);
       }
 
-      const data = await res.json();
-      const products = data.products || [];
+      const { products } = await res.json();
 
       for (const product of products) {
-        try {
-          await db
-            .collection("shopify_products")
-            .doc(String(product.id))
-            .set(product);
-          totalSaved++;
-        } catch (e) {
-          totalFailed++;
-          errors.push({ id: product.id, error: e.message });
+        for (const variant of product.variants || []) {
+          totalVariants++;
+          const variant_id = String(variant.id);
+          const docData = {
+            variant_id,
+            product_id: String(product.id),
+            title: product.title,
+            taglia: variant.option1 || '',
+            colore: variant.option2 || '',
+            image: product.image?.src || '',
+            inventory_quantity: variant.inventory_quantity ?? 0,
+            sku: variant.sku || '',
+            numero_grafica: product.handle,
+            online: product.published_at !== null,
+            timestamp: new Date().toISOString(),
+          };
+
+          try {
+            await db.collection('variants').doc(variant_id).set(docData);
+            totalSaved++;
+            console.log(`✅ Salvato variant ${variant_id} (${docData.title})`);
+          } catch (err) {
+            totalFailed++;
+            errors.push({ variant_id, message: err.message });
+            console.error(`❌ Errore variant ${variant_id}: ${err.message}`);
+          }
         }
       }
 
-      const linkHeader = res.headers.get("Link");
+      const linkHeader = res.headers.get('link');
       const match = linkHeader?.match(/<([^>]+)>;\s*rel="next"/);
       nextUrl = match?.[1] || null;
     }
 
-    return NextResponse.json({ ok: true, totalSaved, totalFailed, errors });
-  } catch (err) {
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    return NextResponse.json({
+      ok: true,
+      totalVariants,
+      totalSaved,
+      totalFailed,
+      errors,
+    });
+  } catch (e) {
+    console.error("🔥 Errore generale:", e);
+    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
 }
