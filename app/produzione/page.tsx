@@ -51,7 +51,6 @@ export default function ProduzionePage() {
   const [loading, setLoading] = useState(false)
   const [from, setFrom] = useState<string>('')
   const [to, setTo] = useState<string>('')
-  const [popupOrder, setPopupOrder] = useState<string | null>(null)
 
   const fetchProduzione = async () => {
     if (!from || !to) return;
@@ -118,6 +117,25 @@ export default function ProduzionePage() {
 
   return (
     <div style={{ padding: '64px 32px', fontFamily: 'Inter, sans-serif', background: '#f5f5f7', minHeight: '100vh' }}>
+      {/* 🔵 Barra di caricamento */}
+      {loading && (
+        <div style={{ height: '4px', width: '100%', background: '#cce5ff', position: 'fixed', top: 0, left: 0, zIndex: 999 }}>
+          <div style={{
+            width: '100%',
+            height: '100%',
+            backgroundColor: '#007aff',
+            animation: 'loading-bar 2s linear infinite'
+          }}></div>
+        </div>
+      )}
+      <style>
+        {`@keyframes loading-bar {
+          0% { transform: translateX(-100%) }
+          50% { transform: translateX(0%) }
+          100% { transform: translateX(100%) }
+        }`}
+      </style>
+
       <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
         <h1 style={{ fontSize: '36px', fontWeight: 700, marginBottom: '24px' }}>📦 Produzione</h1>
 
@@ -126,7 +144,10 @@ export default function ProduzionePage() {
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           <label>A:</label>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          <button onClick={fetchProduzione} style={{ padding: '10px 20px', backgroundColor: '#007aff', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Carica ordini</button>
+          <button onClick={fetchProduzione} style={{ padding: '10px 20px', backgroundColor: '#007aff', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
+            Carica ordini
+          </button>
+          {loading && <span style={{ fontStyle: 'italic', color: '#666' }}>Caricamento ordini in corso...</span>}
         </div>
 
         <div style={{ overflowX: 'auto', background: 'white', borderRadius: '16px' }}>
@@ -200,6 +221,12 @@ export default function ProduzionePage() {
             </div>
           ))}
         </div>
+
+        {!loading && righe.length > 0 && (
+          <p style={{ marginTop: '32px', fontStyle: 'italic', color: '#666' }}>
+            ✅ Ordini caricati: {righe.length}
+          </p>
+        )}
       </div>
     </div>
   )
