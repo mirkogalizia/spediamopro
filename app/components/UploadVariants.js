@@ -1,35 +1,62 @@
-"use client";
-
-import { useState } from "react";
-import { parseAndUploadVariants } from "./parseAndUploadVariants";
+'use client';
+import Papa from 'papaparse';
+import { useState } from 'react';
+import { db } from '@/lib/firebase';
+import { doc, setDoc, collection } from 'firebase/firestore';
+import { Button, Typography, Input } from '@mui/material';
 
 export default function UploadVariants() {
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState('');
 
-  const handleUpload = async (e) => {
+  const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setStatus("⏳ Upload in corso...");
-    try {
-      const result = await parseAndUploadVariants(file);
-      setStatus(`✅ ${result.total} righe caricate correttamente.`);
-    } catch (error) {
-      console.error(error);
-      setStatus("❌ Errore durante l'upload.");
-    }
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        const rows = results.data;
+        setStatus(`📦 ${rows.length} righe lette, sto caricando...`);
+        console.log("Parsed rows:", rows);
+
+        let ok = 0;
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          try {
+            const docId = row["ID"] || `${Date.now()}-${i}`;
+            await setDoc(doc(collection(db, 'shopify_variants'), docId), {
+              title: row["Titolo"] || '',
+              sku: row["SKU"] || '',
+              colore: row["Colore"] || '',
+              taglia: row["Taglia"] || '',
+              inventory_quantity: parseInt(row["Quantità"] || '0'),
+              image: row["Immagine"] || '',
+              numero_grafica: row["Numero grafica"] || '',
+              online: row["Online"]?.toLowerCase() === 'true',
+              timestamp: new Date()
+            });
+            ok++;
+          } catch (err) {
+            console.error(`❌ Errore alla riga ${i}:`, err);
+          }
+        }
+
+        setStatus(`✅ ${ok} righe caricate su Firestore`);
+      },
+      error: (error) => {
+        console.error("Errore parsing CSV:", error);
+        setStatus("❌ Errore durante il parsing del CSV");
+      }
+    });
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
-      <h1 className="text-xl font-bold mb-4">Upload Varianti Shopify</h1>
-      <input
-        type="file"
-        accept=".csv"
-        onChange={handleUpload}
-        className="border p-2 rounded"
-      />
-      <p className="mt-4">{status}</p>
+    <div style={{ textAlign: 'center' }}>
+      <Input type="file" accept=".csv" onChange={handleFileUpload} />
+      <Typography variant="body1" style={{ marginTop: '1rem' }}>
+        {status}
+      </Typography>
     </div>
   );
 }
