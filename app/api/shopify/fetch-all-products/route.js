@@ -1,74 +1,67 @@
-// /app/api/shopify/fetch-products/route.js
-import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import { setDoc, doc } from 'firebase/firestore';
+// /app/api/shopify/fetch-all-products/route.js
+import { db } from "@/lib/firebase";
+import { collection, doc, setDoc } from "firebase/firestore";
 
 const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN;
 const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
+const SHOPIFY_VERSION = "2024-07"; // aggiorna se necessario
 
-async function fetchAllShopifyProducts() {
-  const products = [];
-  let url = `https://${SHOPIFY_DOMAIN}/admin/api/2024-10/products.json?limit=250`;
-  let tries = 0;
+export async function GET() {
+  const limit = 250;
+  let page = 1;
+  let successCount = 0;
+  let errorCount = 0;
+  let totalProducts = 0;
+  const errors = [];
 
-  while (url && tries < 30) {
-    const res = await fetch(url, {
-      headers: {
-        'X-Shopify-Access-Token': SHOPIFY_TOKEN,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!res.ok) throw new Error(`Errore Shopify: ${res.statusText}`);
-    const data = await res.json();
-    products.push(...data.products);
-
-    const linkHeader = res.headers.get('link');
-    const nextLink = linkHeader?.match(/<([^>]+)>;\s*rel="next"/)?.[1];
-    url = nextLink || null;
-    tries++;
-  }
-
-  return products;
-}
-
-export async function POST(req) {
   try {
-    const products = await fetchAllShopifyProducts();
-    let success = 0;
-    const errors = [];
+    let hasMore = true;
+    while (hasMore) {
+      const res = await fetch(`https://${SHOPIFY_DOMAIN}/admin/api/${SHOPIFY_VERSION}/products.json?limit=${limit}&page=${page}`, {
+        headers: {
+          "X-Shopify-Access-Token": SHOPIFY_TOKEN,
+          "Content-Type": "application/json",
+        },
+        method: "GET",
+      });
 
-    for (const product of products) {
-      for (const variant of product.variants) {
-        const variant_id = variant.id.toString();
-        const data = {
-          variant_id,
-          title: product.title || '',
-          taglia: variant.option1 || '',
-          colore: variant.option2 || '',
-          image: product.image?.src || '',
-          inventory_quantity: variant.inventory_quantity || 0,
-          sku: variant.sku || '',
-          numero_grafica: product.handle || '',
-          online: !!product.published_at,
-          timestamp: new Date(),
-        };
+      if (!res.ok) {
+        const error = await res.text();
+        return new Response(JSON.stringify({ ok: false, error }), { status: 500 });
+      }
 
+      const data = await res.json();
+      const products = data.products;
+      totalProducts += products.length;
+
+      for (const product of products) {
         try {
-          await setDoc(doc(db, 'variants', variant_id), data);
-          success++;
+          const productRef = doc(db, "shopify_products", product.id.toString());
+          await setDoc(productRef, product);
+          successCount++;
         } catch (e) {
-          errors.push({ variant_id, message: e.message });
+          errorCount++;
+          errors.push({ id: product.id, error: e.message });
         }
+      }
+
+      if (products.length < limit) {
+        hasMore = false;
+      } else {
+        page++;
       }
     }
 
-    return NextResponse.json({
+    return new Response(JSON.stringify({
       ok: true,
-      message: `✅ ${success} varianti importate. ❌ ${errors.length} errori.`,
+      message: "Importazione completata",
+      totalProducts,
+      successCount,
+      errorCount,
       errors,
-    });
-  } catch (err) {
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    }), { status: 200 });
+
+  } catch (e) {
+    return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500 });
   }
 }
