@@ -1,3 +1,4 @@
+// /app/api/shopify/fetch-products/route.js
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
 import { setDoc, doc } from 'firebase/firestore';
@@ -5,7 +6,7 @@ import { setDoc, doc } from 'firebase/firestore';
 const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN;
 const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
 
-async function fetchAllProducts() {
+async function fetchAllShopifyProducts() {
   const products = [];
   let url = `https://${SHOPIFY_DOMAIN}/admin/api/2024-10/products.json?limit=250`;
   let tries = 0;
@@ -22,7 +23,7 @@ async function fetchAllProducts() {
     const data = await res.json();
     products.push(...data.products);
 
-    const linkHeader = res.headers.get("link");
+    const linkHeader = res.headers.get('link');
     const nextLink = linkHeader?.match(/<([^>]+)>;\s*rel="next"/)?.[1];
     url = nextLink || null;
     tries++;
@@ -31,9 +32,9 @@ async function fetchAllProducts() {
   return products;
 }
 
-export async function GET() {
+export async function POST(req) {
   try {
-    const products = await fetchAllProducts();
+    const products = await fetchAllShopifyProducts();
     let success = 0;
     const errors = [];
 
@@ -42,13 +43,13 @@ export async function GET() {
         const variant_id = variant.id.toString();
         const data = {
           variant_id,
-          title: product.title || "",
-          taglia: variant.option1 || "",
-          colore: variant.option2 || "",
-          image: product.image?.src || "",
+          title: product.title || '',
+          taglia: variant.option1 || '',
+          colore: variant.option2 || '',
+          image: product.image?.src || '',
           inventory_quantity: variant.inventory_quantity || 0,
-          sku: variant.sku || "",
-          numero_grafica: product.handle || "",
+          sku: variant.sku || '',
+          numero_grafica: product.handle || '',
           online: !!product.published_at,
           timestamp: new Date(),
         };
@@ -63,10 +64,11 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      message: `✅ ${success} varianti caricate. ❌ ${errors.length} errori.`,
+      ok: true,
+      message: `✅ ${success} varianti importate. ❌ ${errors.length} errori.`,
       errors,
     });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
