@@ -1,9 +1,6 @@
-// ✅ Nuova versione ottimizzata della route produzione
-// /app/api/produzione/route.ts
-
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -56,20 +53,91 @@ export async function GET(req: Request) {
     for (const order of allOrders) {
       for (const item of order.line_items) {
         const variantId = String(item.variant_id);
+        let docData = null;
+
         const docRef = doc(db, 'variants', variantId);
         const snap = await getDoc(docRef);
 
-        if (!snap.exists()) continue;
-        const v = snap.data();
+        // ✅ Se esiste e ha i dati minimi, usa Firebase
+        if (snap.exists()) {
+          const v = snap.data();
+          if (v.colore && v.taglia && v.image) {
+            docData = v;
+          }
+        }
 
+        // 🔁 Se non esiste o dati incompleti, recupera da Shopify
+        if (!docData) {
+          try {
+            const variantRes = await fetch(
+              `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/variants/${variantId}.json`,
+              {
+                method: 'GET',
+                headers: {
+                  'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
+
+            const variantJson = await variantRes.json();
+            const variant = variantJson.variant;
+            const productId = variant.product_id;
+
+            let productData: any = null;
+
+            const productRes = await fetch(
+              `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${productId}.json`,
+              {
+                method: 'GET',
+                headers: {
+                  'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
+
+            if (productRes.ok) {
+              const json = await productRes.json();
+              productData = json.product;
+            }
+
+            const image =
+              productData?.images?.find((img: any) =>
+                img.variant_ids.includes(variant.id)
+              )?.src || productData?.image?.src || '';
+
+            docData = {
+              variant_id: String(variant.id),
+              product_id: String(productId),
+              title: productData?.title || '',
+              taglia: variant.option1 || '',
+              colore: variant.option2 || '',
+              image,
+              inventory_quantity: variant.inventory_quantity ?? 0,
+              sku: variant.sku || '',
+              numero_grafica: productData?.handle || '',
+              online: productData?.published_at !== null,
+              timestamp: new Date().toISOString(),
+            };
+
+            // ✅ Salva in Firebase per uso futuro
+            await setDoc(docRef, docData);
+          } catch (err) {
+            console.error(`❌ Errore caricamento Shopify per variant ${variantId}:`, err);
+            continue; // Salta la riga se fallisce
+          }
+        }
+
+        // ✅ Inserisci nella tabella finale
         produzioneRows.push({
-          tipo_prodotto: v.tipo_prodotto || item.product_type || item.title.split(' ')[0],
+          tipo_prodotto: docData?.tipo_prodotto || item.product_type || item.title.split(' ')[0],
           variant_title: item.variant_title || '',
-          taglia: v.taglia || '',
-          colore: v.colore || '',
+          taglia: docData?.taglia || '',
+          colore: docData?.colore || '',
           grafica: item.title,
-          immagine: v.image || null,
-          immagine_prodotto: v.image || null,
+          immagine: docData?.image || null,
+          immagine_prodotto: docData?.image || null,
           order_name: order.name,
           created_at: order.created_at,
           variant_id: item.variant_id,
