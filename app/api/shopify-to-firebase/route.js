@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/firebase"; // <-- importa la tua configurazione Firebase
+import { db } from "../../firebase"; // <-- importa la tua configurazione Firebase
 import { collection, doc, setDoc } from "firebase/firestore";
 
 const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
