@@ -1,7 +1,18 @@
-// /app/api/shopify/fetch-and-save-products/route.js
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebase";
-import { doc, setDoc } from "firebase/firestore";
+import admin from "firebase-admin";
+
+// ✅ Inizializzazione Firebase Admin solo una volta
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+    }),
+  });
+}
+
+const db = admin.firestore();
 
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN;
@@ -35,7 +46,10 @@ export async function GET() {
 
       for (const product of products) {
         try {
-          await setDoc(doc(db, "shopify_products", String(product.id)), product);
+          await db
+            .collection("shopify_products")
+            .doc(String(product.id))
+            .set(product);
           totalSaved++;
         } catch (e) {
           totalFailed++;
