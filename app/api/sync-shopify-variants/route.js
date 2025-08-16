@@ -1,3 +1,4 @@
+// app/api/sync-variants/route.js
 import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
 import { doc, setDoc } from "firebase/firestore";
@@ -5,91 +6,69 @@ import { doc, setDoc } from "firebase/firestore";
 const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
 const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN;
 
-export async function GET() {
-  let cursor = null;
-  let hasNextPage = true;
-  let successCount = 0;
-  let errorCount = 0;
-  let errors = [];
+async function fetchAllProducts(cursor = null, products = []) {
+  let url = `https://${SHOPIFY_DOMAIN}/admin/api/2024-10/products.json?limit=250`;
+  if (cursor) url += `&page_info=${cursor}`;
 
-  while (hasNextPage) {
-    const url = new URL(`https://${SHOPIFY_DOMAIN}/admin/api/2024-10/graphql.json`);
+  const res = await fetch(url, {
+    headers: {
+      "X-Shopify-Access-Token": SHOPIFY_TOKEN,
+      "Content-Type": "application/json",
+    },
+  });
 
-    const query = `
-      query GetVariants($cursor: String) {
-        productVariants(first: 100, after: $cursor) {
-          pageInfo {
-            hasNextPage
-          }
-          edges {
-            cursor
-            node {
-              id
-              title
-              sku
-              image { src }
-              inventoryQuantity
-              product {
-                title
-                handle
-                publishedAt
-              }
-              selectedOptions {
-                name
-                value
-              }
-            }
-          }
-        }
-      }
-    `;
+  if (!res.ok) throw new Error("Errore fetch da Shopify");
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "X-Shopify-Access-Token": SHOPIFY_TOKEN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ query, variables: { cursor } }),
-    });
+  const data = await res.json();
+  products.push(...data.products);
 
-    const json = await res.json();
+  const linkHeader = res.headers.get("link");
+  const nextMatch = linkHeader?.match(/<[^>]+page_info=([^&>]+)[^>]*>; rel="next"/);
 
-    const edges = json?.data?.productVariants?.edges || [];
-    hasNextPage = json?.data?.productVariants?.pageInfo?.hasNextPage || false;
-    if (edges.length === 0) break;
-
-    for (const edge of edges) {
-      cursor = edge.cursor;
-      const v = edge.node;
-
-      const taglia = v.selectedOptions.find((opt) => opt.name.toLowerCase() === "taglia")?.value || "";
-      const colore = v.selectedOptions.find((opt) => opt.name.toLowerCase() === "colore")?.value || "";
-
-      const docId = v.id.split("/").pop(); // prende solo l'ID finale
-
-      const data = {
-        variant_id: docId,
-        title: v.product.title || "",
-        numero_grafica: v.product.handle || "",
-        taglia,
-        colore,
-        sku: v.sku || "",
-        image: v.image?.src || "",
-        inventory_quantity: v.inventoryQuantity || 0,
-        online: Boolean(v.product.publishedAt),
-        timestamp: new Date(),
-      };
-
-      try {
-        await setDoc(doc(db, "variants", docId), data);
-        successCount++;
-      } catch (err) {
-        errorCount++;
-        errors.push({ variant_id: docId, error: err.message, data });
-      }
-    }
+  if (nextMatch) {
+    return fetchAllProducts(nextMatch[1], products);
   }
 
-  return NextResponse.json({ successCount, errorCount, errors });
+  return products;
+}
+
+export async function GET() {
+  try {
+    const products = await fetchAllProducts();
+
+    let success = 0;
+    let failed = 0;
+    const errors = [];
+
+    for (const product of products) {
+      for (const variant of product.variants) {
+        const variant_id = variant.id.toString();
+
+        const data = {
+          variant_id,
+          title: product.title || "",
+          taglia: variant.option1 || "",
+          colore: variant.option2 || "",
+          image: product.image?.src || "",
+          inventory_quantity: variant.inventory_quantity || 0,
+          sku: variant.sku || "",
+          numero_grafica: product.handle || "",
+          online: product.published_at !== null,
+          timestamp: new Date(),
+        };
+
+        try {
+          await setDoc(doc(db, "variants", variant_id), data);
+          success++;
+        } catch (e) {
+          errors.push({ variant_id, error: e.message });
+          failed++;
+        }
+      }
+    }
+
+    return NextResponse.json({ success, failed, errors });
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
 }
