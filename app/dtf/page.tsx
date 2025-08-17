@@ -79,21 +79,39 @@ export default function DTFPage() {
 
         {loading && <p>Caricamento in corso...</p>}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+            gap: '16px',
+            width: '100%',
+            maxWidth: '100%',
+          }}
+        >
           {graficheRaggruppate.map(([grafica, info]) => (
             <div
               key={grafica}
               style={{
                 background: 'white',
                 borderRadius: '16px',
-                padding: '16px',
-                boxShadow: '0 0 10px rgba(0,0,0,0.05)',
+                padding: '12px',
+                boxShadow: '0 0 8px rgba(0,0,0,0.04)',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
               }}
             >
-              <div style={{ width: '100%', paddingBottom: '100%', position: 'relative', borderRadius: '12px', overflow: 'hidden', border: '1px solid #ddd', marginBottom: '12px' }}>
+              <div
+                style={{
+                  width: '100%',
+                  paddingBottom: '100%',
+                  position: 'relative',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  border: '1px solid #ddd',
+                  marginBottom: '8px',
+                }}
+              >
                 {info.immagine && (
                   <Image
                     src={info.immagine}
@@ -104,9 +122,16 @@ export default function DTFPage() {
                 )}
               </div>
 
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '18px', width: '100%' }}>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '14px', width: '100%' }}>
                 {Array.from(info.totalePerColore.entries()).map(([colore, qty]) => (
-                  <li key={colore} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <li
+                    key={colore}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      marginBottom: 4,
+                    }}
+                  >
                     <span style={{ fontWeight: 500 }}>{colore}</span>
                     <span style={{ fontWeight: 700 }}>{qty}×</span>
                   </li>
