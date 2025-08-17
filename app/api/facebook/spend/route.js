@@ -1,26 +1,23 @@
 import { NextResponse } from 'next/server';
 
 const FACEBOOK_AD_ACCOUNT_ID = 'act_907960570538812';
-const FACEBOOK_ACCESS_TOKEN = process.env.FACEBOOK_TOKEN!;
+const FACEBOOK_ACCESS_TOKEN = process.env.FACEBOOK_TOKEN;
 
 export async function GET() {
   const today = new Date();
-  const formattedDate = today.toISOString().split('T')[0]; // "2025-08-17"
+  const date = today.toISOString().split('T')[0]; // formato YYYY-MM-DD
 
-  const url = `https://graph.facebook.com/v19.0/${FACEBOOK_AD_ACCOUNT_ID}/insights?fields=spend&time_range[since]=${formattedDate}&time_range[until]=${formattedDate}&access_token=${FACEBOOK_ACCESS_TOKEN}`;
+  const url = `https://graph.facebook.com/v19.0/${FACEBOOK_AD_ACCOUNT_ID}/insights?fields=spend&time_range[since]=${date}&time_range[until]=${date}&access_token=${FACEBOOK_ACCESS_TOKEN}`;
 
   try {
-    const response = await fetch(encodeURI(url));
+    const response = await fetch(url);
     const data = await response.json();
 
-    if (data?.data?.[0]?.spend) {
-      return NextResponse.json({ ok: true, spendToday: data.data[0].spend });
-    } else {
-      console.error('No spend data found:', data);
-      return NextResponse.json({ ok: false, spendToday: '0' });
-    }
+    const spendToday = data?.data?.[0]?.spend || '0';
+
+    return NextResponse.json({ ok: true, spendToday });
   } catch (error) {
-    console.error('Errore chiamata Facebook:', error);
-    return NextResponse.json({ ok: false, spendToday: '0' });
+    console.error('Errore fetch Facebook spend:', error);
+    return NextResponse.json({ ok: false, error: 'Errore nel recupero spesa Facebook' });
   }
 }
