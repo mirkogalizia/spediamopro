@@ -15,67 +15,83 @@ interface Payout {
   amount: string;
 }
 
-interface FacebookData {
-  spendToday: string;
-  amountSpent: string;
-  spendCap: string;
-  remaining: string;
-}
-
 export default function CashFlowPage() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
-  const [facebookData, setFacebookData] = useState<FacebookData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [facebookSpend, setFacebookSpend] = useState<string>('0');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    setLoading(true);
+
     // Shopify Payouts
     fetch('/api/shopify/payouts')
       .then(res => res.json())
       .then(data => {
         if (data.ok) setPayouts(data.payouts);
       })
-      .catch(err => console.error("Errore fetch payouts:", err));
+      .catch(err => console.error("Errore fetch payouts:", err))
+      .finally(() => setLoading(false));
 
-    // Facebook Ads Data
-    fetch('/api/facebook/ads-info')
+    // Facebook Spend
+    fetch('/api/facebook/spend')
       .then(res => res.json())
       .then(data => {
-        if (data.ok) setFacebookData(data);
+        if (data.ok) setFacebookSpend(data.spendToday || '0');
       })
-      .catch(err => console.error("Errore fetch Facebook Ads:", err))
-      .finally(() => setLoading(false));
+      .catch(err => console.error("Errore fetch Facebook spend:", err));
   }, []);
 
-  const totale = payouts.reduce((acc, p) => acc + parseFloat(p.amount), 0);
+  const totaleIncasso = payouts.reduce((acc, p) => acc + parseFloat(p.amount), 0);
+  const totaleSpesa = parseFloat(facebookSpend);
+  const bilancio = totaleIncasso - totaleSpesa;
 
   return (
-    <div style={{ padding: '48px', fontFamily: 'Inter, sans-serif', background: '#f5f5f7', minHeight: '100vh' }}>
-      <h1 style={{ fontSize: '28px', fontWeight: '600', marginBottom: '24px' }}>Cash Flow 💰</h1>
+    <div style={{
+      padding: '48px',
+      fontFamily: 'Inter, sans-serif',
+      background: '#f5f5f7',
+      minHeight: '100vh'
+    }}>
+      <h1 style={{ fontSize: '28px', fontWeight: '600', marginBottom: '24px' }}>
+        Cash Flow 💰
+      </h1>
 
       {loading && <p>Caricamento...</p>}
 
-      <div style={{ marginBottom: '16px', fontSize: '18px', fontWeight: '500' }}>
-        Totale ricevuto da Shopify: <span style={{ fontWeight: '700' }}>{totale.toFixed(2)} €</span>
+      <div style={{
+        display: 'flex',
+        gap: '32px',
+        marginBottom: '32px',
+        fontSize: '18px',
+        fontWeight: '500'
+      }}>
+        <div>
+          Incasso Shopify: <span style={{ fontWeight: '700', color: '#2ecc71' }}>
+            {totaleIncasso.toFixed(2)} €
+          </span>
+        </div>
+        <div>
+          Spesa Facebook: <span style={{ fontWeight: '700', color: '#c0392b' }}>
+            {totaleSpesa.toFixed(2)} €
+          </span>
+        </div>
+        <div>
+          Bilancio Netto: <span style={{
+            fontWeight: '700',
+            color: bilancio >= 0 ? '#2ecc71' : '#e74c3c'
+          }}>
+            {bilancio.toFixed(2)} €
+          </span>
+        </div>
       </div>
 
-      {facebookData && (
-        <div style={{ marginBottom: '32px', fontSize: '18px', fontWeight: '500', lineHeight: '1.6' }}>
-          <div>
-            Spesa Facebook Ads <strong>oggi</strong>: <span style={{ color: '#c0392b', fontWeight: '700' }}>{parseFloat(facebookData.spendToday).toFixed(2)} €</span>
-          </div>
-          <div>
-            Spesa <strong>totale</strong>: {parseFloat(facebookData.amountSpent).toFixed(2)} €
-          </div>
-          <div>
-            Budget massimo (spend_cap): {parseFloat(facebookData.spendCap).toFixed(2)} €
-          </div>
-          <div>
-            Budget residuo: <strong>{parseFloat(facebookData.remaining).toFixed(2)} €</strong>
-          </div>
-        </div>
-      )}
-
-      <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '12px', overflow: 'hidden' }}>
+      <table style={{
+        width: '100%',
+        borderCollapse: 'collapse',
+        background: 'white',
+        borderRadius: '12px',
+        overflow: 'hidden'
+      }}>
         <thead>
           <tr style={{ background: '#eee', textAlign: 'left' }}>
             <th style={{ padding: '12px' }}>Data</th>
