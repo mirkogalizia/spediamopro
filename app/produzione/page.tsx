@@ -1,75 +1,113 @@
-'use client'
+"use client";
 
-import React, { useState, useMemo } from 'react'
-import Image from 'next/image'
+import React, { useState, useMemo } from 'react';
+import Image from 'next/image';
 
 interface RigaProduzione {
-  tipo_prodotto: string
-  taglia: string
-  colore: string
-  grafica: string
-  immagine: string | null
-  immagine_prodotto: string | null
-  order_name: string
-  created_at: string
-  variant_id: number
-  variant_title: string
+  tipo_prodotto: string;
+  taglia: string;
+  colore: string;
+  grafica: string;
+  immagine: string | null;
+  immagine_prodotto: string | null;
+  order_name: string;
+  created_at: string;
+  variant_id: number;
+  variant_title: string;
 }
 
 const COLORI_MAP: { [nome: string]: string } = {
-  "BIANCO": "#f7f7f7", "NERO": "#050402", "VIOLA": "#663399", "TABACCO": "#663333", "ROYAL": "#0066CC",
-  "VERDE BOSCO": "#336633", "ROSSO": "#993333", "PANNA": "#F3F1E9", "BLACK": "#050402", "TURTLE": "#999999",
-  "FUME'": "#999999", "SKY": "#87CEEB", "CAMMELLO": "#E4CFB1", "VERDE": "#336633", "NAVY": "#000080",
-  "CREMA": "#fffdd0", "PIOMBO": "#293133", "CIOCCOLATO": "#695046", "SABBIA": "#d4c3a1", "ARMY": "#454B1B",
-  "DARK GREY": "#636363", "SAND": "#C2B280", "SPORT GREY": "#CBCBCB", "BORDEAUX": "#784242",
-  "NIGHT BLUE": "#040348", "DARK CHOCOLATE": "#4b3f37",
+  "BIANCO": "#f7f7f7",
+  "NERO": "#050402",
+  "VIOLA": "#663399",
+  "TABACCO": "#663333",
+  "ROYAL": "#0066CC",
+  "VERDE BOSCO": "#336633",
+  "ROSSO": "#993333",
+  "PANNA": "#F3F1E9",
+  "BLACK": "#050402",
+  "TURTLE": "#999999",
+  "FUME'": "#999999",
+  "SKY": "#87CEEB",
+  "CAMMELLO": "#E4CFB1",
+  "VERDE": "#336633",
+  "NAVY": "#000080",
+  "CREMA": "#fffdd0",
+  "PIOMBO": "#293133",
+  "CIOCCOLATO": "#695046",
+  "SABBIA": "#d4c3a1",
+  "ARMY": "#454B1B",
+  "DARK GREY": "#636363",
+  "SAND": "#C2B280",
+  "SPORT GREY": "#CBCBCB",
+  "BORDEAUX": "#784242",
+  "NIGHT BLUE": "#040348",
+  "DARK CHOCOLATE": "#4b3f37",
 };
 
 export default function ProduzionePage() {
-  const [righe, setRighe] = useState<RigaProduzione[]>([])
-  const [stampati, setStampati] = useState<{ [key: number]: boolean }>({})
-  const [loading, setLoading] = useState(false)
-  const [from, setFrom] = useState<string>('')
-  const [to, setTo] = useState<string>('')
+  const [righe, setRighe] = useState<RigaProduzione[]>([]);
+  const [stampati, setStampati] = useState<{ [key: number]: boolean }>({});
+  const [loading, setLoading] = useState(false);
+  const [from, setFrom] = useState<string>('');
+  const [to, setTo] = useState<string>('');
+  const [popupOrder, setPopupOrder] = useState<string | null>(null);
+
+  const normalizzaTipo = (tipo: string) => {
+    const t = tipo.toLowerCase().replace(/[-\s]/g, '');
+    if (t.includes('tshirt')) return 'Tshirt';
+    return tipo.charAt(0).toUpperCase() + tipo.slice(1).toLowerCase();
+  };
 
   const fetchProduzione = async () => {
     if (!from || !to) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/produzione?from=${from}&to=${to}`)
-      const data = await res.json()
+      const res = await fetch(`/api/produzione?from=${from}&to=${to}`);
+      const data = await res.json();
       if (data.ok) {
-        setRighe(data.produzione)
-        const saved = localStorage.getItem('stampati')
-        if (saved) setStampati(JSON.parse(saved))
+        const normalizzate = data.produzione.map((r: RigaProduzione) => ({
+          ...r,
+          tipo_prodotto: normalizzaTipo(r.tipo_prodotto),
+        }));
+        setRighe(normalizzate);
+        const saved = localStorage.getItem('stampati');
+        if (saved) setStampati(JSON.parse(saved));
       }
     } catch (e) {
-      console.error('Errore fetch produzione:', e)
+      console.error('Errore fetch produzione:', e);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const toggleStampato = (variant_id: number) => {
-    const updated = { ...stampati, [variant_id]: !stampati[variant_id] }
-    setStampati(updated)
-    localStorage.setItem('stampati', JSON.stringify(updated))
-  }
+    const updated = { ...stampati, [variant_id]: !stampati[variant_id] };
+    setStampati(updated);
+    localStorage.setItem('stampati', JSON.stringify(updated));
+  };
 
-  const handleMissDTF = (grafica: string, order_name: string) => {
-    const nuovi = righe.filter(r => r.order_name !== order_name || r.grafica !== grafica);
-    setRighe(nuovi);
-  }
+  const handleMissDTF = (grafica: string, index: number) => {
+    const ordineRiferimento = righe[index].order_name;
+    const haQuellaGrafica = righe.some(r => r.order_name === ordineRiferimento && r.grafica === grafica);
+    if (haQuellaGrafica) {
+      const nuovi = righe.filter(r => r.order_name !== ordineRiferimento);
+      setRighe(nuovi);
+    }
+  };
 
-  const handleMissBlank = (tipo: string, taglia: string, colore: string, order_name: string) => {
-    const nuovi = righe.filter(r =>
-      r.order_name !== order_name ||
-      r.tipo_prodotto !== tipo ||
-      r.taglia !== taglia ||
-      r.colore !== colore
+  const handleMissBlank = (tipo: string, taglia: string, colore: string, index: number) => {
+    const ordineRiferimento = righe[index].order_name;
+    const key = `${tipo.toLowerCase()}|||${taglia.toLowerCase()}|||${colore.toLowerCase()}`;
+    const haQuellaCombinazione = righe.some(r =>
+      r.order_name === ordineRiferimento &&
+      `${r.tipo_prodotto.toLowerCase()}|||${r.taglia.toLowerCase()}|||${r.colore.toLowerCase()}` === key
     );
-    setRighe(nuovi);
-  }
+    if (haQuellaCombinazione) {
+      const nuovi = righe.filter(r => r.order_name !== ordineRiferimento);
+      setRighe(nuovi);
+    }
+  };
 
   const renderColorePallino = (nome: string) => {
     const colore = COLORI_MAP[nome.toUpperCase()] || '#999';
@@ -79,11 +117,11 @@ export default function ProduzionePage() {
         <strong style={{ fontSize: '18px' }}>{nome}</strong>
       </div>
     );
-  }
+  };
 
   const isStartOfOrderGroup = (index: number) => {
     return index === 0 || righe[index].order_name !== righe[index - 1].order_name;
-  }
+  };
 
   const totaliMagazzino = useMemo(() => {
     const map = new Map<string, Map<string, number>>();
@@ -112,8 +150,6 @@ export default function ProduzionePage() {
           </button>
         </div>
 
-        {loading && <p style={{ fontSize: '18px', marginBottom: '20px' }}>⌛ Caricamento in corso...</p>}
-
         <div style={{ overflowX: 'auto', background: 'white', borderRadius: '16px' }}>
           <table style={{ width: '100%', fontSize: '18px', borderCollapse: 'collapse' }}>
             <thead style={{ background: '#f5f5f7' }}>
@@ -135,7 +171,7 @@ export default function ProduzionePage() {
                   style={{
                     borderBottom: '1px solid #eee',
                     borderLeft: isStartOfOrderGroup(index) ? '4px solid #007aff' : '4px solid transparent',
-                    opacity: stampati[riga.variant_id] ? 0.4 : 1
+                    opacity: stampati[riga.variant_id] ? 0.4 : 1,
                   }}
                 >
                   <td style={{ padding: '20px' }}>{riga.order_name}</td>
@@ -153,10 +189,10 @@ export default function ProduzionePage() {
                     </div>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <button onClick={() => handleMissDTF(riga.grafica, riga.order_name)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
+                    <button onClick={() => handleMissDTF(riga.grafica, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <button onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore, riga.order_name)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
+                    <button onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
                   </td>
                   <td style={{ padding: '20px', textAlign: 'right' }}>
                     <input
@@ -187,5 +223,5 @@ export default function ProduzionePage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
