@@ -16,6 +16,7 @@ export default function DTFPage() {
   const [from, setFrom] = useState<string>('');
   const [to, setTo] = useState<string>('');
   const [search, setSearch] = useState<string>('');
+  const [stockInput, setStockInput] = useState<{ [key: string]: number }>({});
 
   useEffect(() => {
     if (!from || !to) return;
@@ -57,7 +58,7 @@ export default function DTFPage() {
 
     return Array.from(map.entries())
       .filter(([grafica]) => grafica.toLowerCase().includes(search.toLowerCase()))
-      .sort((a, b) => b[1].totale - a[1].totale); // decrescente
+      .sort((a, b) => b[1].totale - a[1].totale);
   }, [righe, search]);
 
   return (
@@ -82,63 +83,89 @@ export default function DTFPage() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
             gap: '16px',
             width: '100%',
             maxWidth: '100%',
           }}
         >
-          {graficheRaggruppate.map(([grafica, info]) => (
-            <div
-              key={grafica}
-              style={{
-                background: 'white',
-                borderRadius: '16px',
-                padding: '12px',
-                boxShadow: '0 0 8px rgba(0,0,0,0.04)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-              }}
-            >
+          {graficheRaggruppate.map(([grafica, info]) => {
+            const stock = stockInput[grafica] || 0;
+            const daStampare = info.totale + 10 - stock; // 15gg → 10 extra stimati
+            const stampareFinale = daStampare > 0 ? daStampare : 0;
+
+            return (
               <div
+                key={grafica}
                 style={{
-                  width: '100%',
-                  paddingBottom: '100%',
-                  position: 'relative',
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  border: '1px solid #ddd',
-                  marginBottom: '8px',
+                  background: 'white',
+                  borderRadius: '16px',
+                  padding: '12px',
+                  boxShadow: '0 0 8px rgba(0,0,0,0.05)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
                 }}
               >
-                {info.immagine && (
-                  <Image
-                    src={info.immagine}
-                    alt="grafica"
-                    fill
-                    style={{ objectFit: 'contain' }}
-                  />
-                )}
-              </div>
+                <div
+                  style={{
+                    width: '100%',
+                    paddingBottom: '100%',
+                    position: 'relative',
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                    border: '1px solid #ddd',
+                    marginBottom: '8px',
+                  }}
+                >
+                  {info.immagine ? (
+                    <Image
+                      src={info.immagine}
+                      alt="grafica"
+                      fill
+                      style={{ objectFit: 'contain' }}
+                    />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', background: '#eee' }} />
+                  )}
+                </div>
 
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '14px', width: '100%' }}>
-                {Array.from(info.totalePerColore.entries()).map(([colore, qty]) => (
-                  <li
-                    key={colore}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      marginBottom: 4,
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '14px', width: '100%' }}>
+                  {Array.from(info.totalePerColore.entries()).map(([colore, qty]) => (
+                    <li key={colore} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontWeight: 500 }}>{colore}</span>
+                      <span style={{ fontWeight: 700 }}>{qty}×</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div style={{ marginTop: '10px', fontSize: 13, width: '100%' }}>
+                  <label style={{ fontWeight: 500, display: 'block', marginBottom: 4 }}>
+                    In magazzino:
+                  </label>
+                  <input
+                    type="number"
+                    value={stock}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      setStockInput(prev => ({ ...prev, [grafica]: isNaN(val) ? 0 : val }));
                     }}
-                  >
-                    <span style={{ fontWeight: 500 }}>{colore}</span>
-                    <span style={{ fontWeight: 700 }}>{qty}×</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+                    style={{
+                      width: '100%',
+                      padding: '6px',
+                      fontSize: '13px',
+                      borderRadius: '6px',
+                      border: '1px solid #ccc',
+                      marginBottom: '6px',
+                    }}
+                  />
+                  <div>
+                    📦 Da stampare: <strong>{stampareFinale}</strong>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
