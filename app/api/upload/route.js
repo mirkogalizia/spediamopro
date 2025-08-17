@@ -6,10 +6,6 @@ const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN;
 const SHOPIFY_API_VERSION = '2023-10';
 
-if (!SHOPIFY_ACCESS_TOKEN || !SHOPIFY_SHOP_DOMAIN) {
-  throw new Error('SHOPIFY_TOKEN o SHOPIFY_DOMAIN non impostati in .env');
-}
-
 const serviceAccount = {
   type: "service_account",
   project_id: "spediamopro-a4936",
@@ -63,22 +59,22 @@ export async function GET() {
           const variant_id = String(variant.id);
           const ref = db.collection('variants').doc(variant_id);
 
-          const existing = await ref.get();
-          const forceUpdate = true;
+          // Override: sempre aggiorna immagine (anche se già esiste)
+          const image = (() => {
+            const imgById = (product.images || []).find(img =>
+              (img.variant_ids || []).includes(variant.id)
+            );
+            if (imgById) return imgById.src;
 
-          if (!forceUpdate && existing.exists) {
-            const data = existing.data();
-            if (
-              data &&
-              data.title &&
-              data.variant_title &&
-              data.inventory_quantity !== undefined &&
-              data.image
-            ) {
-              totalSkipped++;
-              continue;
-            }
-          }
+            // fallback colore nel nome file
+            const colore = (variant.option2 || '').toLowerCase();
+            const imgByColor = (product.images || []).find(img =>
+              img.alt?.toLowerCase().includes(colore) || img.src.toLowerCase().includes(colore)
+            );
+            if (imgByColor) return imgByColor.src;
+
+            return product.image?.src || '';
+          })();
 
           const docData = {
             variant_id,
@@ -87,7 +83,7 @@ export async function GET() {
             variant_title: variant.title,
             taglia: variant.option1 || '',
             colore: variant.option2 || '',
-            image: product.image?.src || '',
+            image,
             inventory_quantity: variant.inventory_quantity ?? 0,
             sku: variant.sku || '',
             numero_grafica: product.handle,
