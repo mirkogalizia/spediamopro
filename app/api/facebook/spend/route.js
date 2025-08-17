@@ -17,7 +17,6 @@ export async function GET() {
   const endDate = getToday();
 
   try {
-    // 1. Transazioni (pagamenti) del mese
     const txUrl = `https://graph.facebook.com/v19.0/${FACEBOOK_AD_ACCOUNT_ID}/transactions?fields=payment_method_details,amount,created_time&limit=100&access_token=${FACEBOOK_ACCESS_TOKEN}`;
     const txRes = await fetch(txUrl);
     const txData = await txRes.json();
@@ -25,26 +24,15 @@ export async function GET() {
     const paymentsThisMonth = (txData?.data || []).filter(t => {
       const date = new Date(t.created_time);
       return date >= new Date(startDate) && date <= new Date(endDate);
-    });
-
-    const totalPaid = paymentsThisMonth.reduce((sum, t) => sum + parseFloat(t.amount), 0).toFixed(2);
-
-    // 2. Stato dell'account: amount_spent e spend_cap
-    const accountUrl = `https://graph.facebook.com/v19.0/${FACEBOOK_AD_ACCOUNT_ID}?fields=amount_spent,spend_cap&access_token=${FACEBOOK_ACCESS_TOKEN}`;
-    const accountRes = await fetch(accountUrl);
-    const accountData = await accountRes.json();
-
-    const amountSpent = parseFloat(accountData.amount_spent || 0).toFixed(2);
-    const spendCap = parseFloat(accountData.spend_cap || 0).toFixed(2);
-    const remaining = (spendCap - amountSpent).toFixed(2);
+    }).map(t => ({
+      amount: t.amount,
+      date: t.created_time,
+      method: t.payment_method_details?.type || 'unknown'
+    }));
 
     return NextResponse.json({
       ok: true,
-      totalPaidThisMonth: totalPaid,
-      spendCap,
-      amountSpent,
-      remainingToCap: remaining,
-      raw: { paymentsThisMonth, accountData }
+      paymentsThisMonth
     });
 
   } catch (err) {
