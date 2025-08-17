@@ -16,7 +16,6 @@ export default function DTFPage() {
   const [from, setFrom] = useState<string>('');
   const [to, setTo] = useState<string>('');
   const [search, setSearch] = useState<string>('');
-  const [stockInput, setStockInput] = useState<{ [key: string]: number }>({});
 
   useEffect(() => {
     if (!from || !to) return;
@@ -58,8 +57,12 @@ export default function DTFPage() {
 
     return Array.from(map.entries())
       .filter(([grafica]) => grafica.toLowerCase().includes(search.toLowerCase()))
-      .sort((a, b) => b[1].totale - a[1].totale);
+      .sort((a, b) => b[1].totale - a[1].totale); // decrescente
   }, [righe, search]);
+
+  const totaleInEvasi = useMemo(() => {
+    return graficheRaggruppate.reduce((acc, [, info]) => acc + info.totale, 0);
+  }, [graficheRaggruppate]);
 
   return (
     <div style={{ padding: '48px 24px', fontFamily: 'Inter, sans-serif', background: '#f5f5f7', minHeight: '100vh' }}>
@@ -80,92 +83,72 @@ export default function DTFPage() {
 
         {loading && <p>Caricamento in corso...</p>}
 
+        {!loading && (
+          <div style={{ marginBottom: '24px', fontSize: '20px', fontWeight: 600 }}>
+            Totale pezzi inevasi: {totaleInEvasi}
+          </div>
+        )}
+
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
             gap: '16px',
             width: '100%',
             maxWidth: '100%',
           }}
         >
-          {graficheRaggruppate.map(([grafica, info]) => {
-            const stock = stockInput[grafica] || 0;
-            const daStampare = info.totale + 10 - stock; // 15gg → 10 extra stimati
-            const stampareFinale = daStampare > 0 ? daStampare : 0;
-
-            return (
+          {graficheRaggruppate.map(([grafica, info]) => (
+            <div
+              key={grafica}
+              style={{
+                background: 'white',
+                borderRadius: '16px',
+                padding: '12px',
+                boxShadow: '0 0 8px rgba(0,0,0,0.04)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+              }}
+            >
               <div
-                key={grafica}
                 style={{
-                  background: 'white',
-                  borderRadius: '16px',
-                  padding: '12px',
-                  boxShadow: '0 0 8px rgba(0,0,0,0.05)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
+                  width: '100%',
+                  paddingBottom: '100%',
+                  position: 'relative',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  border: '1px solid #ddd',
+                  marginBottom: '8px',
                 }}
               >
-                <div
-                  style={{
-                    width: '100%',
-                    paddingBottom: '100%',
-                    position: 'relative',
-                    borderRadius: '12px',
-                    overflow: 'hidden',
-                    border: '1px solid #ddd',
-                    marginBottom: '8px',
-                  }}
-                >
-                  {info.immagine ? (
-                    <Image
-                      src={info.immagine}
-                      alt="grafica"
-                      fill
-                      style={{ objectFit: 'contain' }}
-                    />
-                  ) : (
-                    <div style={{ width: '100%', height: '100%', background: '#eee' }} />
-                  )}
-                </div>
-
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '14px', width: '100%' }}>
-                  {Array.from(info.totalePerColore.entries()).map(([colore, qty]) => (
-                    <li key={colore} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontWeight: 500 }}>{colore}</span>
-                      <span style={{ fontWeight: 700 }}>{qty}×</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <div style={{ marginTop: '10px', fontSize: 13, width: '100%' }}>
-                  <label style={{ fontWeight: 500, display: 'block', marginBottom: 4 }}>
-                    In magazzino:
-                  </label>
-                  <input
-                    type="number"
-                    value={stock}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value);
-                      setStockInput(prev => ({ ...prev, [grafica]: isNaN(val) ? 0 : val }));
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '6px',
-                      fontSize: '13px',
-                      borderRadius: '6px',
-                      border: '1px solid #ccc',
-                      marginBottom: '6px',
-                    }}
+                {info.immagine && (
+                  <Image
+                    src={info.immagine}
+                    alt="grafica"
+                    fill
+                    style={{ objectFit: 'contain' }}
                   />
-                  <div>
-                    📦 Da stampare: <strong>{stampareFinale}</strong>
-                  </div>
-                </div>
+                )}
               </div>
-            );
-          })}
+
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '14px', width: '100%' }}>
+                {Array.from(info.totalePerColore.entries()).map(([colore, qty]) => (
+                  <li
+                    key={colore}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span style={{ fontWeight: 500 }}>{colore}</span>
+                    <span style={{ fontWeight: 700 }}>{qty}×</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
       </div>
     </div>
