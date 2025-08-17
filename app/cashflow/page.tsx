@@ -17,17 +17,28 @@ interface Payout {
 
 export default function CashFlowPage() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [facebookSpend, setFacebookSpend] = useState<string>('0');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
+
+    // Shopify Payouts
     fetch('/api/shopify/payouts')
       .then(res => res.json())
       .then(data => {
         if (data.ok) setPayouts(data.payouts);
       })
-      .catch((err) => console.error("Errore fetch payouts:", err))
+      .catch(err => console.error("Errore fetch payouts:", err))
       .finally(() => setLoading(false));
+
+    // Facebook Spend
+    fetch('/api/facebook/spend')
+      .then(res => res.json())
+      .then(data => {
+        setFacebookSpend(data.spendToday || '0');
+      })
+      .catch(err => console.error("Errore fetch Facebook spend:", err));
   }, []);
 
   const totale = payouts.reduce((acc, p) => acc + parseFloat(p.amount), 0);
@@ -38,8 +49,12 @@ export default function CashFlowPage() {
 
       {loading && <p>Caricamento...</p>}
 
+      <div style={{ marginBottom: '16px', fontSize: '18px', fontWeight: '500' }}>
+        Totale ricevuto da Shopify: <span style={{ fontWeight: '700' }}>{totale.toFixed(2)} €</span>
+      </div>
+
       <div style={{ marginBottom: '32px', fontSize: '18px', fontWeight: '500' }}>
-        Totale ricevuto: <span style={{ fontWeight: '700' }}>{totale.toFixed(2)} €</span>
+        Spesa Facebook Ads oggi: <span style={{ fontWeight: '700', color: '#c0392b' }}>{parseFloat(facebookSpend).toFixed(2)} €</span>
       </div>
 
       <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '12px', overflow: 'hidden' }}>
