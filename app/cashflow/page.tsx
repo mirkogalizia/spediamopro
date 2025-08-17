@@ -15,30 +15,35 @@ interface Payout {
   amount: string;
 }
 
+interface FacebookData {
+  spendToday: string;
+  amountSpent: string;
+  spendCap: string;
+  remaining: string;
+}
+
 export default function CashFlowPage() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
-  const [facebookSpend, setFacebookSpend] = useState<string>('0');
-  const [loading, setLoading] = useState(false);
+  const [facebookData, setFacebookData] = useState<FacebookData | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
-
     // Shopify Payouts
     fetch('/api/shopify/payouts')
       .then(res => res.json())
       .then(data => {
         if (data.ok) setPayouts(data.payouts);
       })
-      .catch(err => console.error("Errore fetch payouts:", err))
-      .finally(() => setLoading(false));
+      .catch(err => console.error("Errore fetch payouts:", err));
 
-    // Facebook Spend
-    fetch('/api/facebook/spend')
+    // Facebook Ads Data
+    fetch('/api/facebook/ads-info')
       .then(res => res.json())
       .then(data => {
-        setFacebookSpend(data.spendToday || '0');
+        if (data.ok) setFacebookData(data);
       })
-      .catch(err => console.error("Errore fetch Facebook spend:", err));
+      .catch(err => console.error("Errore fetch Facebook Ads:", err))
+      .finally(() => setLoading(false));
   }, []);
 
   const totale = payouts.reduce((acc, p) => acc + parseFloat(p.amount), 0);
@@ -53,9 +58,22 @@ export default function CashFlowPage() {
         Totale ricevuto da Shopify: <span style={{ fontWeight: '700' }}>{totale.toFixed(2)} €</span>
       </div>
 
-      <div style={{ marginBottom: '32px', fontSize: '18px', fontWeight: '500' }}>
-        Spesa Facebook Ads oggi: <span style={{ fontWeight: '700', color: '#c0392b' }}>{parseFloat(facebookSpend).toFixed(2)} €</span>
-      </div>
+      {facebookData && (
+        <div style={{ marginBottom: '32px', fontSize: '18px', fontWeight: '500', lineHeight: '1.6' }}>
+          <div>
+            Spesa Facebook Ads <strong>oggi</strong>: <span style={{ color: '#c0392b', fontWeight: '700' }}>{parseFloat(facebookData.spendToday).toFixed(2)} €</span>
+          </div>
+          <div>
+            Spesa <strong>totale</strong>: {parseFloat(facebookData.amountSpent).toFixed(2)} €
+          </div>
+          <div>
+            Budget massimo (spend_cap): {parseFloat(facebookData.spendCap).toFixed(2)} €
+          </div>
+          <div>
+            Budget residuo: <strong>{parseFloat(facebookData.remaining).toFixed(2)} €</strong>
+          </div>
+        </div>
+      )}
 
       <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '12px', overflow: 'hidden' }}>
         <thead>

@@ -1,22 +1,42 @@
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const token = process.env.NEXT_PUBLIC_FACEBOOK_ACCESS_TOKEN;
-  const adAccountId = 'act_907960570538812'; // <- Sostituisci con il tuo ID account pubblicitario
+  const token = process.env.FACEBOOK_ACCESS_TOKEN;
+  const adAccountId = "act_907960570538812";
 
-  const fields = 'spend,account_id,balance,amount_due';
   const today = new Date().toISOString().split("T")[0];
-  const url = `https://graph.facebook.com/v19.0/${adAccountId}/insights?fields=spend&time_range[since]=${today}&time_range[until]=${today}&access_token=${token}`;
+  const timeRangeToday = `time_range[since]=${today}&time_range[until]=${today}`;
+  const todayUrl = `https://graph.facebook.com/v19.0/${adAccountId}/insights?fields=spend&${timeRangeToday}&access_token=${token}`;
+
+  const allUrl = `https://graph.facebook.com/v19.0/${adAccountId}?fields=amount_spent,spend_cap,balance&access_token=${token}`;
 
   try {
-    const res = await fetch(url);
-    const data = await res.json();
+    const [resToday, resAll] = await Promise.all([fetch(todayUrl), fetch(allUrl)]);
+    const dataToday = await resToday.json();
+    const dataAll = await resAll.json();
 
-    // Qui puoi fare una seconda chiamata per vedere anche il saldo attuale (opzionale)
+    console.log("URL Today:", todayUrl);
+    console.log("Response Today:", JSON.stringify(dataToday, null, 2));
+    console.log("URL Account:", allUrl);
+    console.log("Response Account:", JSON.stringify(dataAll, null, 2));
 
-    return NextResponse.json({ spendToday: data?.data?.[0]?.spend || "0" });
-  } catch (e) {
-    console.error("Errore Facebook API:", e);
-    return NextResponse.json({ error: "Errore durante fetch da Facebook" }, { status: 500 });
+    const spendToday = dataToday.data?.[0]?.spend ?? "0";
+    const amountSpent = dataAll.amount_spent ?? "0";
+    const spendCap = dataAll.spend_cap ?? "0";
+
+    const remaining = (parseFloat(spendCap) - parseFloat(amountSpent)).toString();
+
+    return NextResponse.json({
+      ok: true,
+      spendToday,
+      amountSpent,
+      spendCap,
+      remaining,
+      rawToday: dataToday,
+      rawAccount: dataAll,
+    });
+  } catch (error) {
+    console.error("Errore in Facebook Ads info route:", error);
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 }
