@@ -60,10 +60,6 @@ export default function DTFPage() {
       .sort((a, b) => b[1].totale - a[1].totale); // decrescente
   }, [righe, search]);
 
-  const totaleInEvasi = useMemo(() => {
-    return graficheRaggruppate.reduce((acc, [, info]) => acc + info.totale, 0);
-  }, [graficheRaggruppate]);
-
   return (
     <div style={{ padding: '48px 24px', fontFamily: 'Inter, sans-serif', background: '#f5f5f7', minHeight: '100vh' }}>
       <div style={{ maxWidth: '1600px', margin: '0 auto' }}>
@@ -82,12 +78,6 @@ export default function DTFPage() {
         </div>
 
         {loading && <p>Caricamento in corso...</p>}
-
-        {!loading && (
-          <div style={{ marginBottom: '24px', fontSize: '20px', fontWeight: 600 }}>
-            Totale pezzi inevasi: {totaleInEvasi}
-          </div>
-        )}
 
         <div
           style={{
@@ -130,6 +120,22 @@ export default function DTFPage() {
                     style={{ objectFit: 'contain' }}
                   />
                 )}
+              </div>
+
+              <div
+                style={{
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  marginBottom: '8px',
+                  color: '#000',
+                  background: '#f0f0f0',
+                  padding: '4px 8px',
+                  borderRadius: '8px',
+                  width: '100%',
+                  textAlign: 'center'
+                }}
+              >
+                Totale inevasi: {info.totale}
               </div>
 
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '14px', width: '100%' }}>
