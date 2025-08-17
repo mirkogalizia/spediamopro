@@ -2,15 +2,19 @@ import { NextResponse } from 'next/server';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
-const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
-const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
+const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN;
+const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN;
 const SHOPIFY_API_VERSION = '2023-10';
+
+if (!SHOPIFY_ACCESS_TOKEN || !SHOPIFY_SHOP_DOMAIN) {
+  throw new Error('SHOPIFY_TOKEN o SHOPIFY_DOMAIN non impostati in .env');
+}
 
 const serviceAccount = {
   type: "service_account",
   project_id: "spediamopro-a4936",
   private_key_id: "cb272a15ea640ebbd0d0b48e582f6a22d26a6dc4",
-  private_key: process.env.FIREBASE_PRIVATE_KEY!.replace(/\\n/g, '\n'),
+  private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
   client_email: "firebase-adminsdk-fbsvc@spediamopro-a4936.iam.gserviceaccount.com",
   client_id: "114809406991123817846",
   auth_uri: "https://accounts.google.com/o/oauth2/auth",
@@ -32,6 +36,7 @@ export async function GET() {
   try {
     let nextUrl = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=250`;
     let totalSaved = 0;
+    let totalSkipped = 0;
     let totalFailed = 0;
     let totalVariants = 0;
     const errors = [];
@@ -55,14 +60,25 @@ export async function GET() {
       for (const product of products) {
         for (const variant of product.variants || []) {
           totalVariants++;
-
           const variant_id = String(variant.id);
           const ref = db.collection('variants').doc(variant_id);
 
-          // 🔄 Cerca immagine corretta per la variante
-          const immagineVariante = product.images.find(img => img.id === variant.image_id)?.src
-            || product.image?.src
-            || '';
+          const existing = await ref.get();
+          const forceUpdate = true;
+
+          if (!forceUpdate && existing.exists) {
+            const data = existing.data();
+            if (
+              data &&
+              data.title &&
+              data.variant_title &&
+              data.inventory_quantity !== undefined &&
+              data.image
+            ) {
+              totalSkipped++;
+              continue;
+            }
+          }
 
           const docData = {
             variant_id,
@@ -71,8 +87,7 @@ export async function GET() {
             variant_title: variant.title,
             taglia: variant.option1 || '',
             colore: variant.option2 || '',
-            image: immagineVariante,
-            immagine_prodotto: immagineVariante,
+            image: product.image?.src || '',
             inventory_quantity: variant.inventory_quantity ?? 0,
             sku: variant.sku || '',
             numero_grafica: product.handle,
@@ -81,10 +96,10 @@ export async function GET() {
           };
 
           try {
-            await ref.set(docData);
+            await ref.set(docData, { merge: true });
             totalSaved++;
-            console.log(`✅ Salvato variant ${variant_id}`);
-          } catch (err: any) {
+            console.log(`✅ Salvato variant ${variant_id} (${docData.title})`);
+          } catch (err) {
             totalFailed++;
             errors.push({ variant_id, message: err.message });
             console.error(`❌ Errore variant ${variant_id}: ${err.message}`);
@@ -101,10 +116,11 @@ export async function GET() {
       ok: true,
       totalVariants,
       totalSaved,
+      totalSkipped,
       totalFailed,
       errors,
     });
-  } catch (e: any) {
+  } catch (e) {
     console.error("🔥 Errore generale:", e);
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
