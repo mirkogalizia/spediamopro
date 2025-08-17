@@ -79,66 +79,73 @@ export default function DTFPage() {
 
         {loading && <p>Caricamento in corso...</p>}
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-            gap: '16px',
-            width: '100%',
-            maxWidth: '100%',
-          }}
-        >
-          {graficheRaggruppate.map(([grafica, info]) => (
-            <div
-              key={grafica}
-              style={{
-                background: 'white',
-                borderRadius: '16px',
-                padding: '12px',
-                boxShadow: '0 0 8px rgba(0,0,0,0.04)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-              }}
-            >
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+          gap: '24px'
+        }}>
+          {graficheRaggruppate.map(([grafica, info]) => {
+            const [stock, setStock] = useState(0);
+            const ordini = info.totale;
+            const autonomia15gg = Math.ceil(ordini / 30 * 15);
+            const totaleDaStampare = Math.max(0, ordini + autonomia15gg - stock);
+
+            return (
               <div
+                key={grafica}
                 style={{
-                  width: '100%',
-                  paddingBottom: '100%',
-                  position: 'relative',
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  border: '1px solid #ddd',
-                  marginBottom: '8px',
+                  background: 'white',
+                  borderRadius: '16px',
+                  padding: '16px',
+                  boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  border: '1px solid #e0e0e0'
                 }}
               >
-                {info.immagine && (
-                  <Image
-                    src={info.immagine}
-                    alt="grafica"
-                    fill
-                    style={{ objectFit: 'contain' }}
-                  />
-                )}
-              </div>
+                <div style={{ width: '100%', paddingBottom: '100%', position: 'relative', borderRadius: '12px', overflow: 'hidden', marginBottom: '12px' }}>
+                  {info.immagine && (
+                    <Image
+                      src={info.immagine}
+                      alt="grafica"
+                      fill
+                      style={{ objectFit: 'contain' }}
+                    />
+                  )}
+                </div>
 
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '14px', width: '100%' }}>
-                {Array.from(info.totalePerColore.entries()).map(([colore, qty]) => (
-                  <li
-                    key={colore}
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '14px', width: '100%' }}>
+                  {Array.from(info.totalePerColore.entries()).map(([colore, qty]) => (
+                    <li key={colore} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span>{colore}</span>
+                      <span><strong>{qty}×</strong></span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div style={{ marginTop: 10, fontSize: 14, width: '100%' }}>
+                  <input
+                    type="number"
+                    value={stock}
+                    onChange={(e) => setStock(parseInt(e.target.value) || 0)}
+                    placeholder="Magazzino"
                     style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      marginBottom: 4,
+                      width: '100%',
+                      padding: '6px 10px',
+                      borderRadius: 6,
+                      border: '1px solid #ccc',
+                      fontSize: 13,
+                      marginBottom: 6
                     }}
-                  >
-                    <span style={{ fontWeight: 500 }}>{colore}</span>
-                    <span style={{ fontWeight: 700 }}>{qty}×</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+                  />
+                  <div style={{ fontWeight: 600, textAlign: 'center', background: '#f0f0f0', borderRadius: 6, padding: '4px' }}>
+                    Ne devi stampare: {totaleDaStampare}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
