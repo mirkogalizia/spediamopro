@@ -8,28 +8,27 @@ interface Payout {
   currency: string;
   status: string;
   amount: string;
+  incasso: number;
 }
 
 export default function CashFlowPage() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
-  const [incassi, setIncassi] = useState<{ [date: string]: number }>({});
   const [facebookSpend, setFacebookSpend] = useState<string>('0');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
 
+    // Shopify Payouts + Incassi
     fetch('/api/shopify/payouts')
       .then(res => res.json())
       .then(data => {
-        if (data.ok) {
-          setPayouts(data.payouts);
-          setIncassi(data.incassi_per_giorno || {});
-        }
+        if (data.ok) setPayouts(data.payouts);
       })
       .catch(err => console.error("Errore fetch payouts:", err))
       .finally(() => setLoading(false));
 
+    // Facebook Spend
     fetch('/api/facebook/spend')
       .then(res => res.json())
       .then(data => {
@@ -38,7 +37,7 @@ export default function CashFlowPage() {
       .catch(err => console.error("Errore fetch Facebook spend:", err));
   }, []);
 
-  const totaleIncasso = Object.values(incassi).reduce((acc, val) => acc + val, 0);
+  const totaleIncasso = payouts.reduce((acc, p) => acc + parseFloat(p.incasso?.toString() || '0'), 0);
   const totaleSpesa = parseFloat(facebookSpend);
   const bilancio = totaleIncasso - totaleSpesa;
 
@@ -99,32 +98,15 @@ export default function CashFlowPage() {
           </tr>
         </thead>
         <tbody>
-          {
-            // Uniamo date da incassi e payout
-            Array.from(new Set([
-              ...Object.keys(incassi),
-              ...payouts.map(p => p.date.split('T')[0])
-            ]))
-            .sort()
-            .map(date => {
-              const payout = payouts.find(p => p.date.startsWith(date));
-              const incasso = incassi[date] || 0;
-
-              return (
-                <tr key={date} style={{ borderBottom: '1px solid #ddd' }}>
-                  <td style={{ padding: '12px' }}>{date}</td>
-                  <td style={{ padding: '12px', fontWeight: 500 }}>
-                    {incasso.toFixed(2)} €
-                  </td>
-                  <td style={{ padding: '12px', fontWeight: 600 }}>
-                    {payout ? parseFloat(payout.amount).toFixed(2) + ' €' : '-'}
-                  </td>
-                  <td style={{ padding: '12px' }}>{payout?.currency || '-'}</td>
-                  <td style={{ padding: '12px' }}>{payout?.status || '-'}</td>
-                </tr>
-              );
-            })
-          }
+          {payouts.map((payout) => (
+            <tr key={payout.id} style={{ borderBottom: '1px solid #ddd' }}>
+              <td style={{ padding: '12px' }}>{new Date(payout.date).toLocaleDateString()}</td>
+              <td style={{ padding: '12px', fontWeight: 600 }}>{payout.incasso.toFixed(2)} €</td>
+              <td style={{ padding: '12px' }}>{parseFloat(payout.amount).toFixed(2)} €</td>
+              <td style={{ padding: '12px' }}>{payout.currency}</td>
+              <td style={{ padding: '12px' }}>{payout.status}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

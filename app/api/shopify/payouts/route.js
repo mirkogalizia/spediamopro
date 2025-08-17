@@ -4,54 +4,57 @@ import { NextResponse } from 'next/server';
 const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN;
 const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
 
-function formatDate(date) {
-  return date.toISOString().split('T')[0];
-}
-
 export async function GET() {
   try {
-    // --- 1. Recupera i Payout
-    const payoutsRes = await fetch(`https://${SHOPIFY_DOMAIN}/admin/api/2024-07/shopify_payments/payouts.json`, {
+    // 1. Recupera tutti i payout
+    const payoutRes = await fetch(`https://${SHOPIFY_DOMAIN}/admin/api/2024-07/shopify_payments/payouts.json`, {
       headers: {
         'X-Shopify-Access-Token': SHOPIFY_TOKEN,
         'Content-Type': 'application/json',
       },
     });
 
-    if (!payoutsRes.ok) throw new Error("Errore nel recupero dei payout");
+    if (!payoutRes.ok) throw new Error("Errore nel recupero dei payout");
+    const payoutData = await payoutRes.json();
+    const payouts = payoutData.payouts;
 
-    const { payouts } = await payoutsRes.json();
-
-    // --- 2. Recupera gli ordini PAGATI ultimi 30 giorni
-    const today = new Date();
-    const start = new Date(today);
-    start.setDate(today.getDate() - 30);
-
-    const from = formatDate(start);
-    const to = formatDate(today);
-
-    const ordersRes = await fetch(`https://${SHOPIFY_DOMAIN}/admin/api/2024-07/orders.json?created_at_min=${from}T00:00:00-02:00&created_at_max=${to}T23:59:59-02:00&financial_status=paid&status=any&limit=250`, {
-      headers: {
-        'X-Shopify-Access-Token': SHOPIFY_TOKEN,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!ordersRes.ok) throw new Error("Errore nel recupero degli ordini");
-
-    const { orders } = await ordersRes.json();
-
-    // --- 3. Aggrega incassi per giorno
+    // 2. Calcola gli incassi giornalieri veri per ogni giorno in cui esiste un payout
     const incassi = {};
-    orders.forEach(order => {
-      const giorno = order.created_at.split('T')[0];
-      const incasso = parseFloat(order.total_price);
-      incassi[giorno] = (incassi[giorno] || 0) + incasso;
+
+    for (const p of payouts) {
+      const date = p.date.split('T')[0]; // solo YYYY-MM-DD
+      if (incassi[date]) continue; // già calcolato quel giorno
+
+      const ordersRes = await fetch(`https://${SHOPIFY_DOMAIN}/admin/api/2024-07/orders.json?created_at_min=${date}T00:00:00-02:00&created_at_max=${date}T23:59:59-02:00&financial_status=paid&status=any&limit=250`, {
+        headers: {
+          'X-Shopify-Access-Token': SHOPIFY_TOKEN,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!ordersRes.ok) {
+        incassi[date] = 0;
+        continue;
+      }
+
+      const ordersData = await ordersRes.json();
+      const totale = ordersData.orders.reduce((sum, o) => sum + parseFloat(o.total_price), 0);
+      incassi[date] = totale;
+    }
+
+    // 3. Arricchisci i payout con l'incasso del giorno
+    const arricchiti = payouts.map(p => {
+      const date = p.date.split('T')[0];
+      return {
+        ...p,
+        incasso: incassi[date] || 0
+      };
     });
 
-    return NextResponse.json({ ok: true, payouts, incassi_per_giorno: incassi });
+    return NextResponse.json({ ok: true, payouts: arricchiti });
+
   } catch (err) {
-    console.error("Errore API Shopify:", err);
+    console.error("Errore API payout:", err);
     return NextResponse.json({ ok: false, error: err.message || "Errore generico" }, { status: 500 });
   }
 }
