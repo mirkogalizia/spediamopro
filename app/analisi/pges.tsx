@@ -1,4 +1,3 @@
-// pages/analisi.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -31,7 +30,7 @@ export default function AnalisiPage() {
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
     const dd = String(today.getDate()).padStart(2, '0');
-    const from = `${yyyy}-08-01`; // partenza da agosto per ora
+    const from = `${yyyy}-08-01`;
     const to = `${yyyy}-${mm}-${dd}`;
 
     fetch(`/api/shopify/orders-by-day?from=${from}&to=${to}`)
@@ -49,7 +48,7 @@ export default function AnalisiPage() {
   const totaleMargine = data.reduce((acc, d) => acc + d.margine_netto, 0);
 
   return (
-    <div style={{ padding: '48px', fontFamily: 'Inter, sans-serif', background: '#f9f9f9' }}>
+    <div style={{ padding: '48px', fontFamily: 'Inter, sans-serif', background: '#f9f9f9', minHeight: '100vh' }}>
       <h1 style={{ fontSize: '28px', fontWeight: 600, marginBottom: '32px' }}>📈 Analisi Business</h1>
 
       {loading && <p>Caricamento dati...</p>}
@@ -105,7 +104,11 @@ export default function AnalisiPage() {
                   <td style={{ padding: '12px' }}>{day.tshirt}</td>
                   <td style={{ padding: '12px' }}>{day.felpe}</td>
                   <td style={{ padding: '12px' }}>{day.costo_merce.toFixed(2)} €</td>
-                  <td style={{ padding: '12px', fontWeight: 600, color: day.margine_netto >= 0 ? '#2ecc71' : '#e74c3c' }}>
+                  <td style={{
+                    padding: '12px',
+                    fontWeight: 600,
+                    color: day.margine_netto >= 0 ? '#2ecc71' : '#e74c3c'
+                  }}>
                     {day.margine_netto.toFixed(2)} €
                   </td>
                 </tr>
