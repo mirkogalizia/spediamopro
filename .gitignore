@@ -8,3 +8,4 @@ out/
 
 # MacOS / IDE
 .DS_Store
+.env

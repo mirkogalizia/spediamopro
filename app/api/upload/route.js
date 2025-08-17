@@ -28,96 +28,82 @@ const db = getFirestore();
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req) {
   try {
-    let nextUrl = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=250`;
-    let totalSaved = 0;
-    let totalSkipped = 0;
-    let totalFailed = 0;
-    let totalVariants = 0;
-    const errors = [];
+    const { searchParams } = new URL(req.url);
+    const pageInfo = searchParams.get('page_info');
+    const limit = 10;
 
-    while (nextUrl) {
-      const res = await fetch(nextUrl, {
-        method: 'GET',
-        headers: {
-          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-          'Content-Type': 'application/json',
-        },
-      });
+    let url = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${limit}`;
+    if (pageInfo) url += `&page_info=${pageInfo}`;
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Errore Shopify ${res.status}: ${errText}`);
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Errore Shopify ${res.status}: ${errText}`);
+    }
+
+    const { products } = await res.json();
+    const sliced = products.slice(0, 10); // sicurezza
+
+    let saved = 0;
+
+    for (const product of sliced) {
+      const imageMap = {};
+      for (const img of product.images || []) {
+        imageMap[img.id] = img.src;
       }
 
-      const { products } = await res.json();
+      for (const variant of product.variants || []) {
+        const variant_id = String(variant.id);
+        const ref = db.collection('variants').doc(variant_id);
 
-      for (const product of products) {
-        for (const variant of product.variants || []) {
-          totalVariants++;
-          const variant_id = String(variant.id);
-          const ref = db.collection('variants').doc(variant_id);
+        const variantImage = variant.image_id ? imageMap[variant.image_id] : '';
 
-          // Override: sempre aggiorna immagine (anche se già esiste)
-          const image = (() => {
-            const imgById = (product.images || []).find(img =>
-              (img.variant_ids || []).includes(variant.id)
-            );
-            if (imgById) return imgById.src;
+        const docData = {
+          variant_id,
+          product_id: String(product.id),
+          title: product.title,
+          variant_title: variant.title,
+          taglia: variant.option1 || '',
+          colore: variant.option2 || '',
+          image: variantImage,
+          inventory_quantity: variant.inventory_quantity ?? 0,
+          sku: variant.sku || '',
+          numero_grafica: product.handle,
+          online: product.published_at !== null,
+          timestamp: new Date().toISOString(),
+        };
 
-            // fallback colore nel nome file
-            const colore = (variant.option2 || '').toLowerCase();
-            const imgByColor = (product.images || []).find(img =>
-              img.alt?.toLowerCase().includes(colore) || img.src.toLowerCase().includes(colore)
-            );
-            if (imgByColor) return imgByColor.src;
-
-            return product.image?.src || '';
-          })();
-
-          const docData = {
-            variant_id,
-            product_id: String(product.id),
-            title: product.title,
-            variant_title: variant.title,
-            taglia: variant.option1 || '',
-            colore: variant.option2 || '',
-            image,
-            inventory_quantity: variant.inventory_quantity ?? 0,
-            sku: variant.sku || '',
-            numero_grafica: product.handle,
-            online: product.published_at !== null,
-            timestamp: new Date().toISOString(),
-          };
-
-          try {
-            await ref.set(docData, { merge: true });
-            totalSaved++;
-            console.log(`✅ Salvato variant ${variant_id} (${docData.title})`);
-          } catch (err) {
-            totalFailed++;
-            errors.push({ variant_id, message: err.message });
-            console.error(`❌ Errore variant ${variant_id}: ${err.message}`);
-          }
-        }
+        await ref.set(docData);
+        saved++;
       }
+    }
 
-      const linkHeader = res.headers.get('link');
-      const match = linkHeader?.match(/<([^>]+)>;\s*rel="next"/);
-      nextUrl = match?.[1] || null;
+    const linkHeader = res.headers.get('link');
+    const match = linkHeader?.match(/<([^>]+)>;\s*rel="next"/);
+    let nextPageInfo = null;
+    if (match) {
+      const parsed = new URL(match[1]);
+      nextPageInfo = parsed.searchParams.get('page_info');
     }
 
     return NextResponse.json({
       ok: true,
-      totalVariants,
-      totalSaved,
-      totalSkipped,
-      totalFailed,
-      errors,
+      saved,
+      total_products: sliced.length,
+      nextPageInfo,
     });
+
   } catch (e) {
-    console.error("🔥 Errore generale:", e);
+    console.error("🔥 Errore:", e);
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
 }
