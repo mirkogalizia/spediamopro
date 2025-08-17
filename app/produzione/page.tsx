@@ -17,32 +17,13 @@ interface RigaProduzione {
 }
 
 const COLORI_MAP: { [nome: string]: string } = {
-  "BIANCO": "#f7f7f7",
-  "NERO": "#050402",
-  "VIOLA": "#663399",
-  "TABACCO": "#663333",
-  "ROYAL": "#0066CC",
-  "VERDE BOSCO": "#336633",
-  "ROSSO": "#993333",
-  "PANNA": "#F3F1E9",
-  "BLACK": "#050402",
-  "TURTLE": "#999999",
-  "FUME'": "#999999",
-  "SKY": "#87CEEB",
-  "CAMMELLO": "#E4CFB1",
-  "VERDE": "#336633",
-  "NAVY": "#000080",
-  "CREMA": "#fffdd0",
-  "PIOMBO": "#293133",
-  "CIOCCOLATO": "#695046",
-  "SABBIA": "#d4c3a1",
-  "ARMY": "#454B1B",
-  "DARK GREY": "#636363",
-  "SAND": "#C2B280",
-  "SPORT GREY": "#CBCBCB",
-  "BORDEAUX": "#784242",
-  "NIGHT BLUE": "#040348",
-  "DARK CHOCOLATE": "#4b3f37",
+  "BIANCO": "#f7f7f7", "NERO": "#050402", "VIOLA": "#663399", "TABACCO": "#663333",
+  "ROYAL": "#0066CC", "VERDE BOSCO": "#336633", "ROSSO": "#993333", "PANNA": "#F3F1E9",
+  "BLACK": "#050402", "TURTLE": "#999999", "FUME'": "#999999", "SKY": "#87CEEB",
+  "CAMMELLO": "#E4CFB1", "VERDE": "#336633", "NAVY": "#000080", "CREMA": "#fffdd0",
+  "PIOMBO": "#293133", "CIOCCOLATO": "#695046", "SABBIA": "#d4c3a1", "ARMY": "#454B1B",
+  "DARK GREY": "#636363", "SAND": "#C2B280", "SPORT GREY": "#CBCBCB",
+  "BORDEAUX": "#784242", "NIGHT BLUE": "#040348", "DARK CHOCOLATE": "#4b3f37",
 };
 
 export default function ProduzionePage() {
@@ -51,7 +32,6 @@ export default function ProduzionePage() {
   const [loading, setLoading] = useState(false);
   const [from, setFrom] = useState<string>('');
   const [to, setTo] = useState<string>('');
-  const [popupOrder, setPopupOrder] = useState<string | null>(null);
 
   const normalizzaTipo = (tipo: string) => {
     const t = tipo.toLowerCase().replace(/[-\s]/g, '');
@@ -88,25 +68,55 @@ export default function ProduzionePage() {
   };
 
   const handleMissDTF = (grafica: string, index: number) => {
-    const ordineRiferimento = righe[index].order_name;
-    const haQuellaGrafica = righe.some(r => r.order_name === ordineRiferimento && r.grafica === grafica);
-    if (haQuellaGrafica) {
-      const nuovi = righe.filter(r => r.order_name !== ordineRiferimento);
-      setRighe(nuovi);
+    const ordineIniziale = righe[index].order_name;
+    const ordiniDaEliminare = new Set<string>();
+    const visitati = new Set<string>();
+
+    for (let i = index; i < righe.length; i++) {
+      const r = righe[i];
+      const ordine = r.order_name;
+      if (visitati.has(ordine)) continue;
+      visitati.add(ordine);
+
+      const contieneGraficaNonStampata = righe.some(
+        (rr) =>
+          rr.order_name === ordine &&
+          rr.grafica === grafica &&
+          !stampati[rr.variant_id]
+      );
+
+      if (contieneGraficaNonStampata) {
+        ordiniDaEliminare.add(ordine);
+      }
     }
+
+    const nuovi = righe.filter((r) => !ordiniDaEliminare.has(r.order_name));
+    setRighe(nuovi);
   };
 
   const handleMissBlank = (tipo: string, taglia: string, colore: string, index: number) => {
-    const ordineRiferimento = righe[index].order_name;
-    const key = `${tipo.toLowerCase()}|||${taglia.toLowerCase()}|||${colore.toLowerCase()}`;
-    const haQuellaCombinazione = righe.some(r =>
-      r.order_name === ordineRiferimento &&
-      `${r.tipo_prodotto.toLowerCase()}|||${r.taglia.toLowerCase()}|||${r.colore.toLowerCase()}` === key
-    );
-    if (haQuellaCombinazione) {
-      const nuovi = righe.filter(r => r.order_name !== ordineRiferimento);
-      setRighe(nuovi);
+    const keyRef = `${tipo.toLowerCase()}|||${taglia.toLowerCase()}|||${colore.toLowerCase()}`;
+    const ordiniDaEliminare = new Set<string>();
+    const visitati = new Set<string>();
+
+    for (let i = index; i < righe.length; i++) {
+      const r = righe[i];
+      const ordine = r.order_name;
+      if (visitati.has(ordine)) continue;
+      visitati.add(ordine);
+
+      const contieneMatchNonStampato = righe.some((rr) => {
+        const key = `${rr.tipo_prodotto.toLowerCase()}|||${rr.taglia.toLowerCase()}|||${rr.colore.toLowerCase()}`;
+        return rr.order_name === ordine && key === keyRef && !stampati[rr.variant_id];
+      });
+
+      if (contieneMatchNonStampato) {
+        ordiniDaEliminare.add(ordine);
+      }
     }
+
+    const nuovi = righe.filter((r) => !ordiniDaEliminare.has(r.order_name));
+    setRighe(nuovi);
   };
 
   const renderColorePallino = (nome: string) => {
