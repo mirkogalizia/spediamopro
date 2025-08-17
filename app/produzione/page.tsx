@@ -17,32 +17,12 @@ interface RigaProduzione {
 }
 
 const COLORI_MAP: { [nome: string]: string } = {
-  "BIANCO": "#f7f7f7",
-  "NERO": "#050402",
-  "VIOLA": "#663399",
-  "TABACCO": "#663333",
-  "ROYAL": "#0066CC",
-  "VERDE BOSCO": "#336633",
-  "ROSSO": "#993333",
-  "PANNA": "#F3F1E9",
-  "BLACK": "#050402",
-  "TURTLE": "#999999",
-  "FUME'": "#999999",
-  "SKY": "#87CEEB",
-  "CAMMELLO": "#E4CFB1",
-  "VERDE": "#336633",
-  "NAVY": "#000080",
-  "CREMA": "#fffdd0",
-  "PIOMBO": "#293133",
-  "CIOCCOLATO": "#695046",
-  "SABBIA": "#d4c3a1",
-  "ARMY": "#454B1B",
-  "DARK GREY": "#636363",
-  "SAND": "#C2B280",
-  "SPORT GREY": "#CBCBCB",
-  "BORDEAUX": "#784242",
-  "NIGHT BLUE": "#040348",
-  "DARK CHOCOLATE": "#4b3f37",
+  "BIANCO": "#f7f7f7", "NERO": "#050402", "VIOLA": "#663399", "TABACCO": "#663333", "ROYAL": "#0066CC",
+  "VERDE BOSCO": "#336633", "ROSSO": "#993333", "PANNA": "#F3F1E9", "BLACK": "#050402", "TURTLE": "#999999",
+  "FUME'": "#999999", "SKY": "#87CEEB", "CAMMELLO": "#E4CFB1", "VERDE": "#336633", "NAVY": "#000080",
+  "CREMA": "#fffdd0", "PIOMBO": "#293133", "CIOCCOLATO": "#695046", "SABBIA": "#d4c3a1", "ARMY": "#454B1B",
+  "DARK GREY": "#636363", "SAND": "#C2B280", "SPORT GREY": "#CBCBCB", "BORDEAUX": "#784242",
+  "NIGHT BLUE": "#040348", "DARK CHOCOLATE": "#4b3f37",
 };
 
 export default function ProduzionePage() {
@@ -76,16 +56,18 @@ export default function ProduzionePage() {
     localStorage.setItem('stampati', JSON.stringify(updated))
   }
 
-  const handleMissDTF = (grafica: string, index: number) => {
-    const ordineRiferimento = righe[index].order_name;
-    const nuovi = righe.filter(r => r.order_name !== ordineRiferimento && r.grafica !== grafica);
+  const handleMissDTF = (grafica: string, order_name: string) => {
+    const nuovi = righe.filter(r => r.order_name !== order_name || r.grafica !== grafica);
     setRighe(nuovi);
   }
 
-  const handleMissBlank = (tipo: string, taglia: string, colore: string, index: number) => {
-    const key = `${tipo}|||${taglia}|||${colore}`;
-    const ordineRiferimento = righe[index].order_name;
-    const nuovi = righe.filter(r => r.order_name !== ordineRiferimento && `${r.tipo_prodotto}|||${r.taglia}|||${r.colore}` !== key);
+  const handleMissBlank = (tipo: string, taglia: string, colore: string, order_name: string) => {
+    const nuovi = righe.filter(r =>
+      r.order_name !== order_name ||
+      r.tipo_prodotto !== tipo ||
+      r.taglia !== taglia ||
+      r.colore !== colore
+    );
     setRighe(nuovi);
   }
 
@@ -117,25 +99,6 @@ export default function ProduzionePage() {
 
   return (
     <div style={{ padding: '64px 32px', fontFamily: 'Inter, sans-serif', background: '#f5f5f7', minHeight: '100vh' }}>
-      {/* 🔵 Barra di caricamento */}
-      {loading && (
-        <div style={{ height: '4px', width: '100%', background: '#cce5ff', position: 'fixed', top: 0, left: 0, zIndex: 999 }}>
-          <div style={{
-            width: '100%',
-            height: '100%',
-            backgroundColor: '#007aff',
-            animation: 'loading-bar 2s linear infinite'
-          }}></div>
-        </div>
-      )}
-      <style>
-        {`@keyframes loading-bar {
-          0% { transform: translateX(-100%) }
-          50% { transform: translateX(0%) }
-          100% { transform: translateX(100%) }
-        }`}
-      </style>
-
       <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
         <h1 style={{ fontSize: '36px', fontWeight: 700, marginBottom: '24px' }}>📦 Produzione</h1>
 
@@ -145,10 +108,11 @@ export default function ProduzionePage() {
           <label>A:</label>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           <button onClick={fetchProduzione} style={{ padding: '10px 20px', backgroundColor: '#007aff', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
-            Carica ordini
+            {loading ? 'Caricamento...' : 'Carica ordini'}
           </button>
-          {loading && <span style={{ fontStyle: 'italic', color: '#666' }}>Caricamento ordini in corso...</span>}
         </div>
+
+        {loading && <p style={{ fontSize: '18px', marginBottom: '20px' }}>⌛ Caricamento in corso...</p>}
 
         <div style={{ overflowX: 'auto', background: 'white', borderRadius: '16px' }}>
           <table style={{ width: '100%', fontSize: '18px', borderCollapse: 'collapse' }}>
@@ -189,10 +153,10 @@ export default function ProduzionePage() {
                     </div>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <button onClick={() => handleMissDTF(riga.grafica, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
+                    <button onClick={() => handleMissDTF(riga.grafica, riga.order_name)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <button onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
+                    <button onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore, riga.order_name)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
                   </td>
                   <td style={{ padding: '20px', textAlign: 'right' }}>
                     <input
@@ -221,12 +185,6 @@ export default function ProduzionePage() {
             </div>
           ))}
         </div>
-
-        {!loading && righe.length > 0 && (
-          <p style={{ marginTop: '32px', fontStyle: 'italic', color: '#666' }}>
-            ✅ Ordini caricati: {righe.length}
-          </p>
-        )}
       </div>
     </div>
   )
