@@ -51,6 +51,7 @@ export async function GET(req: Request) {
     const produzioneRows: any[] = [];
     let firebaseCount = 0;
     let shopifyCount = 0;
+    let shopifyFallbackLimit = 20;
 
     for (const order of allOrders) {
       for (const item of order.line_items) {
@@ -63,41 +64,47 @@ export async function GET(req: Request) {
         if (snap.exists()) {
           v = snap.data();
           firebaseCount++;
+        } else if (shopifyCount < shopifyFallbackLimit) {
+          try {
+            const res = await fetch(`https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/variants/${variantId}.json`, {
+              method: 'GET',
+              headers: {
+                'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+                'Content-Type': 'application/json',
+              },
+            });
+
+            if (!res.ok) continue;
+            const { variant } = await res.json();
+
+            const productRes = await fetch(`https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${variant.product_id}.json`, {
+              method: 'GET',
+              headers: {
+                'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+                'Content-Type': 'application/json',
+              },
+            });
+
+            if (!productRes.ok) continue;
+            const { product } = await productRes.json();
+
+            v = {
+              tipo_prodotto: product.product_type || variant.title.split(' ')[0],
+              variant_title: variant.title,
+              taglia: variant.option1 || '',
+              colore: variant.option2 || '',
+              grafica: product.title,
+              image: product.image?.src || null,
+              immagine_prodotto: product.image?.src || null,
+            };
+
+            shopifyCount++;
+          } catch (err) {
+            console.error(`❌ Errore nel fallback Shopify per variant ${variantId}`, err);
+            continue;
+          }
         } else {
-          // 🔁 fallback a Shopify (product info)
-          const res = await fetch(`https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/variants/${variantId}.json`, {
-            method: 'GET',
-            headers: {
-              'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-              'Content-Type': 'application/json',
-            },
-          });
-
-          if (!res.ok) continue;
-          const { variant } = await res.json();
-
-          const productRes = await fetch(`https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${variant.product_id}.json`, {
-            method: 'GET',
-            headers: {
-              'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-              'Content-Type': 'application/json',
-            },
-          });
-
-          if (!productRes.ok) continue;
-          const { product } = await productRes.json();
-
-          v = {
-            tipo_prodotto: product.product_type || variant.title.split(' ')[0],
-            variant_title: variant.title,
-            taglia: variant.option1 || '',
-            colore: variant.option2 || '',
-            grafica: product.title,
-            image: product.image?.src || null,
-            immagine_prodotto: product.image?.src || null,
-          };
-
-          shopifyCount++;
+          continue; // oltre il limite di fallback
         }
 
         produzioneRows.push({
@@ -125,6 +132,7 @@ export async function GET(req: Request) {
       produzione: produzioneRows
     });
   } catch (e: any) {
+    console.error('🔥 Errore nella route produzione:', e);
     return NextResponse.json({ ok: false, error: e.message || 'Errore interno server' }, { status: 500 });
   }
 }
