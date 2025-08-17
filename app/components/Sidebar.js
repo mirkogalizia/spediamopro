@@ -3,6 +3,7 @@ import { Drawer, List, ListItem, ListItemIcon, ListItemText } from "@mui/materia
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import FactoryIcon from "@mui/icons-material/Factory";
+import PhotoSizeSelectActualIcon from "@mui/icons-material/PhotoSizeSelectActual"; // icona per DTF
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -10,6 +11,7 @@ const nav = [
   { href: "/", label: "Spedizioni", icon: <LocalShippingIcon fontSize="large" /> },
   { href: "/products/sales", label: "Stock", icon: <Inventory2Icon fontSize="large" /> },
   { href: "/produzione", label: "Produzione", icon: <FactoryIcon fontSize="large" /> },
+  { href: "/dtf", label: "DTF", icon: <PhotoSizeSelectActualIcon fontSize="large" /> }, // nuovo
 ];
 
 export default function Sidebar() {
