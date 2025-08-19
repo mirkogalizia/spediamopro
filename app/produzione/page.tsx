@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Image from 'next/image';
 
 interface RigaProduzione {
@@ -32,6 +32,8 @@ export default function ProduzionePage() {
   const [loading, setLoading] = useState(false);
   const [from, setFrom] = useState<string>('');
   const [to, setTo] = useState<string>('');
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
   const normalizzaTipo = (tipo: string) => {
     const t = tipo.toLowerCase().replace(/[-\s]/g, '');
@@ -39,18 +41,26 @@ export default function ProduzionePage() {
     return tipo.charAt(0).toUpperCase() + tipo.slice(1).toLowerCase();
   };
 
-  const fetchProduzione = async () => {
+  const fetchProduzione = async (reset = true) => {
     if (!from || !to) return;
+    if (reset) {
+      setOffset(0);
+      setHasMore(true);
+      setRighe([]);
+    }
+    if (!hasMore && !reset) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/produzione?from=${from}&to=${to}`);
+      const res = await fetch(`/api/produzione?from=${from}&to=${to}&offset=${reset ? 0 : offset}&limit=100`);
       const data = await res.json();
       if (data.ok) {
         const normalizzate = data.produzione.map((r: RigaProduzione) => ({
           ...r,
           tipo_prodotto: normalizzaTipo(r.tipo_prodotto),
         }));
-        setRighe(normalizzate);
+        setRighe(prev => reset ? normalizzate : [...prev, ...normalizzate]);
+        setOffset(prev => prev + 100);
+        if (normalizzate.length < 100) setHasMore(false);
         const saved = localStorage.getItem('stampati');
         if (saved) setStampati(JSON.parse(saved));
       }
@@ -60,6 +70,19 @@ export default function ProduzionePage() {
       setLoading(false);
     }
   };
+
+  const handleScroll = (e: any) => {
+    const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 50;
+    if (bottom && !loading && hasMore) {
+      fetchProduzione(false);
+    }
+  };
+
+  useEffect(() => {
+    const container = document.getElementById('scroll-container');
+    container?.addEventListener('scroll', handleScroll);
+    return () => container?.removeEventListener('scroll', handleScroll);
+  }, [righe, loading, hasMore]);
 
   const toggleStampato = (variant_id: number) => {
     const updated = { ...stampati, [variant_id]: !stampati[variant_id] };
@@ -79,10 +102,7 @@ export default function ProduzionePage() {
       visitati.add(ordine);
 
       const contieneGraficaNonStampata = righe.some(
-        (rr) =>
-          rr.order_name === ordine &&
-          rr.grafica === grafica &&
-          !stampati[rr.variant_id]
+        (rr) => rr.order_name === ordine && rr.grafica === grafica && !stampati[rr.variant_id]
       );
 
       if (contieneGraficaNonStampata) {
@@ -146,7 +166,7 @@ export default function ProduzionePage() {
   }, [righe]);
 
   return (
-    <div style={{ padding: '64px 32px', fontFamily: 'Inter, sans-serif', background: '#f5f5f7', minHeight: '100vh' }}>
+    <div id="scroll-container" style={{ height: '100vh', overflowY: 'auto', padding: '64px 32px', fontFamily: 'Inter, sans-serif', background: '#f5f5f7' }}>
       <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
         <h1 style={{ fontSize: '36px', fontWeight: 700, marginBottom: '24px' }}>📦 Produzione</h1>
 
@@ -155,7 +175,7 @@ export default function ProduzionePage() {
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           <label>A:</label>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          <button onClick={fetchProduzione} style={{ padding: '10px 20px', backgroundColor: '#007aff', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
+          <button onClick={() => fetchProduzione(true)} style={{ padding: '10px 20px', backgroundColor: '#007aff', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
             {loading ? 'Caricamento...' : 'Carica ordini'}
           </button>
         </div>
@@ -217,6 +237,8 @@ export default function ProduzionePage() {
             </tbody>
           </table>
         </div>
+
+        {loading && <div style={{ padding: '20px', fontSize: '18px' }}>⏳ Caricamento dati in corso...</div>}
 
         <div style={{ marginTop: '32px', background: '#fff', borderRadius: '12px', padding: '24px' }}>
           <h2>📦 Totale da prelevare a magazzino:</h2>
