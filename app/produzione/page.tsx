@@ -32,8 +32,6 @@ export default function ProduzionePage() {
   const [loading, setLoading] = useState(false);
   const [from, setFrom] = useState<string>('');
   const [to, setTo] = useState<string>('');
-  const [page, setPage] = useState(0);
-  const limit = 100;
 
   const normalizzaTipo = (tipo: string) => {
     const t = tipo.toLowerCase().replace(/[-\s]/g, '');
@@ -45,18 +43,16 @@ export default function ProduzionePage() {
     if (!from || !to) return;
     setLoading(true);
     try {
-      const offset = page * limit;
-      const res = await fetch(`/api/produzione?from=${from}&to=${to}&offset=${offset}&limit=${limit}`);
+      const res = await fetch(`/api/produzione?from=${from}&to=${to}`);
       const data = await res.json();
       if (data.ok) {
         const normalizzate = data.produzione.map((r: RigaProduzione) => ({
           ...r,
           tipo_prodotto: normalizzaTipo(r.tipo_prodotto),
         }));
-        setRighe(prev => [...prev, ...normalizzate]);
+        setRighe(normalizzate);
         const saved = localStorage.getItem('stampati');
         if (saved) setStampati(JSON.parse(saved));
-        setPage(prev => prev + 1);
       }
     } catch (e) {
       console.error('Errore fetch produzione:', e);
@@ -179,54 +175,49 @@ export default function ProduzionePage() {
               </tr>
             </thead>
             <tbody>
-              {righe.map((riga, index) => {
-                const noImage = !riga.immagine && !riga.immagine_prodotto;
-                return (
-                  <tr
-                    key={riga.variant_id + '-' + riga.order_name}
-                    style={{
-                      borderBottom: '1px solid #eee',
-                      borderLeft: isStartOfOrderGroup(index) ? '4px solid #007aff' : '4px solid transparent',
-                      opacity: stampati[riga.variant_id] ? 0.4 : 1,
-                    }}
-                  >
-                    <td style={{ padding: '20px' }}>{riga.order_name}</td>
-                    <td style={{ padding: '20px' }}>{riga.tipo_prodotto}</td>
-                    <td style={{ padding: '20px' }}>{renderColorePallino(riga.colore)}</td>
-                    <td style={{ padding: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>{riga.taglia}</td>
-                    <td style={{ padding: '20px' }}>
-                      {noImage ? (
-                        <div style={{ width: '100px', height: '100px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '12px', background: '#eee', borderRadius: '8px', border: '1px solid #ddd' }}>
-                          {riga.grafica}
-                        </div>
-                      ) : (
-                        <div style={{ width: '100px', height: '100px', position: 'relative' }}>
-                          <Image
-                            src={riga.immagine || riga.immagine_prodotto!}
-                            alt={riga.grafica}
-                            fill
-                            style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
-                          />
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button onClick={() => handleMissDTF(riga.grafica, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
-                    </td>
-                    <td style={{ padding: '20px', textAlign: 'right' }}>
-                      <input
-                        type="checkbox"
-                        checked={!!stampati[riga.variant_id]}
-                        onChange={() => toggleStampato(riga.variant_id)}
-                        style={{ transform: 'scale(1.6)' }}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
+              {righe.map((riga, index) => (
+                <tr
+                  key={riga.variant_id + '-' + riga.order_name}
+                  style={{
+                    borderBottom: '1px solid #eee',
+                    borderLeft: isStartOfOrderGroup(index) ? '4px solid #007aff' : '4px solid transparent',
+                    opacity: stampati[riga.variant_id] ? 0.4 : 1,
+                  }}
+                >
+                  <td style={{ padding: '20px' }}>{riga.order_name}</td>
+                  <td style={{ padding: '20px' }}>{riga.tipo_prodotto}</td>
+                  <td style={{ padding: '20px' }}>{renderColorePallino(riga.colore)}</td>
+                  <td style={{ padding: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>{riga.taglia}</td>
+                  <td style={{ padding: '20px' }}>
+                    {riga.immagine || riga.immagine_prodotto ? (
+                      <div style={{ width: '100px', height: '100px', position: 'relative' }}>
+                        <Image
+                          src={riga.immagine && riga.immagine !== '' ? riga.immagine : riga.immagine_prodotto!}
+                          alt={riga.grafica}
+                          fill
+                          style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
+                        />
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: '14px', color: '#666' }}>{riga.grafica}</span>
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button onClick={() => handleMissDTF(riga.grafica, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>
+                  </td>
+                  <td style={{ padding: '20px', textAlign: 'right' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!stampati[riga.variant_id]}
+                      onChange={() => toggleStampato(riga.variant_id)}
+                      style={{ transform: 'scale(1.6)' }}
+                    />
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
