@@ -541,6 +541,7 @@ export default function Page() {
       </div>
     </div>
   );
+}
 
 // --- STILI ---
 const containerStyle = {
