@@ -68,24 +68,25 @@ export default function ProduzionePage() {
   };
 
   const handleMissDTF = (grafica: string, index: number) => {
-    const ordineIniziale = righe[index].order_name;
+    const ordineRiferimento = righe[index]?.order_name;
+    if (!ordineRiferimento) return;
     const ordiniDaEliminare = new Set<string>();
     const visitati = new Set<string>();
 
     for (let i = index; i < righe.length; i++) {
       const r = righe[i];
       const ordine = r.order_name;
-      if (visitati.has(ordine)) continue;
+      if (!ordine || visitati.has(ordine)) continue;
       visitati.add(ordine);
 
-      const contieneGraficaNonStampata = righe.some(
+      const contieneGrafica = righe.some(
         (rr) =>
           rr.order_name === ordine &&
           rr.grafica === grafica &&
           !stampati[rr.variant_id]
       );
 
-      if (contieneGraficaNonStampata) {
+      if (contieneGrafica) {
         ordiniDaEliminare.add(ordine);
       }
     }
@@ -102,15 +103,15 @@ export default function ProduzionePage() {
     for (let i = index; i < righe.length; i++) {
       const r = righe[i];
       const ordine = r.order_name;
-      if (visitati.has(ordine)) continue;
+      if (!ordine || visitati.has(ordine)) continue;
       visitati.add(ordine);
 
-      const contieneMatchNonStampato = righe.some((rr) => {
+      const contieneMatch = righe.some((rr) => {
         const key = `${rr.tipo_prodotto.toLowerCase()}|||${rr.taglia.toLowerCase()}|||${rr.colore.toLowerCase()}`;
         return rr.order_name === ordine && key === keyRef && !stampati[rr.variant_id];
       });
 
-      if (contieneMatchNonStampato) {
+      if (contieneMatch) {
         ordiniDaEliminare.add(ordine);
       }
     }
@@ -189,18 +190,14 @@ export default function ProduzionePage() {
                   <td style={{ padding: '20px' }}>{renderColorePallino(riga.colore)}</td>
                   <td style={{ padding: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>{riga.taglia}</td>
                   <td style={{ padding: '20px' }}>
-                    {riga.immagine || riga.immagine_prodotto ? (
-                      <div style={{ width: '100px', height: '100px', position: 'relative' }}>
-                        <Image
-                          src={riga.immagine && riga.immagine !== '' ? riga.immagine : riga.immagine_prodotto!}
-                          alt={riga.grafica}
-                          fill
-                          style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
-                        />
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: '14px', color: '#666' }}>{riga.grafica}</span>
-                    )}
+                    <div style={{ width: '100px', height: '100px', position: 'relative' }}>
+                      <Image
+                        src={riga.immagine && riga.immagine !== '' ? riga.immagine : riga.immagine_prodotto!}
+                        alt={riga.grafica || 'Nessuna grafica'}
+                        fill
+                        style={{ objectFit: 'contain', borderRadius: '8px', border: '1px solid #ddd' }}
+                      />
+                    </div>
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <button onClick={() => handleMissDTF(riga.grafica, index)} style={{ fontSize: '20px', background: 'none', border: 'none', cursor: 'pointer' }}>❌</button>

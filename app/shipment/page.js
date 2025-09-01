@@ -124,54 +124,12 @@ export default function Page() {
     localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
   }, [spedizioniCreate]);
 
-  useEffect(() => {
-    if (!spedizioniCreate.length) return;
-    const updateTracking = async () => {
-      try {
-        const nuove = await Promise.all(
-          spedizioniCreate.map(async (el) => {
-            const tracking = getTrackingLabel(el.spedizione);
-            if (!tracking || !el.spedizione.trackLink) {
-              const res = await fetch(`/api/spediamo?step=details&id=${el.spedizione.id}`, { method: "POST" });
-              if (res.ok) {
-                const details = await res.json();
-                return { ...el, spedizione: { ...el.spedizione, ...details.spedizione } };
-              }
-            }
-            return el;
-          })
-        );
-        setSpedizioniCreate(nuove);
-      } catch (err) {
-        setErrore("Errore aggiornamento tracking: " + err);
-      }
-    };
-    updateTracking();
-    const timer = setInterval(updateTracking, 60000);
-    return () => clearInterval(timer);
-  }, [spedizioniCreate.length]);
-
+  // --- FUNZIONE CARICA ORDINI ---
   const handleLoadOrders = async () => {
     setLoading(true);
     setErrore(null);
     setOrders([]);
     setSelectedOrderId(null);
-    setForm({
-      nome: "",
-      telefono: "",
-      email: "",
-      indirizzo: "",
-      indirizzo2: "",
-      capDestinatario: "",
-      cittaDestinatario: "",
-      provinciaDestinatario: "",
-      nazioneDestinatario: "",
-      altezza: "10",
-      larghezza: "15",
-      profondita: "20",
-      peso: "1",
-    });
-    setSpedizioni([]);
 
     try {
       if (!dateFrom || !dateTo) throw new Error("Specificare sia la data di inizio che di fine.");
@@ -188,6 +146,7 @@ export default function Page() {
     }
   };
 
+  // --- FUNZIONE CERCA ORDINE ---
   const handleSearchOrder = (e) => {
     e.preventDefault();
     setErrore(null);
@@ -221,6 +180,7 @@ export default function Page() {
     }));
   };
 
+  // --- FUNZIONE SIMULA ---
   const handleSimula = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -258,6 +218,7 @@ export default function Page() {
     }
   };
 
+  // --- CREA + COMPLETA + PAGA ---
   const handleCreaECompletaEPaga = async (idSim) => {
     setLoading(true);
     setErrore(null);
@@ -323,9 +284,7 @@ export default function Page() {
       if (dataP.can_pay) {
         alert(`✅ Spedizione #${spedizione.id} creata e pagata!`);
       } else {
-        alert(
-          `⚠️ Spedizione #${spedizione.id} creata ma NON pagata.\n\nMotivo:\n${motivo}`
-        );
+        alert(`⚠️ Spedizione #${spedizione.id} creata ma NON pagata.\n\nMotivo:\n${motivo}`);
         console.warn("PAY NON RIUSCITO:", dataP);
       }
     } catch (err) {
@@ -335,6 +294,7 @@ export default function Page() {
     }
   };
 
+  // --- EVADI SPEDIZIONE SU SHOPIFY ---
   const handleEvadiSpedizione = async (spedizioneObj) => {
     setLoading(true);
     setErrore(null);
@@ -393,6 +353,7 @@ export default function Page() {
     }
   };
 
+  // --- STAMPA LDV ---
   const handlePrintLdv = async (idSpedizione) => {
     setLoading(true);
     setErrore(null);
@@ -418,6 +379,7 @@ export default function Page() {
     }
   };
 
+  // --- CANCELLA CACHE ---
   const handleCancellaCache = () => {
     if (window.confirm("Vuoi davvero cancellare tutte le spedizioni salvate?")) {
       setSpedizioniCreate([]);
@@ -430,7 +392,7 @@ export default function Page() {
     return <div style={{ padding: 40, textAlign: "center" }}>Controllo login…</div>;
   }
 
-  // --- RESTO DEL TUO RENDER ---
+  // --- RENDER ---
   return (
     <div style={containerStyle}>
       <div style={logoWrapperStyle}>
@@ -463,7 +425,28 @@ export default function Page() {
           <button type="submit" disabled={loading || orders.length === 0} style={buttonPrimary}>Cerca</button>
         </form>
 
-        {selectedOrderId && <div style={foundStyle}>Ordine trovato: <strong>{orders.find((o) => o.id === Number(selectedOrderId))?.name}</strong></div>}
+        {/* ✅ QUI: “Ordine trovato” + LISTA ARTICOLI DELL’ORDINE */}
+        {selectedOrderId && (
+          <>
+            <div style={foundStyle}>
+              Ordine trovato: <strong>{orders.find((o) => o.id === Number(selectedOrderId))?.name}</strong>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <h4 style={{ fontWeight: 600, fontSize: 16, marginBottom: 8 }}>Articoli nell'ordine:</h4>
+              <ul style={{ paddingLeft: 20, marginBottom: 20 }}>
+                {orders.find((o) => o.id === Number(selectedOrderId))?.line_items?.map((item) => (
+                  <li key={item.id} style={{ marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600 }}>{item.quantity}x</span> {item.title}
+                    {item.variant_title && (
+                      <span style={{ color: "#666" }}> — {item.variant_title}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
+        )}
 
         {errore && <div style={errorStyle}>{errore}</div>}
 
@@ -558,7 +541,6 @@ export default function Page() {
       </div>
     </div>
   );
-}
 
 // --- STILI ---
 const containerStyle = {
