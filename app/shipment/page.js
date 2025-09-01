@@ -432,19 +432,43 @@ export default function Page() {
               Ordine trovato: <strong>{orders.find((o) => o.id === Number(selectedOrderId))?.name}</strong>
             </div>
 
-            <div style={{ marginTop: 12 }}>
-              <h4 style={{ fontWeight: 600, fontSize: 16, marginBottom: 8 }}>Articoli nell'ordine:</h4>
-              <ul style={{ paddingLeft: 20, marginBottom: 20 }}>
-                {orders.find((o) => o.id === Number(selectedOrderId))?.line_items?.map((item) => (
-                  <li key={item.id} style={{ marginBottom: 6 }}>
-                    <span style={{ fontWeight: 600 }}>{item.quantity}x</span> {item.title}
-                    {item.variant_title && (
-                      <span style={{ color: "#666" }}> — {item.variant_title}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+       <div style={{ marginTop: 12 }}>
+  <h4 style={{ fontWeight: 600, fontSize: 16, marginBottom: 8 }}>Articoli nell'ordine:</h4>
+
+  <div style={itemsGrid}>
+    {orders.find((o) => o.id === Number(selectedOrderId))?.line_items?.map((item) => {
+      const vt = (item.variant_title || "").trim();
+      const parts = vt.split("/").map(p => p.trim()).filter(Boolean);
+
+      // Heuristics: prova a distinguere taglia da colore
+      const SIZE_SET = new Set(["XXXS","XXS","XS","S","M","L","XL","XXL","XXXL","UNICA","ONE SIZE","TAGLIA UNICA","U"]);
+      let size = null, color = null;
+      for (const p of parts) {
+        const up = p.toUpperCase();
+        if (SIZE_SET.has(up)) size = p;
+        else color = color ? `${color} ${p}` : p;
+      }
+
+      return (
+        <div key={item.id} style={itemCard}>
+          <div style={itemHeader}>
+            <span style={itemQtyBadge}>{item.quantity}×</span>
+            <div style={itemTitle}>{item.title}</div>
+          </div>
+
+          {(size || color) && (
+            <div style={itemVariantRow}>
+              {size && <span style={chip}>Taglia: {size}</span>}
+              {color && <span style={chip}>Colore: {color}</span>}
             </div>
+          )}
+
+          {item.sku && <div style={itemSku}>SKU: {item.sku}</div>}
+        </div>
+      );
+    })}
+  </div>
+</div>
           </>
         )}
 
@@ -668,4 +692,67 @@ const buttonEvadi = {
   minWidth: 90,
   textAlign: "center",
   transition: "background-color 0.3s ease",
+};
+const itemsGrid = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 12,
+};
+
+const itemCard = {
+  background: "#ffffff",
+  border: "1px solid #e6e6e6",
+  borderRadius: 12,
+  padding: 12,
+  boxShadow: "0 1px 6px rgba(0,0,0,0.04)",
+};
+
+const itemHeader = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  marginBottom: 6,
+};
+
+const itemQtyBadge = {
+  display: "inline-block",
+  minWidth: 26,
+  textAlign: "center",
+  padding: "2px 6px",
+  borderRadius: 8,
+  background: "#f0f4ff",
+  color: "#0a84ff",
+  fontWeight: 700,
+  fontSize: 13,
+};
+
+const itemTitle = {
+  fontWeight: 600,
+  fontSize: 15,
+  color: "#222",
+  lineHeight: 1.2,
+};
+
+const itemVariantRow = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+  marginTop: 6,
+  marginBottom: 4,
+};
+
+const chip = {
+  display: "inline-block",
+  padding: "4px 8px",
+  fontSize: 12,
+  borderRadius: 999,
+  background: "#f7f7f7",
+  border: "1px solid #e5e5e5",
+  color: "#555",
+};
+
+const itemSku = {
+  fontSize: 12,
+  color: "#888",
+  marginTop: 4,
 };
