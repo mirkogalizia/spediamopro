@@ -42,34 +42,15 @@ function getCorriereIcon(corriere) {
   );
 }
 
-// Tracking label + link stabile (priorità corretta per BRT e altri corrieri)
+// Tracking label + link stabile
 function getTrackingLabel(spedizione) {
-  const s = spedizione || {};
-
-  // 1) Prima i campi di tracking "ufficiali" del corriere
-  if (s.tracking_number_corriere) return String(s.tracking_number_corriere).trim();
-  if (s.tracking_number) return String(s.tracking_number).trim();
-  if (s.codice) return String(s.codice).trim();
-
-  // 2) Se mancano, prova dai colli
-  if (Array.isArray(s.colli) && s.colli.length) {
-    const segna = s.colli
-      .map(c => (c && c.segnacollo ? String(c.segnacollo).trim() : ""))
-      .filter(Boolean);
-
-    if (segna.length === 1) return segna[0];
-
-    // Se ce ne sono più di uno, prova a scegliere quello che sembra un BRT (12–14 cifre)
-    const brtLike = segna.find(v => /^[0-9]{12,14}$/.test(v));
-    if (brtLike) return brtLike;
-
-    // Fallback: primo disponibile
-    if (segna.length > 0) return segna[0];
+  if (Array.isArray(spedizione.colli) && spedizione.colli.length > 0 && spedizione.colli[0].segnacollo) {
+    return spedizione.colli[0].segnacollo;
   }
-
-  // 3) Ultimo fallback
-  if (s.segnacollo) return String(s.segnacollo).trim();
-
+  if (spedizione.tracking_number_corriere) return spedizione.tracking_number_corriere;
+  if (spedizione.tracking_number) return spedizione.tracking_number;
+  if (spedizione.segnacollo) return spedizione.segnacollo;
+  if (spedizione.codice) return spedizione.codice;
   return "";
 }
 
@@ -143,12 +124,54 @@ export default function Page() {
     localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
   }, [spedizioniCreate]);
 
-  // --- FUNZIONE CARICA ORDINI ---
+  useEffect(() => {
+    if (!spedizioniCreate.length) return;
+    const updateTracking = async () => {
+      try {
+        const nuove = await Promise.all(
+          spedizioniCreate.map(async (el) => {
+            const tracking = getTrackingLabel(el.spedizione);
+            if (!tracking || !el.spedizione.trackLink) {
+              const res = await fetch(`/api/spediamo?step=details&id=${el.spedizione.id}`, { method: "POST" });
+              if (res.ok) {
+                const details = await res.json();
+                return { ...el, spedizione: { ...el.spedizione, ...details.spedizione } };
+              }
+            }
+            return el;
+          })
+        );
+        setSpedizioniCreate(nuove);
+      } catch (err) {
+        setErrore("Errore aggiornamento tracking: " + err);
+      }
+    };
+    updateTracking();
+    const timer = setInterval(updateTracking, 60000);
+    return () => clearInterval(timer);
+  }, [spedizioniCreate.length]);
+
   const handleLoadOrders = async () => {
     setLoading(true);
     setErrore(null);
     setOrders([]);
     setSelectedOrderId(null);
+    setForm({
+      nome: "",
+      telefono: "",
+      email: "",
+      indirizzo: "",
+      indirizzo2: "",
+      capDestinatario: "",
+      cittaDestinatario: "",
+      provinciaDestinatario: "",
+      nazioneDestinatario: "",
+      altezza: "10",
+      larghezza: "15",
+      profondita: "20",
+      peso: "1",
+    });
+    setSpedizioni([]);
 
     try {
       if (!dateFrom || !dateTo) throw new Error("Specificare sia la data di inizio che di fine.");
@@ -165,7 +188,6 @@ export default function Page() {
     }
   };
 
-  // --- FUNZIONE CERCA ORDINE ---
   const handleSearchOrder = (e) => {
     e.preventDefault();
     setErrore(null);
@@ -199,7 +221,6 @@ export default function Page() {
     }));
   };
 
-  // --- FUNZIONE SIMULA ---
   const handleSimula = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -237,7 +258,6 @@ export default function Page() {
     }
   };
 
-  // --- CREA + COMPLETA + PAGA ---
   const handleCreaECompletaEPaga = async (idSim) => {
     setLoading(true);
     setErrore(null);
@@ -303,7 +323,9 @@ export default function Page() {
       if (dataP.can_pay) {
         alert(`✅ Spedizione #${spedizione.id} creata e pagata!`);
       } else {
-        alert(`⚠️ Spedizione #${spedizione.id} creata ma NON pagata.\n\nMotivo:\n${motivo}`);
+        alert(
+          `⚠️ Spedizione #${spedizione.id} creata ma NON pagata.\n\nMotivo:\n${motivo}`
+        );
         console.warn("PAY NON RIUSCITO:", dataP);
       }
     } catch (err) {
@@ -313,7 +335,6 @@ export default function Page() {
     }
   };
 
-  // --- EVADI SPEDIZIONE SU SHOPIFY ---
   const handleEvadiSpedizione = async (spedizioneObj) => {
     setLoading(true);
     setErrore(null);
@@ -372,7 +393,6 @@ export default function Page() {
     }
   };
 
-  // --- STAMPA LDV ---
   const handlePrintLdv = async (idSpedizione) => {
     setLoading(true);
     setErrore(null);
@@ -398,7 +418,6 @@ export default function Page() {
     }
   };
 
-  // --- CANCELLA CACHE ---
   const handleCancellaCache = () => {
     if (window.confirm("Vuoi davvero cancellare tutte le spedizioni salvate?")) {
       setSpedizioniCreate([]);
@@ -411,7 +430,7 @@ export default function Page() {
     return <div style={{ padding: 40, textAlign: "center" }}>Controllo login…</div>;
   }
 
-  // --- RENDER ---
+  // --- RESTO DEL TUO RENDER ---
   return (
     <div style={containerStyle}>
       <div style={logoWrapperStyle}>
@@ -444,52 +463,7 @@ export default function Page() {
           <button type="submit" disabled={loading || orders.length === 0} style={buttonPrimary}>Cerca</button>
         </form>
 
-        {/* ✅ QUI: “Ordine trovato” + LISTA ARTICOLI DELL’ORDINE */}
-        {selectedOrderId && (
-          <>
-            <div style={foundStyle}>
-              Ordine trovato: <strong>{orders.find((o) => o.id === Number(selectedOrderId))?.name}</strong>
-            </div>
-
-       <div style={{ marginTop: 12 }}>
-  <h4 style={{ fontWeight: 600, fontSize: 16, marginBottom: 8 }}>Articoli nell'ordine:</h4>
-
-  <div style={itemsGrid}>
-    {orders.find((o) => o.id === Number(selectedOrderId))?.line_items?.map((item) => {
-      const vt = (item.variant_title || "").trim();
-      const parts = vt.split("/").map(p => p.trim()).filter(Boolean);
-
-      // Heuristics: prova a distinguere taglia da colore
-      const SIZE_SET = new Set(["XXXS","XXS","XS","S","M","L","XL","XXL","XXXL","UNICA","ONE SIZE","TAGLIA UNICA","U"]);
-      let size = null, color = null;
-      for (const p of parts) {
-        const up = p.toUpperCase();
-        if (SIZE_SET.has(up)) size = p;
-        else color = color ? `${color} ${p}` : p;
-      }
-
-      return (
-        <div key={item.id} style={itemCard}>
-          <div style={itemHeader}>
-            <span style={itemQtyBadge}>{item.quantity}×</span>
-            <div style={itemTitle}>{item.title}</div>
-          </div>
-
-          {(size || color) && (
-            <div style={itemVariantRow}>
-              {size && <span style={chip}>Taglia: {size}</span>}
-              {color && <span style={chip}>Colore: {color}</span>}
-            </div>
-          )}
-
-          {item.sku && <div style={itemSku}>SKU: {item.sku}</div>}
-        </div>
-      );
-    })}
-  </div>
-</div>
-          </>
-        )}
+        {selectedOrderId && <div style={foundStyle}>Ordine trovato: <strong>{orders.find((o) => o.id === Number(selectedOrderId))?.name}</strong></div>}
 
         {errore && <div style={errorStyle}>{errore}</div>}
 
@@ -711,67 +685,4 @@ const buttonEvadi = {
   minWidth: 90,
   textAlign: "center",
   transition: "background-color 0.3s ease",
-};
-const itemsGrid = {
-  display: "grid",
-  gridTemplateColumns: "1fr",
-  gap: 12,
-};
-
-const itemCard = {
-  background: "#ffffff",
-  border: "1px solid #e6e6e6",
-  borderRadius: 12,
-  padding: 12,
-  boxShadow: "0 1px 6px rgba(0,0,0,0.04)",
-};
-
-const itemHeader = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  marginBottom: 6,
-};
-
-const itemQtyBadge = {
-  display: "inline-block",
-  minWidth: 26,
-  textAlign: "center",
-  padding: "2px 6px",
-  borderRadius: 8,
-  background: "#f0f4ff",
-  color: "#0a84ff",
-  fontWeight: 700,
-  fontSize: 13,
-};
-
-const itemTitle = {
-  fontWeight: 600,
-  fontSize: 15,
-  color: "#222",
-  lineHeight: 1.2,
-};
-
-const itemVariantRow = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 8,
-  marginTop: 6,
-  marginBottom: 4,
-};
-
-const chip = {
-  display: "inline-block",
-  padding: "4px 8px",
-  fontSize: 12,
-  borderRadius: 999,
-  background: "#f7f7f7",
-  border: "1px solid #e5e5e5",
-  color: "#555",
-};
-
-const itemSku = {
-  fontSize: 12,
-  color: "#888",
-  marginTop: 4,
 };
