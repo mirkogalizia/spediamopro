@@ -42,15 +42,34 @@ function getCorriereIcon(corriere) {
   );
 }
 
-// Tracking label + link stabile
+// Tracking label + link stabile (priorità corretta per BRT e altri corrieri)
 function getTrackingLabel(spedizione) {
-  if (Array.isArray(spedizione.colli) && spedizione.colli.length > 0 && spedizione.colli[0].segnacollo) {
-    return spedizione.colli[0].segnacollo;
+  const s = spedizione || {};
+
+  // 1) Prima i campi di tracking "ufficiali" del corriere
+  if (s.tracking_number_corriere) return String(s.tracking_number_corriere).trim();
+  if (s.tracking_number) return String(s.tracking_number).trim();
+  if (s.codice) return String(s.codice).trim();
+
+  // 2) Se mancano, prova dai colli
+  if (Array.isArray(s.colli) && s.colli.length) {
+    const segna = s.colli
+      .map(c => (c && c.segnacollo ? String(c.segnacollo).trim() : ""))
+      .filter(Boolean);
+
+    if (segna.length === 1) return segna[0];
+
+    // Se ce ne sono più di uno, prova a scegliere quello che sembra un BRT (12–14 cifre)
+    const brtLike = segna.find(v => /^[0-9]{12,14}$/.test(v));
+    if (brtLike) return brtLike;
+
+    // Fallback: primo disponibile
+    if (segna.length > 0) return segna[0];
   }
-  if (spedizione.tracking_number_corriere) return spedizione.tracking_number_corriere;
-  if (spedizione.tracking_number) return spedizione.tracking_number;
-  if (spedizione.segnacollo) return spedizione.segnacollo;
-  if (spedizione.codice) return spedizione.codice;
+
+  // 3) Ultimo fallback
+  if (s.segnacollo) return String(s.segnacollo).trim();
+
   return "";
 }
 
