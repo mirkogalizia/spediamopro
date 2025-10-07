@@ -14,10 +14,13 @@ interface RigaProduzione {
   created_at: string; // ISO
   variant_id: number;
   variant_title: string;
+  // campo calcolato lato client per il confronto DTF
+  grafica_norm?: string;
 }
 
 type StampatiState = { [variant_id: number]: boolean };
 
+// ---- Colori (con normalizzazione chiave) ----
 const RAW_COLORI_MAP: { [nome: string]: string } = {
   "BIANCO": "#f7f7f7", "NERO": "#050402", "VIOLA": "#663399", "TABACCO": "#663333",
   "ROYAL": "#0066CC", "VERDE BOSCO": "#336633", "ROSSO": "#993333", "PANNA": "#F3F1E9",
@@ -28,7 +31,6 @@ const RAW_COLORI_MAP: { [nome: string]: string } = {
   "BORDEAUX": "#784242", "NIGHT BLUE": "#040348", "DARK CHOCOLATE": "#4b3f37",
 };
 
-// normalizza chiavi colore (accenti/apostrofi/spazi)
 const normalizeColorKey = (s: string) =>
   (s || "")
     .trim()
@@ -41,30 +43,27 @@ const COLORI_MAP: { [k: string]: string } = Object.fromEntries(
   Object.entries(RAW_COLORI_MAP).map(([k, v]) => [normalizeColorKey(k), v])
 );
 
-// token di categoria da ignorare nella grafica
-const CATEGORIA_TOKENS = [
-  "tshirt", "t-shirt", "tee", "felpa", "hoodie", "crewneck", "sweatshirt",
-  "maglia", "maglietta", "longsleeve", "long-sleeve", "ls", "shortsleeve", "short-sleeve", "ss"
-];
+// ---- Normalizzazioni titolo/Tipo ----
 
-// slug della grafica: ignora accenti, punteggiatura e token di categoria
-const normalizeGrafica = (s: string) =>
-  (s || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .split(" ")
-    .filter((t) => t && !CATEGORIA_TOKENS.includes(t))
-    .join(" ")
-    .trim();
-
-// normalizza tipo "t-shirt", "tshirt", ecc.
+// Normalizza la tipologia (solo per display/consistenza)
 const normalizzaTipo = (tipo: string) => {
-  const t = tipo.toLowerCase().replace(/[-\s]/g, "");
-  if (t.includes("tshirt") || t.includes("tshirt") || t.includes("tee")) return "Tshirt";
+  const t = (tipo || "").toLowerCase().replace(/[-\s]/g, "");
+  if (t.includes("tshirt") || t.includes("tee")) return "Tshirt";
   return tipo.charAt(0).toUpperCase() + tipo.slice(1).toLowerCase();
 };
+
+// *** QUI la normalizzazione "semplice" per il confronto DTF ***
+// toglie SOLO Felpa/Hoodie/T-shirt/Tee/Tshirt e compatta gli spazi
+const normalizeGraphicTitleSimple = (s: string) =>
+  (s || "")
+    .toLowerCase()
+    .replace(/\bfelpa\b/g, "")
+    .replace(/\bhoodie\b/g, "")
+    .replace(/\bt-?shirt\b/g, "")
+    .replace(/\btshirt\b/g, "")
+    .replace(/\btee\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
 export default function ProduzionePage() {
   const [righe, setRighe] = useState<RigaProduzione[]>([]);
@@ -81,6 +80,7 @@ export default function ProduzionePage() {
     if (saved) setStampati(JSON.parse(saved));
   }, []);
 
+  // fetch produzione
   const fetchProduzione = async () => {
     if (!from || !to) return;
     controllerRef.current?.abort();
@@ -94,10 +94,13 @@ export default function ProduzionePage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data?.ok) {
+        // normalizza tipo_prodotto e pre-calcola grafica_norm per DTF
         const arr: RigaProduzione[] = (data.produzione as RigaProduzione[]).map((r) => ({
           ...r,
           tipo_prodotto: normalizzaTipo(r.tipo_prodotto),
+          grafica_norm: normalizeGraphicTitleSimple(r.grafica || ""),
         }));
+        // ordina per ordine poi data
         arr.sort((a, b) => {
           if (a.order_name === b.order_name) return a.created_at.localeCompare(b.created_at);
           return a.order_name.localeCompare(b.order_name);
@@ -119,7 +122,6 @@ export default function ProduzionePage() {
     localStorage.setItem("stampati", JSON.stringify(updated));
   };
 
-  // pallino colore
   const renderColorePallino = (nome: string) => {
     const colore = COLORI_MAP[normalizeColorKey(nome)] || "#999";
     return (
@@ -144,20 +146,20 @@ export default function ProduzionePage() {
 
   // ---- INDICI PER PERFORMANCE ----
 
-  // 1) Set di grafiche NON stampate per ogni ordine (slug)
-  const orderToUnprintedGraficaSlug = useMemo(() => {
+  // A) Per DTF: per ogni ordine, Set delle grafiche normalizzate NON stampate
+  const orderToUnprintedGraficaNorm = useMemo(() => {
     const m = new Map<string, Set<string>>();
     for (const r of righe) {
       if (stampati[r.variant_id]) continue;
-      const slug = normalizeGrafica(r.grafica || "");
-      if (!slug) continue;
+      const key = (r.grafica_norm || normalizeGraphicTitleSimple(r.grafica || "")).trim();
+      if (!key) continue;
       if (!m.has(r.order_name)) m.set(r.order_name, new Set());
-      m.get(r.order_name)!.add(slug);
+      m.get(r.order_name)!.add(key);
     }
     return m;
   }, [righe, stampati]);
 
-  // 2) Set di blank key NON stampati per ogni ordine
+  // B) Per Blank: per ogni ordine, Set delle chiavi tipo|taglia|colore NON stampate
   const orderToUnprintedBlankKeys = useMemo(() => {
     const m = new Map<string, Set<string>>();
     for (const r of righe) {
@@ -169,7 +171,7 @@ export default function ProduzionePage() {
     return m;
   }, [righe, stampati]);
 
-  // lista ordini unici da un indice in poi (solo da qui in avanti)
+  // ordini unici da un indice in poi (solo da qui in avanti)
   const uniqueOrdersFrom = (startIdx: number) => {
     const seen = new Set<string>();
     const list: string[] = [];
@@ -185,22 +187,24 @@ export default function ProduzionePage() {
 
   // ---- HANDLER ELIMINAZIONI ----
 
-  // ❌ DTF - rimuove ordini successivi che hanno la stessa grafica (slug), non stampata
+  // ❌ DTF - elimina gli ordini successivi con stessa grafica (normalizzata senza felpa/hoodie/t-shirt/tee)
   const handleMissDTF = (grafica: string, index: number) => {
-    const slugRef = normalizeGrafica(grafica);
-    if (!slugRef) return;
+    const keyRef = normalizeGraphicTitleSimple(grafica);
+    if (!keyRef) return;
 
-    const orders = uniqueOrdersFrom(index); // solo da qui in avanti
+    const orders = uniqueOrdersFrom(index); // solo a valle
     const toDrop = new Set<string>();
+
     for (const o of orders) {
-      const set = orderToUnprintedGraficaSlug.get(o);
-      if (set && set.has(slugRef)) toDrop.add(o);
+      const set = orderToUnprintedGraficaNorm.get(o);
+      if (set && set.has(keyRef)) toDrop.add(o);
     }
+
     if (toDrop.size === 0) return;
     setRighe((prev) => prev.filter((r) => !toDrop.has(r.order_name)));
   };
 
-  // ❌ Blank - rimuove ordini successivi che hanno lo stesso tipo|taglia|colore, non stampati
+  // ❌ Blank - elimina ordini successivi con lo stesso tipo|taglia|colore (già ok)
   const handleMissBlank = (tipo: string, taglia: string, colore: string, index: number) => {
     const keyRef = `${tipo.toLowerCase()}|||${taglia.toLowerCase()}|||${colore.toLowerCase()}`;
     const orders = uniqueOrdersFrom(index);
@@ -213,7 +217,7 @@ export default function ProduzionePage() {
     setRighe((prev) => prev.filter((r) => !toDrop.has(r.order_name)));
   };
 
-  // Totali magazzino (solo NON stampati, così prendi solo cosa serve ancora)
+  // Totali magazzino (solo NON stampati)
   const totaliMagazzino = useMemo(() => {
     const map = new Map<string, Map<string, number>>();
     for (const r of righe) {
@@ -231,7 +235,7 @@ export default function ProduzionePage() {
     const c1 = (r.immagine ?? "").trim();
     const c2 = (r.immagine_prodotto ?? "").trim();
     const src = c1 || c2;
-    return src && /^https?:\/\//i.test(src) ? src : "/placeholder.png"; // metti un placeholder nel /public
+    return src && /^https?:\/\//i.test(src) ? src : "/placeholder.png"; // aggiungi /public/placeholder.png
   };
 
   return (
@@ -312,9 +316,7 @@ export default function ProduzionePage() {
                   </td>
                   <td style={{ textAlign: "center" }}>
                     <button
-                      onClick={() =>
-                        handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore, index)
-                      }
+                      onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore, index)}
                       title="Rimuovi ordini a valle che richiedono questo blank"
                       style={{ fontSize: 18, background: "none", border: "none", cursor: "pointer" }}
                     >
