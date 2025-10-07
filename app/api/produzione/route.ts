@@ -1,10 +1,22 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebaseAdmin'; // deve essere Admin Firestore
+// ⬇️ Usa esplicitamente l'Admin SDK qui, così non dipendi dai tipi del tuo lib
+import { getApps, initializeApp, cert } from 'firebase-admin/app';
+import { getFirestore, type Firestore as AdminFirestore } from 'firebase-admin/firestore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// --- INIT FIREBASE ADMIN ---
+// Consiglio: tieni un env con il JSON del service account su Vercel
+// Settings → Environment Variables → FIREBASE_SERVICE_ACCOUNT_JSON
+if (!getApps().length) {
+  const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON!);
+  initializeApp({ credential: cert(sa) });
+}
+const adb: AdminFirestore = getFirestore(); // <— Admin Firestore garantito
+
+// --- SHOPIFY ENV ---
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
 const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION ?? '2025-04';
@@ -36,7 +48,6 @@ export async function GET(req: Request) {
           'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
           'Content-Type': 'application/json',
         },
-        // cache: 'no-store' // opzionale
       });
 
       if (!response.ok) {
@@ -63,8 +74,8 @@ export async function GET(req: Request) {
         const variantId = item?.variant_id ? String(item.variant_id) : '';
         if (!variantId) continue;
 
-        // 🔧 Admin SDK (server): niente doc/getDoc dal client SDK
-        const snap = await db.collection('variants').doc(variantId).get();
+        // ✅ Admin SDK: niente client SDK qui
+        const snap = await adb.collection('variants').doc(variantId).get();
         let v: any;
 
         if (snap.exists) {
@@ -75,7 +86,6 @@ export async function GET(req: Request) {
             const vRes = await fetch(
               `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/variants/${variantId}.json`,
               {
-                method: 'GET',
                 headers: {
                   'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
                   'Content-Type': 'application/json',
@@ -88,7 +98,6 @@ export async function GET(req: Request) {
             const pRes = await fetch(
               `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${variant.product_id}.json`,
               {
-                method: 'GET',
                 headers: {
                   'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
                   'Content-Type': 'application/json',
