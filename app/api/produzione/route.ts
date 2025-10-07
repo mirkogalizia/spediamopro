@@ -125,25 +125,23 @@ export async function GET(req: Request) {
       });
     }
 
-    // 3) FIRESTORE in batch (Admin SDK)
-    // Usa getAll con docRef… in chunk (p.es. 300 alla volta)
-    const chunkSize = 300;
-    const variantDocsMap = new Map<string, any>();
-    let firebaseCount = 0;
+   // 3) FIRESTORE in batch (Admin SDK)
+const chunkSize = 300;
+const variantDocsMap = new Map<string, any>();
+let firebaseCount = 0;
 
-    for (let start = 0; start < uniqueVariantIds.length; start += chunkSize) {
-      const slice = uniqueVariantIds.slice(start, start + chunkSize);
-      const refs = slice.map(id => db.collection('variants').doc(id));
-      // @ts-ignore - getAll è disponibile su Admin SDK
-      const snaps = await db.getAll(...refs);
-      snaps.forEach((snap: any, idx: number) => {
-        const vid = slice[idx];
-        if (snap && snap.exists) {
-          variantDocsMap.set(vid, snap.data());
-          firebaseCount++;
-        }
-      });
+for (let start = 0; start < uniqueVariantIds.length; start += chunkSize) {
+  const slice = uniqueVariantIds.slice(start, start + chunkSize);
+  const refs = slice.map((id) => adb.collection('variants').doc(id));
+  const snaps = await Promise.all(refs.map((r) => r.get()));
+  snaps.forEach((snap, idx) => {
+    const vid = slice[idx];
+    if (snap.exists) {
+      variantDocsMap.set(vid, snap.data());
+      firebaseCount++;
     }
+  });
+}
 
     // 4) Shopify fallback per variant mancanti (limitato e in parallelo)
     const missingVariantIds = uniqueVariantIds.filter(id => !variantDocsMap.has(id)).slice(0, FALLBACK_VARIANT_LIMIT);
