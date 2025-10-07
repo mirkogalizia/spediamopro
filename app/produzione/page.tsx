@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState, useTransition, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 
 interface RigaProduzione {
@@ -28,9 +28,9 @@ const RAW_COLORI_MAP: { [nome: string]: string } = {
   "BORDEAUX": "#784242", "NIGHT BLUE": "#040348", "DARK CHOCOLATE": "#4b3f37",
 };
 
-// normalizza chiavi colore (spazi, apostrofi, accenti)
+// normalizza chiavi colore (accenti/apostrofi/spazi)
 const normalizeColorKey = (s: string) =>
-  s
+  (s || "")
     .trim()
     .toUpperCase()
     .replace(/\s+/g, " ")
@@ -41,6 +41,31 @@ const COLORI_MAP: { [k: string]: string } = Object.fromEntries(
   Object.entries(RAW_COLORI_MAP).map(([k, v]) => [normalizeColorKey(k), v])
 );
 
+// token di categoria da ignorare nella grafica
+const CATEGORIA_TOKENS = [
+  "tshirt", "t-shirt", "tee", "felpa", "hoodie", "crewneck", "sweatshirt",
+  "maglia", "maglietta", "longsleeve", "long-sleeve", "ls", "shortsleeve", "short-sleeve", "ss"
+];
+
+// slug della grafica: ignora accenti, punteggiatura e token di categoria
+const normalizeGrafica = (s: string) =>
+  (s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .filter((t) => t && !CATEGORIA_TOKENS.includes(t))
+    .join(" ")
+    .trim();
+
+// normalizza tipo "t-shirt", "tshirt", ecc.
+const normalizzaTipo = (tipo: string) => {
+  const t = tipo.toLowerCase().replace(/[-\s]/g, "");
+  if (t.includes("tshirt") || t.includes("tshirt") || t.includes("tee")) return "Tshirt";
+  return tipo.charAt(0).toUpperCase() + tipo.slice(1).toLowerCase();
+};
+
 export default function ProduzionePage() {
   const [righe, setRighe] = useState<RigaProduzione[]>([]);
   const [stampati, setStampati] = useState<StampatiState>({});
@@ -50,21 +75,14 @@ export default function ProduzionePage() {
   const controllerRef = useRef<AbortController | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  // carica stampati all'avvio PRIMA di qualunque fetch
+  // carica "stampati" prima di tutto
   useEffect(() => {
     const saved = localStorage.getItem("stampati");
     if (saved) setStampati(JSON.parse(saved));
   }, []);
 
-  const normalizzaTipo = (tipo: string) => {
-    const t = tipo.toLowerCase().replace(/[-\s]/g, "");
-    if (t.includes("tshirt") || t.includes("t-shirt") || t.includes("tee")) return "Tshirt";
-    return tipo.charAt(0).toUpperCase() + tipo.slice(1).toLowerCase();
-  };
-
   const fetchProduzione = async () => {
     if (!from || !to) return;
-    // cancella eventuale richiesta precedente
     controllerRef.current?.abort();
     const c = new AbortController();
     controllerRef.current = c;
@@ -76,7 +94,6 @@ export default function ProduzionePage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data?.ok) {
-        // normalizza tipo e ordina per ordine + data
         const arr: RigaProduzione[] = (data.produzione as RigaProduzione[]).map((r) => ({
           ...r,
           tipo_prodotto: normalizzaTipo(r.tipo_prodotto),
@@ -85,11 +102,10 @@ export default function ProduzionePage() {
           if (a.order_name === b.order_name) return a.created_at.localeCompare(b.created_at);
           return a.order_name.localeCompare(b.order_name);
         });
-
         startTransition(() => setRighe(arr));
       }
-    } catch (e: any) {
-      if (e?.name !== "AbortError") {
+    } catch (e) {
+      if ((e as any)?.name !== "AbortError") {
         console.error("Errore fetch produzione:", e);
       }
     } finally {
@@ -103,7 +119,7 @@ export default function ProduzionePage() {
     localStorage.setItem("stampati", JSON.stringify(updated));
   };
 
-  // Helpers per pallino colore
+  // pallino colore
   const renderColorePallino = (nome: string) => {
     const colore = COLORI_MAP[normalizeColorKey(nome)] || "#999";
     return (
@@ -126,31 +142,34 @@ export default function ProduzionePage() {
   const isStartOfOrderGroup = (index: number) =>
     index === 0 || righe[index].order_name !== righe[index - 1].order_name;
 
-  // Pre-indici per performance: Set di grafiche/blanks NON stampati per ogni ordine
-  const { orderToUnprintedGrafica, orderToUnprintedBlankKeys } = useMemo(() => {
-    const g = new Map<string, Set<string>>();
-    const b = new Map<string, Set<string>>();
+  // ---- INDICI PER PERFORMANCE ----
 
+  // 1) Set di grafiche NON stampate per ogni ordine (slug)
+  const orderToUnprintedGraficaSlug = useMemo(() => {
+    const m = new Map<string, Set<string>>();
     for (const r of righe) {
-      const printed = !!stampati[r.variant_id];
-      if (printed) continue;
-
-      // per grafica
-      if (r.grafica) {
-        if (!g.has(r.order_name)) g.set(r.order_name, new Set());
-        g.get(r.order_name)!.add(r.grafica);
-      }
-
-      // per blank key
-      const key = `${r.tipo_prodotto.toLowerCase()}|||${r.taglia.toLowerCase()}|||${r.colore.toLowerCase()}`;
-      if (!b.has(r.order_name)) b.set(r.order_name, new Set());
-      b.get(r.order_name)!.add(key);
+      if (stampati[r.variant_id]) continue;
+      const slug = normalizeGrafica(r.grafica || "");
+      if (!slug) continue;
+      if (!m.has(r.order_name)) m.set(r.order_name, new Set());
+      m.get(r.order_name)!.add(slug);
     }
-
-    return { orderToUnprintedGrafica: g, orderToUnprintedBlankKeys: b };
+    return m;
   }, [righe, stampati]);
 
-  // Utility: ordini unici da un indice in poi (O(n))
+  // 2) Set di blank key NON stampati per ogni ordine
+  const orderToUnprintedBlankKeys = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const r of righe) {
+      if (stampati[r.variant_id]) continue;
+      const key = `${r.tipo_prodotto.toLowerCase()}|||${r.taglia.toLowerCase()}|||${r.colore.toLowerCase()}`;
+      if (!m.has(r.order_name)) m.set(r.order_name, new Set());
+      m.get(r.order_name)!.add(key);
+    }
+    return m;
+  }, [righe, stampati]);
+
+  // lista ordini unici da un indice in poi (solo da qui in avanti)
   const uniqueOrdersFrom = (startIdx: number) => {
     const seen = new Set<string>();
     const list: string[] = [];
@@ -164,18 +183,24 @@ export default function ProduzionePage() {
     return list;
   };
 
+  // ---- HANDLER ELIMINAZIONI ----
+
+  // ❌ DTF - rimuove ordini successivi che hanno la stessa grafica (slug), non stampata
   const handleMissDTF = (grafica: string, index: number) => {
-    if (!grafica) return;
-    const orders = uniqueOrdersFrom(index);
+    const slugRef = normalizeGrafica(grafica);
+    if (!slugRef) return;
+
+    const orders = uniqueOrdersFrom(index); // solo da qui in avanti
     const toDrop = new Set<string>();
     for (const o of orders) {
-      const set = orderToUnprintedGrafica.get(o);
-      if (set && set.has(grafica)) toDrop.add(o);
+      const set = orderToUnprintedGraficaSlug.get(o);
+      if (set && set.has(slugRef)) toDrop.add(o);
     }
     if (toDrop.size === 0) return;
     setRighe((prev) => prev.filter((r) => !toDrop.has(r.order_name)));
   };
 
+  // ❌ Blank - rimuove ordini successivi che hanno lo stesso tipo|taglia|colore, non stampati
   const handleMissBlank = (tipo: string, taglia: string, colore: string, index: number) => {
     const keyRef = `${tipo.toLowerCase()}|||${taglia.toLowerCase()}|||${colore.toLowerCase()}`;
     const orders = uniqueOrdersFrom(index);
@@ -188,11 +213,11 @@ export default function ProduzionePage() {
     setRighe((prev) => prev.filter((r) => !toDrop.has(r.order_name)));
   };
 
-  // Totali magazzino (solo NON stampati) — cambia a [righe] se vuoi conteggiare tutto
+  // Totali magazzino (solo NON stampati, così prendi solo cosa serve ancora)
   const totaliMagazzino = useMemo(() => {
     const map = new Map<string, Map<string, number>>();
     for (const r of righe) {
-      if (stampati[r.variant_id]) continue; // conta solo da fare
+      if (stampati[r.variant_id]) continue;
       const tipo = r.tipo_prodotto;
       const key = `${r.colore.toUpperCase()} | ${r.taglia.toUpperCase()}`;
       if (!map.has(tipo)) map.set(tipo, new Map());
@@ -202,12 +227,11 @@ export default function ProduzionePage() {
     return map;
   }, [righe, stampati]);
 
-  // Fallback immagine sicuro
   const getImgSrc = (r: RigaProduzione) => {
     const c1 = (r.immagine ?? "").trim();
     const c2 = (r.immagine_prodotto ?? "").trim();
     const src = c1 || c2;
-    return src && src.startsWith("http") ? src : "/placeholder.png"; // metti un placeholder statico nel public/
+    return src && /^https?:\/\//i.test(src) ? src : "/placeholder.png"; // metti un placeholder nel /public
   };
 
   return (
@@ -274,7 +298,6 @@ export default function ProduzionePage() {
                         sizes="84px"
                         loading="lazy"
                         style={{ objectFit: "contain", borderRadius: 8, border: "1px solid #ddd", background: "#fafafa" }}
-                        // Se usi domini esterni ricordati di whitelistarli in next.config.js
                       />
                     </div>
                   </td>
@@ -289,7 +312,9 @@ export default function ProduzionePage() {
                   </td>
                   <td style={{ textAlign: "center" }}>
                     <button
-                      onClick={() => handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore, index)}
+                      onClick={() =>
+                        handleMissBlank(riga.tipo_prodotto, riga.taglia, riga.colore, index)
+                      }
                       title="Rimuovi ordini a valle che richiedono questo blank"
                       style={{ fontSize: 18, background: "none", border: "none", cursor: "pointer" }}
                     >
