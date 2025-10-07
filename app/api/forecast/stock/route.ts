@@ -1,40 +1,32 @@
-// app/api/forecast/stock/route.ts
 import { NextResponse } from "next/server";
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
-// --- Vercel: serve una ENV FIREBASE_SERVICE_ACCOUNT_JSON col JSON del service account ---
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 if (!getApps().length) {
   const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON!);
   initializeApp({ credential: cert(sa) });
 }
 const db = getFirestore();
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
-// --- Shopify ENV ---
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
 const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION ?? "2025-04";
 
-// --- Parametri default ---
 const DEFAULT_LOOKBACK_DAYS = 90;
 const DEFAULT_SERVICE_DAYS = 15;
-const DEFAULT_SAFETY_FACTOR = 0.15; // 15% scorta sicurezza
+const DEFAULT_SAFETY_FACTOR = 0.15;
 const DEFAULT_MIN_BATCH = 2;
 
-// --- Utils: normalizza tipo in "hoodie" | "tshirt" ---
 const normalizeTipo = (tipoRaw: string) => {
   const t = (tipoRaw || "").toLowerCase();
   if (t.includes("hood") || t.includes("felpa") || t.includes("sweat")) return "hoodie";
   if (t.includes("tee") || t.includes("t-shirt") || t.includes("tshirt")) return "tshirt";
-  // fallback: prova a dedurre da variant title
   return t.includes("maglia") ? "tshirt" : "other";
 };
 
-// --- Estrai chiave grafica stabile dal title: rimuove solo tipologia/brand/rumore minimo ---
-// (puoi allungare le liste brand/rumore nel tempo)
 const PRODUCT_TYPE_TOKENS = ["tshirt","t","shirt","t-shirt","tee","felpa","hoodie","crewneck","sweatshirt","maglia"];
 const BRAND_TOKENS = ["notre","deltanove","kiss","my","airs","moneymakerz","notforresale","not","for","resale"];
 const SHIP_TOKENS = ["express","shipment","shipping","24h","h24","24hx","x24h"];
@@ -59,7 +51,6 @@ const extractGraphicKey = (title: string) => {
     return t.length >= 3;
   });
   if (toks.length === 0) return "";
-  // prendi 1-2 token più distintivi
   const uniq: string[] = [];
   const seen = new Set<string>();
   for (const t of toks) if (!seen.has(t)) { seen.add(t); uniq.push(t); }
@@ -67,7 +58,6 @@ const extractGraphicKey = (title: string) => {
   return ranked.slice(0, 2).join("-");
 };
 
-// --- Shopify fetch helpers ---
 async function shopifyGet(pathAndQuery: string) {
   const url = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/${pathAndQuery}`;
   const res = await fetch(url, {
@@ -76,7 +66,6 @@ async function shopifyGet(pathAndQuery: string) {
       "Content-Type": "application/json",
     },
     method: "GET",
-    // cache: "no-store"
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -105,7 +94,6 @@ async function fetchOrdersWindow(createdAtMinISO: string, createdAtMaxISO: strin
   return orders;
 }
 
-// --- Firestore: stock stampati corrente (mappa sku_key -> qty) ---
 async function getPrintedStockMap() {
   const snap = await db.collection("stock_items").get();
   const map = new Map<string, number>();
@@ -120,11 +108,9 @@ async function getPrintedStockMap() {
   return map;
 }
 
-// --- costruisci sku_key: tipo|grafica_key|taglia|colore ---
 const buildSkuKey = (tipo: string, graficaKey: string, taglia: string, colore: string) =>
   `${tipo.toLowerCase()}|${graficaKey.toLowerCase()}|${String(taglia).toLowerCase()}|${String(colore).toLowerCase()}`;
 
-// --- handler ---
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -138,10 +124,8 @@ export async function GET(req: Request) {
     const createdAtMin = from.toISOString();
     const createdAtMax = now.toISOString();
 
-    // 1) Storico ordini nel periodo
     const orders = await fetchOrdersWindow(createdAtMin, createdAtMax);
 
-    // 2) Aggrega domanda per (tipo, grafica_key, taglia, colore)
     type Key = string;
     type Agg = { tipo: string; grafica_key: string; taglia: string; colore: string; demand: number; };
     const demandMap = new Map<Key, Agg>();
@@ -150,7 +134,7 @@ export async function GET(req: Request) {
       const items = Array.isArray(o.line_items) ? o.line_items : [];
       for (const it of items) {
         const tipo = normalizeTipo(it.product_type || it.title || "");
-        if (tipo !== "hoodie" && tipo !== "tshirt") continue; // ci concentriamo su felpe/tshirt
+        if (tipo !== "hoodie" && tipo !== "tshirt") continue;
         const grafica_key = extractGraphicKey(it.title || "") || extractGraphicKey(it.name || "");
         if (!grafica_key) continue;
         const taglia = String(it.variant_title || it.option1 || "").trim();
@@ -164,19 +148,17 @@ export async function GET(req: Request) {
       }
     }
 
-    // 3) Stock stampati attuale per sottrarre dal target
     const printedMap = await getPrintedStockMap();
 
-    // 4) Costruisci raccomandazioni (forecast → target → to_produce)
     const recosHoodie: any[] = [];
     const recosTshirt: any[] = [];
 
     demandMap.forEach((agg, k) => {
-      const dailyRate = agg.demand / lookbackDays;              // media/die
-      const forecast = dailyRate * serviceDays;                  // 15 giorni
-      const safety = Math.round(forecast * safetyFactor);        // scorta sicurezza
-      const target = Math.ceil(forecast + safety);               // target stock stampato
-      const inStock = printedMap.get(k) || 0;                    // stock stampati attuale
+      const dailyRate = agg.demand / lookbackDays;
+      const forecast = dailyRate * serviceDays;
+      const safety = Math.round(forecast * safetyFactor);
+      const target = Math.ceil(forecast + safety);
+      const inStock = printedMap.get(k) || 0;
       const toProduce = Math.max(0, target - inStock);
 
       if (toProduce >= minBatch) {
@@ -192,17 +174,15 @@ export async function GET(req: Request) {
           safety,
           target,
           in_stock_printed: inStock,
-          to_produce,
+          to_produce: toProduce, // <-- fix
         };
         if (agg.tipo === "hoodie") recosHoodie.push(row);
         else recosTshirt.push(row);
       }
     });
 
-    // ordina per priorità (più “buchi” prima)
     const sortFn = (a: any, b: any) =>
-      b.to_produce - a.to_produce ||
-      b.daily_rate - a.daily_rate;
+      b.to_produce - a.to_produce || b.daily_rate - a.daily_rate;
 
     recosHoodie.sort(sortFn);
     recosTshirt.sort(sortFn);
