@@ -1,17 +1,30 @@
 // app/api/forecast/stock/route.ts
 import { NextResponse } from "next/server";
-import { getApps, initializeApp, applicationDefault } from "firebase-admin/app";
+import { getApps, initializeApp, cert, applicationDefault } from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Admin Firestore lazy, indipendente da qualsiasi `db` del client SDK */
+/** Admin Firestore lazy con credenziali da ENV (fallback ADC in locale) */
 let adb: Firestore | null = null;
 function getAdminDb(): Firestore {
   if (!adb) {
     if (!getApps().length) {
-      initializeApp({ credential: applicationDefault() });
+      const projectId = process.env.FIREBASE_PROJECT_ID;
+      const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+      let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+      if (projectId && clientEmail && privateKey) {
+        // Vercel conserva i \n come testo: ripristinali
+        privateKey = privateKey.replace(/\\n/g, "\n");
+        initializeApp({
+          credential: cert({ projectId, clientEmail, privateKey }),
+        });
+      } else {
+        // fallback solo se hai ADC (utile in locale)
+        initializeApp({ credential: applicationDefault() });
+      }
     }
     adb = getFirestore();
   }
@@ -21,7 +34,7 @@ function getAdminDb(): Firestore {
 // ---------- ENV Shopify ----------
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
-const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION ?? "2023-10"; // sicura
+const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION ?? "2023-10";
 
 // ---------- Parametri di default ----------
 const DEFAULT_LOOKBACK_DAYS = 90;
