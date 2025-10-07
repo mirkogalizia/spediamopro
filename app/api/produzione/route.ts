@@ -1,25 +1,14 @@
 import { NextResponse } from 'next/server';
-// ⬇️ Usa esplicitamente l'Admin SDK qui, così non dipendi dai tipi del tuo lib
-import { getApps, initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore, type Firestore as AdminFirestore } from 'firebase-admin/firestore';
+import { db } from '@/lib/firebaseAdmin';
+import { doc, getDoc } from 'firebase/firestore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// --- INIT FIREBASE ADMIN ---
-// Consiglio: tieni un env con il JSON del service account su Vercel
-// Settings → Environment Variables → FIREBASE_SERVICE_ACCOUNT_JSON
-if (!getApps().length) {
-  const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON!);
-  initializeApp({ credential: cert(sa) });
-}
-const adb: AdminFirestore = getFirestore(); // <— Admin Firestore garantito
-
-// --- SHOPIFY ENV ---
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
-const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION ?? '2025-04';
+const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION ?? '2025-04'; // <-- solo questo cambiato
 
 export async function GET(req: Request) {
   try {
@@ -74,35 +63,27 @@ export async function GET(req: Request) {
         const variantId = item?.variant_id ? String(item.variant_id) : '';
         if (!variantId) continue;
 
-        // ✅ Admin SDK: niente client SDK qui
-        const snap = await adb.collection('variants').doc(variantId).get();
+        // rimane il tuo path: client SDK su db passato dal tuo lib (come avevi)
+        const ref = doc(db as any, 'variants', variantId);
+        const snap = await getDoc(ref);
+
         let v: any;
 
-        if (snap.exists) {
+        if (snap.exists()) {
           v = snap.data();
           firebaseCount++;
         } else if (shopifyCount < shopifyFallbackLimit) {
           try {
             const vRes = await fetch(
               `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/variants/${variantId}.json`,
-              {
-                headers: {
-                  'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-                  'Content-Type': 'application/json',
-                },
-              }
+              { headers: { 'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
             );
             if (!vRes.ok) continue;
             const { variant } = await vRes.json();
 
             const pRes = await fetch(
               `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${variant.product_id}.json`,
-              {
-                headers: {
-                  'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-                  'Content-Type': 'application/json',
-                },
-              }
+              { headers: { 'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
             );
             if (!pRes.ok) continue;
             const { product } = await pRes.json();
@@ -119,7 +100,7 @@ export async function GET(req: Request) {
 
             shopifyCount++;
           } catch (err) {
-            console.error(`❌ Fallback Shopify variant ${variantId}`, err);
+            console.error(`❌ Errore fallback Shopify per variant ${variantId}`, err);
             continue;
           }
         } else {
