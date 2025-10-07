@@ -1,25 +1,23 @@
+// app/api/forecast/stock/route.ts
 import { NextResponse } from "next/server";
-import { getApps, initializeApp, cert } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { db } from "@/lib/firebaseAdmin"; // ✅ usa ADC dal tuo progetto
+// Firestore Admin SDK già inizializzato dentro lib/firebaseAdmin
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-if (!getApps().length) {
-  const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON!);
-  initializeApp({ credential: cert(sa) });
-}
-const db = getFirestore();
-
+// ---------- ENV Shopify ----------
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
 const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION ?? "2025-04";
 
+// ---------- Parametri di default ----------
 const DEFAULT_LOOKBACK_DAYS = 90;
 const DEFAULT_SERVICE_DAYS = 15;
 const DEFAULT_SAFETY_FACTOR = 0.15;
 const DEFAULT_MIN_BATCH = 2;
 
+// ---------- Utils ----------
 const normalizeTipo = (tipoRaw: string) => {
   const t = (tipoRaw || "").toLowerCase();
   if (t.includes("hood") || t.includes("felpa") || t.includes("sweat")) return "hoodie";
@@ -111,6 +109,7 @@ async function getPrintedStockMap() {
 const buildSkuKey = (tipo: string, graficaKey: string, taglia: string, colore: string) =>
   `${tipo.toLowerCase()}|${graficaKey.toLowerCase()}|${String(taglia).toLowerCase()}|${String(colore).toLowerCase()}`;
 
+// ---------- Handler ----------
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -124,42 +123,45 @@ export async function GET(req: Request) {
     const createdAtMin = from.toISOString();
     const createdAtMax = now.toISOString();
 
+    // 1) storico ordini
     const orders = await fetchOrdersWindow(createdAtMin, createdAtMax);
 
-    type Key = string;
+    // 2) aggrega domanda per (tipo, grafica_key, taglia, colore)
     type Agg = { tipo: string; grafica_key: string; taglia: string; colore: string; demand: number; };
-    const demandMap = new Map<Key, Agg>();
+    const demandMap = new Map<string, Agg>();
 
     for (const o of orders) {
       const items = Array.isArray(o.line_items) ? o.line_items : [];
       for (const it of items) {
         const tipo = normalizeTipo(it.product_type || it.title || "");
-        if (tipo !== "hoodie" && tipo !== "tshirt") continue;
+        if (tipo !== "hoodie" && tipo !== "tshirt") continue; // solo felpe/tshirt
         const grafica_key = extractGraphicKey(it.title || "") || extractGraphicKey(it.name || "");
         if (!grafica_key) continue;
         const taglia = String(it.variant_title || it.option1 || "").trim();
         const colore = String(it.option2 || "").trim();
 
-        const k = buildSkuKey(tipo, grafica_key, taglia, colore);
-        if (!demandMap.has(k)) {
-          demandMap.set(k, { tipo, grafica_key, taglia, colore, demand: 0 });
+        const key = buildSkuKey(tipo, grafica_key, taglia, colore);
+        if (!demandMap.has(key)) {
+          demandMap.set(key, { tipo, grafica_key, taglia, colore, demand: 0 });
         }
-        demandMap.get(k)!.demand += Number(it.quantity || 1);
+        demandMap.get(key)!.demand += Number(it.quantity || 1);
       }
     }
 
+    // 3) stock stampati attuale
     const printedMap = await getPrintedStockMap();
 
+    // 4) raccomandazioni
     const recosHoodie: any[] = [];
     const recosTshirt: any[] = [];
 
     demandMap.forEach((agg, k) => {
-      const dailyRate = agg.demand / lookbackDays;
-      const forecast = dailyRate * serviceDays;
-      const safety = Math.round(forecast * safetyFactor);
-      const target = Math.ceil(forecast + safety);
-      const inStock = printedMap.get(k) || 0;
-      const toProduce = Math.max(0, target - inStock);
+      const dailyRate = agg.demand / lookbackDays;          // media/die
+      const forecast = dailyRate * serviceDays;              // copertura gg
+      const safety = Math.round(forecast * safetyFactor);    // scorta sicurezza
+      const target = Math.ceil(forecast + safety);           // obiettivo stock
+      const inStock = printedMap.get(k) || 0;                // stampati attuali
+      const toProduce = Math.max(0, target - inStock);       // da produrre
 
       if (toProduce >= minBatch) {
         const row = {
@@ -174,13 +176,14 @@ export async function GET(req: Request) {
           safety,
           target,
           in_stock_printed: inStock,
-          to_produce: toProduce, // <-- fix
+          to_produce: toProduce,
         };
         if (agg.tipo === "hoodie") recosHoodie.push(row);
         else recosTshirt.push(row);
       }
     });
 
+    // ordina per priorità
     const sortFn = (a: any, b: any) =>
       b.to_produce - a.to_produce || b.daily_rate - a.daily_rate;
 
