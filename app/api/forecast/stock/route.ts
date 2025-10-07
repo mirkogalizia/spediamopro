@@ -1,7 +1,6 @@
 // app/api/forecast/stock/route.ts
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebaseAdmin"; // ✅ usa ADC dal tuo progetto
-// Firestore Admin SDK già inizializzato dentro lib/firebaseAdmin
+import { db } from "@/lib/firebaseAdmin"; // usa Admin SDK inizializzato lì
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,8 +91,12 @@ async function fetchOrdersWindow(createdAtMinISO: string, createdAtMaxISO: strin
   return orders;
 }
 
+// 🔧 QUI era l'errore di tipi: castiamo `db` all'Admin Firestore
 async function getPrintedStockMap() {
-  const snap = await db.collection("stock_items").get();
+  const snap = await (db as unknown as FirebaseFirestore.Firestore)
+    .collection("stock_items")
+    .get();
+
   const map = new Map<string, number>();
   snap.forEach(d => {
     const data = d.data() as any;
