@@ -12,15 +12,16 @@ if (!getApps().length) {
 }
 const db: Firestore = getFirestore();
 
+// ENV Shopify
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
 const SHOPIFY_API_VERSION = '2023-10';
 
-// Limiti/parametri
+// Parametri
 const ORDERS_PAGE_LIMIT = 250;
-const FALLBACK_VARIANT_LIMIT = 60;
-const HTTP_CONCURRENCY = 4;
-const RETRIES = 2;
+const FALLBACK_VARIANT_LIMIT = 60; // fallback Shopify massimo
+const HTTP_CONCURRENCY = 4;        // fetch in parallelo verso Shopify
+const RETRIES = 2;                 // retry su 429/5xx
 
 const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
@@ -49,10 +50,11 @@ async function shopifyFetch(url: string, init?: RequestInit, attempt = 0): Promi
 // Paginazione ordini con fields minimi
 async function fetchAllOrders(createdAtMin: string, createdAtMax: string) {
   const orders: any[] = [];
-  let nextUrl = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/orders.json`
-    + `?status=open&financial_status=paid&limit=${ORDERS_PAGE_LIMIT}`
-    + `&created_at_min=${encodeURIComponent(createdAtMin)}&created_at_max=${encodeURIComponent(createdAtMax)}`
-    + `&fields=id,name,created_at,line_items,fulfillment_status`;
+  let nextUrl =
+    `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/orders.json` +
+    `?status=open&financial_status=paid&limit=${ORDERS_PAGE_LIMIT}` +
+    `&created_at_min=${encodeURIComponent(createdAtMin)}&created_at_max=${encodeURIComponent(createdAtMax)}` +
+    `&fields=id,name,created_at,line_items,fulfillment_status`;
 
   while (nextUrl) {
     const res = await shopifyFetch(nextUrl);
@@ -66,7 +68,7 @@ async function fetchAllOrders(createdAtMin: string, createdAtMax: string) {
   return orders;
 }
 
-// Concorrenza limitata
+// Runner a concorrenza limitata
 async function runLimited<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
   const results: T[] = [];
   let i = 0;
@@ -97,12 +99,7 @@ export async function GET(req: Request) {
     const allOrders = await fetchAllOrders(createdAtMin, createdAtMax);
 
     // 2) Colleziona line items validi + variantId unici
-    type LineItemRaw = {
-      order_name: string;
-      created_at: string;
-      item: any;
-    };
-
+    type LineItemRaw = { order_name: string; created_at: string; item: any };
     const lines: LineItemRaw[] = [];
     const variantIdsSet = new Set<string>();
 
@@ -129,31 +126,33 @@ export async function GET(req: Request) {
       });
     }
 
-   // 3) FIRESTORE in batch (Admin SDK)
-const chunkSize = 300;
-const variantDocsMap = new Map<string, any>();
-let firebaseCount = 0;
+    // 3) FIRESTORE in batch (Admin SDK)
+    const chunkSize = 300;
+    const variantDocsMap = new Map<string, any>();
+    let firebaseCount = 0;
 
-for (let start = 0; start < uniqueVariantIds.length; start += chunkSize) {
-  const slice = uniqueVariantIds.slice(start, start + chunkSize);
-  const refs = slice.map((id) => adb.collection('variants').doc(id));
-  const snaps = await Promise.all(refs.map((r) => r.get()));
-  snaps.forEach((snap, idx) => {
-    const vid = slice[idx];
-    if (snap.exists) {
-      variantDocsMap.set(vid, snap.data());
-      firebaseCount++;
+    for (let start = 0; start < uniqueVariantIds.length; start += chunkSize) {
+      const slice = uniqueVariantIds.slice(start, start + chunkSize);
+      const refs = slice.map((id) => db.collection('variants').doc(id));
+      const snaps = await Promise.all(refs.map((r) => r.get()));
+      snaps.forEach((snap, idx) => {
+        const vid = slice[idx];
+        if (snap.exists) {
+          variantDocsMap.set(vid, snap.data());
+          firebaseCount++;
+        }
+      });
     }
-  });
-}
 
-    // 4) Shopify fallback per variant mancanti (limitato e in parallelo)
-    const missingVariantIds = uniqueVariantIds.filter(id => !variantDocsMap.has(id)).slice(0, FALLBACK_VARIANT_LIMIT);
-    // cache prodotti per non chiamare 2 volte
+    // 4) Shopify fallback per varianti mancanti (limitato e in parallelo)
+    const missingVariantIds = uniqueVariantIds
+      .filter((id) => !variantDocsMap.has(id))
+      .slice(0, FALLBACK_VARIANT_LIMIT);
+
     const productCache = new Map<string, any>();
     let shopifyCount = 0;
 
-    const variantTasks = missingVariantIds.map(vid => async () => {
+    const variantTasks = missingVariantIds.map((vid) => async () => {
       // variant
       const vRes = await shopifyFetch(
         `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/variants/${vid}.json`
@@ -172,14 +171,13 @@ for (let start = 0; start < uniqueVariantIds.length; start += chunkSize) {
         productCache.set(pid, product);
       }
 
-      // immagine preferendo quella della variante
+      // immagine: preferisci quella della variante
       let imageSrc: string | null = product?.image?.src ?? null;
       if (variant.image_id && Array.isArray(product?.images)) {
         const match = product.images.find((img: any) => String(img.id) === String(variant.image_id));
         if (match?.src) imageSrc = match.src;
       }
 
-      // costruisci doc "v"
       const vDoc = {
         tipo_prodotto: product?.product_type || (variant?.title?.split(' ')[0] ?? ''),
         variant_title: variant?.title ?? '',
@@ -197,13 +195,12 @@ for (let start = 0; start < uniqueVariantIds.length; start += chunkSize) {
       await runLimited(variantTasks, HTTP_CONCURRENCY);
     }
 
-    // 5) Costruisci produzioneRows usando prima il dato da Firestore se presente, altrimenti fallback
+    // 5) Costruisci produzioneRows usando prima Firestore, poi fallback
     const produzioneRows: any[] = [];
     for (const { order_name, created_at, item } of lines) {
       const variantId = String(item.variant_id);
       const v = variantDocsMap.get(variantId) ?? null;
 
-      // Fallback "estremo" ai campi line_item se v non c'è
       const tipo_prodotto =
         v?.tipo_prodotto ||
         item.product_type ||
@@ -229,7 +226,9 @@ for (let start = 0; start < uniqueVariantIds.length; start += chunkSize) {
       });
     }
 
-    produzioneRows.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    produzioneRows.sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
 
     return NextResponse.json({
       ok: true,
@@ -240,11 +239,15 @@ for (let start = 0; start < uniqueVariantIds.length; start += chunkSize) {
       notes: {
         orders: allOrders.length,
         variants_unique: uniqueVariantIds.length,
-        fallback_capped: uniqueVariantIds.filter(id => !variantDocsMap.has(id)).length > 0,
+        fallback_capped:
+          uniqueVariantIds.filter((id) => !variantDocsMap.has(id)).length > 0,
       },
     });
   } catch (e: any) {
     console.error('🔥 Errore nella route produzione:', e);
-    return NextResponse.json({ ok: false, error: e.message || 'Errore interno server' }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: e.message || 'Errore interno server' },
+      { status: 500 }
+    );
   }
 }
