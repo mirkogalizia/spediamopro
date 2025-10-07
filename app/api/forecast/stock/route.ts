@@ -1,14 +1,27 @@
 // app/api/forecast/stock/route.ts
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebaseAdmin"; // usa Admin SDK inizializzato lì
+import { getApps, initializeApp, applicationDefault } from "firebase-admin/app";
+import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** Admin Firestore lazy, indipendente da qualsiasi `db` del client SDK */
+let adb: Firestore | null = null;
+function getAdminDb(): Firestore {
+  if (!adb) {
+    if (!getApps().length) {
+      initializeApp({ credential: applicationDefault() });
+    }
+    adb = getFirestore();
+  }
+  return adb!;
+}
+
 // ---------- ENV Shopify ----------
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
-const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION ?? "2025-04";
+const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION ?? "2023-10"; // sicura
 
 // ---------- Parametri di default ----------
 const DEFAULT_LOOKBACK_DAYS = 90;
@@ -91,12 +104,10 @@ async function fetchOrdersWindow(createdAtMinISO: string, createdAtMaxISO: strin
   return orders;
 }
 
-// 🔧 QUI era l'errore di tipi: castiamo `db` all'Admin Firestore
+// Firestore: stock stampati corrente (sku_key -> qty)
 async function getPrintedStockMap() {
-  const snap = await (db as unknown as FirebaseFirestore.Firestore)
-    .collection("stock_items")
-    .get();
-
+  const db = getAdminDb();
+  const snap = await db.collection("stock_items").get();
   const map = new Map<string, number>();
   snap.forEach(d => {
     const data = d.data() as any;
@@ -109,6 +120,7 @@ async function getPrintedStockMap() {
   return map;
 }
 
+// sku: tipo|grafica_key|taglia|colore
 const buildSkuKey = (tipo: string, graficaKey: string, taglia: string, colore: string) =>
   `${tipo.toLowerCase()}|${graficaKey.toLowerCase()}|${String(taglia).toLowerCase()}|${String(colore).toLowerCase()}`;
 
@@ -137,7 +149,7 @@ export async function GET(req: Request) {
       const items = Array.isArray(o.line_items) ? o.line_items : [];
       for (const it of items) {
         const tipo = normalizeTipo(it.product_type || it.title || "");
-        if (tipo !== "hoodie" && tipo !== "tshirt") continue; // solo felpe/tshirt
+        if (tipo !== "hoodie" && tipo !== "tshirt") continue;
         const grafica_key = extractGraphicKey(it.title || "") || extractGraphicKey(it.name || "");
         if (!grafica_key) continue;
         const taglia = String(it.variant_title || it.option1 || "").trim();
@@ -160,7 +172,7 @@ export async function GET(req: Request) {
 
     demandMap.forEach((agg, k) => {
       const dailyRate = agg.demand / lookbackDays;          // media/die
-      const forecast = dailyRate * serviceDays;              // copertura gg
+      const forecast = dailyRate * serviceDays;              // previsione
       const safety = Math.round(forecast * safetyFactor);    // scorta sicurezza
       const target = Math.ceil(forecast + safety);           // obiettivo stock
       const inStock = printedMap.get(k) || 0;                // stampati attuali
