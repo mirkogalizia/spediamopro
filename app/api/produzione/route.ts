@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebaseAdmin';
-import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebaseAdmin'; // Admin SDK
+// ❌ rimuovi: import { doc, getDoc } from 'firebase/firestore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -8,118 +8,223 @@ export const revalidate = 0;
 
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
+// Suggerito: aggiorna a una versione recente del tuo store; qui lascio la tua
 const SHOPIFY_API_VERSION = '2023-10';
+
+// Limiti/parametri
+const ORDERS_PAGE_LIMIT = 250;
+const FALLBACK_VARIANT_LIMIT = 60; // alza un po', ma gestito in batch
+const HTTP_CONCURRENCY = 4;       // quante fetch Shopify in parallelo
+const RETRIES = 2;
+
+// Mini sleep
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+async function shopifyFetch(url: string, init?: RequestInit, attempt = 0): Promise<Response> {
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+      'Content-Type': 'application/json',
+    },
+    ...init,
+  });
+
+  if (res.status === 429 || (res.status >= 500 && attempt < RETRIES)) {
+    const retryAfter = Number(res.headers.get('Retry-After') || 0);
+    await delay((retryAfter || 1) * 1000);
+    return shopifyFetch(url, init, attempt + 1);
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Shopify ${res.status} ${res.statusText}: ${body}`);
+  }
+  return res;
+}
+
+// Paginazione ordini con fields minimi
+async function fetchAllOrders(createdAtMin: string, createdAtMax: string) {
+  const orders: any[] = [];
+  let nextUrl = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/orders.json`
+    + `?status=open&financial_status=paid&limit=${ORDERS_PAGE_LIMIT}`
+    + `&created_at_min=${encodeURIComponent(createdAtMin)}&created_at_max=${encodeURIComponent(createdAtMax)}`
+    + `&fields=id,name,created_at,line_items,fulfillment_status`;
+
+  while (nextUrl) {
+    const res = await shopifyFetch(nextUrl);
+    const json = await res.json();
+    orders.push(...(json.orders || []));
+
+    const link = res.headers.get('Link') || res.headers.get('link') || '';
+    const m = link.match(/<([^>]+)>;\s*rel="next"/i);
+    nextUrl = m?.[1] ?? '';
+  }
+  return orders;
+}
+
+// Concorrenza limitata
+async function runLimited<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
+  const results: T[] = [];
+  let i = 0;
+  const run = async () => {
+    while (i < tasks.length) {
+      const idx = i++;
+      results[idx] = await tasks[idx]();
+    }
+  };
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => run());
+  await Promise.all(workers);
+  return results;
+}
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const from = searchParams.get('from');
     const to = searchParams.get('to');
-
     if (!from || !to) {
       return NextResponse.json({ ok: false, error: "'from' e 'to' sono obbligatori" }, { status: 400 });
     }
 
     const createdAtMin = `${from}T00:00:00Z`;
     const createdAtMax = `${to}T23:59:59Z`;
-    const allOrders: any[] = [];
 
-    let nextUrl = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=open&financial_status=paid&limit=250&created_at_min=${createdAtMin}&created_at_max=${createdAtMax}`;
+    // 1) ORDINI (light)
+    const allOrders = await fetchAllOrders(createdAtMin, createdAtMax);
 
-    while (nextUrl) {
-      const response = await fetch(nextUrl, {
-        method: 'GET',
-        headers: {
-          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-          'Content-Type': 'application/json',
-        },
-      });
+    // 2) Colleziona line items validi + variantId unici
+    type LineItemRaw = {
+      order_name: string;
+      created_at: string;
+      item: any;
+    };
 
-      if (!response.ok) {
-        const errTxt = await response.text();
-        throw new Error(`Shopify API error ${response.status}: ${errTxt}`);
-      }
-
-      const json = await response.json();
-      allOrders.push(...(json.orders || []));
-
-      const linkHeader = response.headers.get('Link');
-      const match = linkHeader?.match(/<([^>]+)>;\s*rel="next"/);
-      nextUrl = match?.[1] || null;
-    }
-
-    const produzioneRows: any[] = [];
-    let firebaseCount = 0;
-    let shopifyCount = 0;
-    let shopifyFallbackLimit = 20;
+    const lines: LineItemRaw[] = [];
+    const variantIdsSet = new Set<string>();
 
     for (const order of allOrders) {
-      for (const item of order.line_items) {
-        const variantId = String(item.variant_id);
-        const docRef = doc(db, 'variants', variantId);
-        const snap = await getDoc(docRef);
-
-        let v: any;
-
-        if (snap.exists()) {
-          v = snap.data();
-          firebaseCount++;
-        } else if (shopifyCount < shopifyFallbackLimit) {
-          try {
-            const res = await fetch(`https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/variants/${variantId}.json`, {
-              method: 'GET',
-              headers: {
-                'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-                'Content-Type': 'application/json',
-              },
-            });
-
-            if (!res.ok) continue;
-            const { variant } = await res.json();
-
-            const productRes = await fetch(`https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${variant.product_id}.json`, {
-              method: 'GET',
-              headers: {
-                'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-                'Content-Type': 'application/json',
-              },
-            });
-
-            if (!productRes.ok) continue;
-            const { product } = await productRes.json();
-
-            v = {
-              tipo_prodotto: product.product_type || variant.title.split(' ')[0],
-              variant_title: variant.title,
-              taglia: variant.option1 || '',
-              colore: variant.option2 || '',
-              grafica: product.title,
-              image: product.image?.src || null,
-              immagine_prodotto: product.image?.src || null,
-            };
-
-            shopifyCount++;
-          } catch (err) {
-            console.error(`❌ Errore nel fallback Shopify per variant ${variantId}`, err);
-            continue;
-          }
-        } else {
-          continue; // oltre il limite di fallback
-        }
-
-        produzioneRows.push({
-          tipo_prodotto: v.tipo_prodotto || item.product_type || item.title.split(' ')[0],
-          variant_title: v.variant_title || item.variant_title || '',
-          taglia: v.taglia || '',
-          colore: v.colore || '',
-          grafica: v.grafica || item.title,
-          immagine: v.image || null,
-          immagine_prodotto: v.immagine_prodotto || null,
-          order_name: order.name,
-          created_at: order.created_at,
-          variant_id: item.variant_id,
-        });
+      const order_name = order.name;
+      const created_at = order.created_at;
+      const items = Array.isArray(order.line_items) ? order.line_items : [];
+      for (const item of items) {
+        const variantId = item.variant_id ? String(item.variant_id) : '';
+        if (!variantId) continue; // custom item / no variant
+        lines.push({ order_name, created_at, item });
+        variantIdsSet.add(variantId);
       }
+    }
+
+    const uniqueVariantIds = Array.from(variantIdsSet);
+    if (uniqueVariantIds.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        firebaseCount: 0,
+        shopifyCount: 0,
+        totale: 0,
+        produzione: [],
+      });
+    }
+
+    // 3) FIRESTORE in batch (Admin SDK)
+    // Usa getAll con docRef… in chunk (p.es. 300 alla volta)
+    const chunkSize = 300;
+    const variantDocsMap = new Map<string, any>();
+    let firebaseCount = 0;
+
+    for (let start = 0; start < uniqueVariantIds.length; start += chunkSize) {
+      const slice = uniqueVariantIds.slice(start, start + chunkSize);
+      const refs = slice.map(id => db.collection('variants').doc(id));
+      // @ts-ignore - getAll è disponibile su Admin SDK
+      const snaps = await db.getAll(...refs);
+      snaps.forEach((snap: any, idx: number) => {
+        const vid = slice[idx];
+        if (snap && snap.exists) {
+          variantDocsMap.set(vid, snap.data());
+          firebaseCount++;
+        }
+      });
+    }
+
+    // 4) Shopify fallback per variant mancanti (limitato e in parallelo)
+    const missingVariantIds = uniqueVariantIds.filter(id => !variantDocsMap.has(id)).slice(0, FALLBACK_VARIANT_LIMIT);
+    // cache prodotti per non chiamare 2 volte
+    const productCache = new Map<string, any>();
+    let shopifyCount = 0;
+
+    const variantTasks = missingVariantIds.map(vid => async () => {
+      // variant
+      const vRes = await shopifyFetch(
+        `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/variants/${vid}.json`
+      );
+      const { variant } = await vRes.json();
+
+      // product (cache)
+      const pid = String(variant.product_id);
+      let product = productCache.get(pid);
+      if (!product) {
+        const pRes = await shopifyFetch(
+          `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${pid}.json?fields=id,title,product_type,images,image,variants`
+        );
+        const pj = await pRes.json();
+        product = pj.product;
+        productCache.set(pid, product);
+      }
+
+      // immagine preferendo quella della variante
+      let imageSrc: string | null = product?.image?.src ?? null;
+      if (variant.image_id && Array.isArray(product?.images)) {
+        const match = product.images.find((img: any) => String(img.id) === String(variant.image_id));
+        if (match?.src) imageSrc = match.src;
+      }
+
+      // costruisci doc "v"
+      const vDoc = {
+        tipo_prodotto: product?.product_type || (variant?.title?.split(' ')[0] ?? ''),
+        variant_title: variant?.title ?? '',
+        taglia: variant?.option1 ?? '',
+        colore: variant?.option2 ?? '',
+        grafica: product?.title ?? '',
+        image: imageSrc,
+        immagine_prodotto: imageSrc,
+      };
+      variantDocsMap.set(vid, vDoc);
+      shopifyCount++;
+    });
+
+    if (variantTasks.length > 0) {
+      await runLimited(variantTasks, HTTP_CONCURRENCY);
+    }
+
+    // 5) Costruisci produzioneRows usando prima il dato da Firestore se presente, altrimenti fallback
+    const produzioneRows: any[] = [];
+    for (const { order_name, created_at, item } of lines) {
+      const variantId = String(item.variant_id);
+      const v = variantDocsMap.get(variantId) ?? null;
+
+      // Fallback "estremo" ai campi line_item se v non c'è
+      const tipo_prodotto =
+        v?.tipo_prodotto ||
+        item.product_type ||
+        (item.title ? String(item.title).split(' ')[0] : '');
+      const variant_title = v?.variant_title || item.variant_title || '';
+      const taglia = v?.taglia || '';
+      const colore = v?.colore || '';
+      const grafica = v?.grafica || item.title || '';
+      const immagine = v?.image || null;
+      const immagine_prodotto = v?.immagine_prodotto || null;
+
+      produzioneRows.push({
+        tipo_prodotto,
+        variant_title,
+        taglia,
+        colore,
+        grafica,
+        immagine,
+        immagine_prodotto,
+        order_name,
+        created_at,
+        variant_id: item.variant_id,
+      });
     }
 
     produzioneRows.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
@@ -129,7 +234,12 @@ export async function GET(req: Request) {
       firebaseCount,
       shopifyCount,
       totale: produzioneRows.length,
-      produzione: produzioneRows
+      produzione: produzioneRows,
+      notes: {
+        orders: allOrders.length,
+        variants_unique: uniqueVariantIds.length,
+        fallback_capped: uniqueVariantIds.filter(id => !variantDocsMap.has(id)).length > 0,
+      },
     });
   } catch (e: any) {
     console.error('🔥 Errore nella route produzione:', e);
