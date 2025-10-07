@@ -1,24 +1,28 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebaseAdmin'; // Admin SDK
-// ❌ rimuovi: import { doc, getDoc } from 'firebase/firestore';
+import { getApps, initializeApp, applicationDefault } from 'firebase-admin/app';
+import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// Inizializza Admin una sola volta (safe su Vercel)
+if (!getApps().length) {
+  initializeApp({ credential: applicationDefault() });
+}
+const db: Firestore = getFirestore();
+
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_TOKEN!;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_DOMAIN!;
-// Suggerito: aggiorna a una versione recente del tuo store; qui lascio la tua
 const SHOPIFY_API_VERSION = '2023-10';
 
 // Limiti/parametri
 const ORDERS_PAGE_LIMIT = 250;
-const FALLBACK_VARIANT_LIMIT = 60; // alza un po', ma gestito in batch
-const HTTP_CONCURRENCY = 4;       // quante fetch Shopify in parallelo
+const FALLBACK_VARIANT_LIMIT = 60;
+const HTTP_CONCURRENCY = 4;
 const RETRIES = 2;
 
-// Mini sleep
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 async function shopifyFetch(url: string, init?: RequestInit, attempt = 0): Promise<Response> {
   const res = await fetch(url, {
