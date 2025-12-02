@@ -1,30 +1,30 @@
 // lib/shopify2.ts
-const SHOPIFY_DOMAIN_2 = process.env.SHOPIFY_DOMAIN_2!;
-const SHOPIFY_TOKEN_2 = process.env.SHOPIFY_TOKEN_2!;
-const API_VERSION = "2023-10";
+const domain = process.env.SHOPIFY_DOMAIN_2!;
+const token = process.env.SHOPIFY_TOKEN_2!;
 
-function buildUrl(endpoint: string) {
-  return `https://${SHOPIFY_DOMAIN_2}/admin/api/${API_VERSION}${endpoint}`;
-}
+if (!domain) throw new Error("Missing SHOPIFY_DOMAIN_2");
+if (!token) throw new Error("Missing SHOPIFY_TOKEN_2");
+
+const BASE_URL = `https://${domain}/admin/api/2023-10`;
 
 export const shopify2 = {
   async api(endpoint: string, options: any = {}) {
-    const url = buildUrl(endpoint);
+    const url = `${BASE_URL}${endpoint}`;
 
     const res = await fetch(url, {
-      method: options.method || "GET",
+      ...options,
       headers: {
-        "X-Shopify-Access-Token": SHOPIFY_TOKEN_2,
+        "X-Shopify-Access-Token": token,
         "Content-Type": "application/json",
-        ...options.headers,
+        Accept: "application/json",
+        ...(options.headers || {}),
       },
-      body: options.body ? JSON.stringify(options.body) : undefined,
       cache: "no-store",
     });
 
     if (!res.ok) {
-      const errorTxt = await res.text();
-      console.error("❌ Shopify2 API error", res.status, errorTxt);
+      const err = await res.text();
+      console.error("❌ Shopify2 API error", res.status, err);
       throw new Error(`Shopify2 API Error ${res.status}`);
     }
 
@@ -35,7 +35,7 @@ export const shopify2 = {
     return this.api(`/products/${productId}.json`);
   },
 
-  async getAllProducts() {
+  async listProducts() {
     return this.api(`/products.json?limit=250`);
-  }
+  },
 };
