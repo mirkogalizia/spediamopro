@@ -7,6 +7,7 @@ type Variant = {
   taglia: string;
   colore: string;
   stock: number;
+  variant_id?: number;
 };
 
 type Blank = {
@@ -40,10 +41,13 @@ const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL"];
 export default function BlanksPage() {
   const [blanks, setBlanks] = useState<Blank[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [newStock, setNewStock] = useState<Record<string, string>>({});
+  const [updateMode, setUpdateMode] = useState<"set" | "add">("set");
   const [search, setSearch] = useState("");
   const [filterStock, setFilterStock] = useState<"all" | "low" | "out">("all");
 
+  // ✅ Carica dati da Firebase (blanks-stock-view)
   async function loadData() {
     setLoading(true);
     try {
@@ -58,7 +62,33 @@ export default function BlanksPage() {
     setLoading(false);
   }
 
-  async function updateStock(variantId: string, blankKey: string) {
+  // ✅ Sincronizza da Shopify (build-blanks-stock) poi ricarica
+  async function syncFromShopify() {
+    if (!confirm("🔄 Scaricare lo stock aggiornato da Shopify? Questa operazione richiederà alcuni secondi.")) {
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/shopify2/catalog/build-blanks-stock");
+      const json = await res.json();
+      
+      if (json.ok) {
+        alert(`✅ ${json.processed.length} blanks sincronizzati da Shopify!`);
+        // ✅ Ricarica i dati aggiornati
+        await loadData();
+      } else {
+        alert(`❌ Errore: ${json.error || json.message}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("❌ Errore durante la sincronizzazione");
+    }
+    setSyncing(false);
+  }
+
+  // ✅ Aggiorna stock singola variante
+  async function updateStock(variantId: string, blankKey: string, currentStock: number) {
     const value = Number(newStock[variantId]);
 
     if (!newStock[variantId] || isNaN(value)) {
@@ -66,20 +96,37 @@ export default function BlanksPage() {
       return;
     }
 
+    const finalStock = updateMode === "add" ? currentStock + value : value;
+    const confirmMsg = updateMode === "add" 
+      ? `➕ Aggiungere ${value} unità? (${currentStock} → ${finalStock})`
+      : `🔄 Impostare stock a ${value}? (attuale: ${currentStock})`;
+
+    if (!confirm(confirmMsg)) return;
+
     try {
-      await fetch("/api/shopify2/catalog/sync-blanks-stock", {
+      const res = await fetch("/api/shopify2/catalog/update-blank-stock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           variant_id: variantId,
           new_stock: value,
           blank_key: blankKey,
+          mode: updateMode,
         }),
       });
 
-      setNewStock((prev) => ({ ...prev, [variantId]: "" }));
-      await loadData();
+      const json = await res.json();
+      
+      if (json.ok) {
+        alert(`✅ ${json.message}`);
+        setNewStock((prev) => ({ ...prev, [variantId]: "" }));
+        // ✅ Ricarica dopo update
+        await loadData();
+      } else {
+        alert(`❌ ${json.error}`);
+      }
     } catch (err) {
+      console.error(err);
       alert("❌ Errore durante l'aggiornamento");
     }
   }
@@ -96,7 +143,7 @@ export default function BlanksPage() {
     blanks.forEach((blank) => {
       blank.inventory.forEach((v) => {
         total++;
-        if (v.stock === 0) outOfStock++;
+        if (v.stock <= 0) outOfStock++;
         else if (v.stock > 0 && v.stock <= 5) lowStock++;
       });
     });
@@ -117,7 +164,7 @@ export default function BlanksPage() {
 
             const matchStock =
               filterStock === "all" ||
-              (filterStock === "out" && v.stock === 0) ||
+              (filterStock === "out" && v.stock <= 0) ||
               (filterStock === "low" && v.stock > 0 && v.stock <= 5);
 
             return matchSearch && matchStock;
@@ -153,6 +200,24 @@ export default function BlanksPage() {
               </h1>
               <p className="text-gray-600">Gestione inventario prodotti base</p>
             </div>
+
+            {/* Bottone Sync Shopify */}
+            <button
+              onClick={syncFromShopify}
+              disabled={syncing}
+              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {syncing ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Sincronizzazione...
+                </>
+              ) : (
+                <>
+                  🔄 Scarica da Shopify
+                </>
+              )}
+            </button>
           </div>
 
           {/* Stats */}
@@ -177,7 +242,7 @@ export default function BlanksPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-yellow-900">
-                    Stock Basso
+                    Stock Basso (1-5)
                   </p>
                   <p className="text-3xl font-bold text-yellow-600">
                     {stats.lowStock}
@@ -192,7 +257,7 @@ export default function BlanksPage() {
             <div className="bg-red-50 border border-red-200 rounded-xl p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-red-900">Esauriti</p>
+                  <p className="text-sm font-medium text-red-900">Esauriti (≤ 0)</p>
                   <p className="text-3xl font-bold text-red-600">
                     {stats.outOfStock}
                   </p>
@@ -202,6 +267,38 @@ export default function BlanksPage() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Modalità Update */}
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-4">
+            <p className="text-sm font-medium text-purple-900 mb-2">Modalità aggiornamento:</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setUpdateMode("set")}
+                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                  updateMode === "set"
+                    ? "bg-purple-600 text-white shadow-md"
+                    : "bg-white text-purple-700 border border-purple-300 hover:bg-purple-100"
+                }`}
+              >
+                🔄 Sostituisci
+              </button>
+              <button
+                onClick={() => setUpdateMode("add")}
+                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                  updateMode === "add"
+                    ? "bg-purple-600 text-white shadow-md"
+                    : "bg-white text-purple-700 border border-purple-300 hover:bg-purple-100"
+                }`}
+              >
+                ➕ Somma (Riordino)
+              </button>
+            </div>
+            <p className="text-xs text-purple-700 mt-2">
+              {updateMode === "set" 
+                ? "Il valore inserito sostituirà lo stock attuale" 
+                : "Il valore inserito verrà sommato allo stock attuale"}
+            </p>
           </div>
 
           {/* Filtri */}
@@ -310,7 +407,7 @@ export default function BlanksPage() {
                             <div
                               key={v.id}
                               className={`rounded-xl border-2 p-4 transition-all hover:shadow-lg ${
-                                v.stock === 0
+                                v.stock <= 0
                                   ? "border-red-300 bg-red-50"
                                   : v.stock <= 5
                                   ? "border-yellow-300 bg-yellow-50"
@@ -323,14 +420,14 @@ export default function BlanksPage() {
                                 </span>
                                 <span
                                   className={`px-3 py-1 rounded-lg text-sm font-bold ${
-                                    v.stock === 0
+                                    v.stock <= 0
                                       ? "bg-red-600 text-white"
                                       : v.stock <= 5
                                       ? "bg-yellow-600 text-white"
                                       : "bg-green-600 text-white"
                                   }`}
                                 >
-                                  {v.stock === 0 ? "OUT" : v.stock}
+                                  {v.stock <= 0 ? "OUT" : v.stock}
                                 </span>
                               </div>
 
@@ -339,7 +436,7 @@ export default function BlanksPage() {
                               <div className="space-y-2">
                                 <input
                                   type="number"
-                                  placeholder="Nuovo stock..."
+                                  placeholder={updateMode === "add" ? "Quantità da aggiungere..." : "Nuovo stock..."}
                                   value={newStock[v.id] || ""}
                                   onChange={(e) =>
                                     setNewStock((prev) => ({
@@ -351,11 +448,11 @@ export default function BlanksPage() {
                                 />
                                 <button
                                   onClick={() =>
-                                    updateStock(v.id, blank.blank_key)
+                                    updateStock(v.id, blank.blank_key, v.stock)
                                   }
                                   className="w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-all"
                                 >
-                                  Aggiorna
+                                  {updateMode === "add" ? "➕ Aggiungi" : "🔄 Aggiorna"}
                                 </button>
                               </div>
                             </div>
@@ -377,4 +474,3 @@ export default function BlanksPage() {
     </div>
   );
 }
-
