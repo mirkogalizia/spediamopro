@@ -16,7 +16,9 @@ const BASE_URL = `https://${cleanDomain}/admin/api/2025-10`;
 
 export const shopify2 = {
   async api(endpoint: string, options: any = {}) {
-    const url = `${BASE_URL}${endpoint}`;
+    // ✅ Assicura che l'endpoint inizi con /
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const url = `${BASE_URL}${cleanEndpoint}`;
 
     const res = await fetch(url, {
       ...options,
@@ -34,10 +36,10 @@ export const shopify2 = {
       console.error("❌ Shopify2 API error", {
         status: res.status,
         url,
-        endpoint,
+        endpoint: cleanEndpoint,
         error: err,
       });
-      throw new Error(`Shopify2 API Error ${res.status}: ${endpoint}`);
+      throw new Error(`Shopify2 API Error ${res.status}: ${cleanEndpoint}`);
     }
 
     return res.json();
