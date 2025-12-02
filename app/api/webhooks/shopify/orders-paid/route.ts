@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdminServer";
 import { shopify2 } from "@/lib/shopify2";
 import crypto from "crypto";
+import { OrderQueue } from "@/lib/orderQueue";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-// Verifica firma webhook Shopify
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function verifyWebhook(body: string, hmacHeader: string): boolean {
   const secret = process.env.SHOPIFY_WEBHOOK_SECRET || "";
   const hash = crypto
@@ -22,7 +26,6 @@ export async function POST(req: Request) {
     const body = await req.text();
     const hmacHeader = req.headers.get("x-shopify-hmac-sha256");
 
-    // Verifica autenticità webhook
     if (!hmacHeader || !verifyWebhook(body, hmacHeader)) {
       console.error("❌ Webhook non verificato");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -30,13 +33,93 @@ export async function POST(req: Request) {
 
     const order = JSON.parse(body);
     
-    console.log(`🛒 Ordine ricevuto: #${order.order_number}`);
-    console.log(`📦 Line items: ${order.line_items.length}`);
+    console.log(`📥 Webhook ricevuto: Ordine #${order.order_number}`);
 
-    const results: any[] = [];
-    const errors: any[] = [];
+    // ✅ CHECK IDEMPOTENZA
+    const existingLog = await adminDb
+      .collection("orders_stock_log")
+      .where("order_id", "==", order.id)
+      .limit(1)
+      .get();
 
-    // Carica location_id una volta sola
+    if (!existingLog.empty) {
+      const existing = existingLog.docs[0].data();
+      console.log(`⚠️ Ordine #${order.order_number} già processato`);
+      return NextResponse.json({
+        ok: true,
+        message: "Order already processed",
+        skipped: true,
+      });
+    }
+
+    // ✅ AGGIUNGI ALLA CODA (invece di processare direttamente)
+    const queueId = await OrderQueue.enqueue(order);
+
+    // ✅ Avvia worker (se non già attivo)
+    processQueue().catch((err) => {
+      console.error("❌ Errore queue worker:", err);
+    });
+
+    // ✅ Rispondi immediatamente a Shopify
+    return NextResponse.json({
+      ok: true,
+      order_number: order.order_number,
+      message: "Order queued for processing",
+      queue_id: queueId,
+    });
+
+  } catch (err: any) {
+    console.error("❌ Errore webhook:", err);
+    return NextResponse.json(
+      { ok: false, error: err.message },
+      { status: 500 }
+    );
+  }
+}
+
+// ✅ WORKER: Processa coda in sequenza (1 ordine alla volta)
+async function processQueue() {
+  console.log("🔄 Queue worker started...");
+
+  while (true) {
+    const job = await OrderQueue.dequeue();
+
+    if (!job) {
+      console.log("✅ Coda vuota, worker termina");
+      break;
+    }
+
+    console.log(`🔨 Processing ordine #${job.order.order_number} dalla coda`);
+
+    try {
+      await processOrderWithLock(job.order, job.id);
+      await OrderQueue.complete(job.id, { success: true });
+    } catch (err: any) {
+      console.error(`❌ Errore processing ordine ${job.id}:`, err);
+      await OrderQueue.fail(job.id, err);
+    }
+
+    // Delay tra ordini
+    await delay(1000);
+  }
+}
+
+// ✅ PROCESSING con LOCK transazionale su stock
+async function processOrderWithLock(order: any, queueId: string) {
+  const results: any[] = [];
+  const errors: any[] = [];
+
+  // Crea log iniziale
+  const logDocRef = await adminDb.collection("orders_stock_log").add({
+    order_number: order.order_number,
+    order_id: order.id,
+    queue_id: queueId,
+    status: "processing",
+    started_at: new Date().toISOString(),
+    total_items: order.line_items.length,
+  });
+
+  try {
     const locationsRes = await shopify2.api("/locations.json");
     const locationId = locationsRes.locations?.[0]?.id;
 
@@ -44,15 +127,13 @@ export async function POST(req: Request) {
       throw new Error("Location ID non trovato");
     }
 
-    // Processa ogni line item
     for (const item of order.line_items) {
       const variantIdGrafica = item.variant_id;
       const quantity = item.quantity;
 
-      console.log(`\n📝 Processing: ${item.title} (Variant: ${variantIdGrafica}, Qty: ${quantity})`);
+      console.log(`\n📝 Processing: ${item.title} (${variantIdGrafica}, Qty: ${quantity})`);
 
       try {
-        // 1️⃣ Trova l'associazione in graphics_blanks
         const assocSnap = await adminDb
           .collection("graphics_blanks")
           .doc(String(variantIdGrafica))
@@ -62,9 +143,8 @@ export async function POST(req: Request) {
           errors.push({
             variant_id: variantIdGrafica,
             title: item.title,
-            error: "Associazione non trovata in graphics_blanks",
+            error: "Associazione non trovata",
           });
-          console.log(`⚠️ Nessuna associazione trovata per variant ${variantIdGrafica}`);
           continue;
         }
 
@@ -72,9 +152,6 @@ export async function POST(req: Request) {
         const blankKey = assoc.blank_key;
         const blankVariantId = assoc.blank_variant_id;
 
-        console.log(`✅ Associazione trovata: ${blankKey} → blank_variant ${blankVariantId}`);
-
-        // 2️⃣ Trova la variante blank in Firebase
         const variantsSnap = await adminDb
           .collection("blanks_stock")
           .doc(blankKey)
@@ -86,82 +163,139 @@ export async function POST(req: Request) {
           errors.push({
             variant_id: variantIdGrafica,
             title: item.title,
-            error: `Blank variant ${blankVariantId} non trovata`,
+            error: "Blank variant non trovata",
           });
-          console.log(`❌ Blank variant ${blankVariantId} non trovata`);
           continue;
         }
 
         const blankVariantDoc = variantsSnap.docs[0];
-        const currentStock = blankVariantDoc.data().stock || 0;
-        const newStock = Math.max(0, currentStock - quantity); // Non andare sotto 0
 
-        console.log(`📉 Stock blank: ${currentStock} → ${newStock} (-${quantity})`);
+        // ✅ TRANSAZIONE per evitare race condition
+        const newStock = await adminDb.runTransaction(async (transaction) => {
+          const blankData = await transaction.get(blankVariantDoc.ref);
+          const currentStock = blankData.data()?.stock || 0;
+          const calculatedStock = Math.max(0, currentStock - quantity);
 
-        // 3️⃣ Aggiorna stock blank in Firebase
-        await blankVariantDoc.ref.update({
-          stock: newStock,
-          updated_at: new Date().toISOString(),
-          last_order: order.order_number,
+          transaction.update(blankVariantDoc.ref, {
+            stock: calculatedStock,
+            updated_at: new Date().toISOString(),
+            last_order: order.order_number,
+          });
+
+          return { previous: currentStock, new: calculatedStock };
         });
 
-        // 4️⃣ Trova TUTTE le grafiche associate a questo blank_variant
+        console.log(`📉 Stock: ${newStock.previous} → ${newStock.new}`);
+
+        // Aggiorna grafiche (con throttling)
         const allGraphicsSnap = await adminDb
           .collection("graphics_blanks")
           .where("blank_key", "==", blankKey)
           .where("blank_variant_id", "==", blankVariantId)
           .get();
 
-        console.log(`🎨 Trovate ${allGraphicsSnap.size} grafiche da aggiornare`);
+        console.log(`🎨 ${allGraphicsSnap.size} grafiche da aggiornare`);
 
-        const graphicsUpdated: number[] = [];
+        const graphicsUpdated: any[] = [];
         const graphicsErrors: any[] = [];
 
-        // 5️⃣ Aggiorna inventory su Shopify per ogni grafica
+        let callCount = 0;
+        const DELAY_MS = 600;
+
         for (const graphicDoc of allGraphicsSnap.docs) {
           const graphicData = graphicDoc.data();
           const graphicVariantId = graphicData.variant_id_grafica;
 
           try {
-            // Recupera inventory_item_id
+            if (callCount > 0 && callCount % 2 === 0) {
+              await delay(DELAY_MS);
+            }
+
             const variantRes = await shopify2.api(`/variants/${graphicVariantId}.json`);
             const inventoryItemId = variantRes.variant?.inventory_item_id;
+            callCount++;
 
             if (!inventoryItemId) {
               throw new Error("inventory_item_id non trovato");
             }
 
-            // Aggiorna inventory
+            if (callCount % 2 === 0) {
+              await delay(DELAY_MS);
+            }
+
             await shopify2.api(`/inventory_levels/set.json`, {
               method: "POST",
               body: JSON.stringify({
                 location_id: locationId,
                 inventory_item_id: inventoryItemId,
-                available: newStock,
+                available: newStock.new,
               }),
             });
+            callCount++;
 
-            graphicsUpdated.push(graphicVariantId);
-            console.log(`  ✅ Grafica ${graphicVariantId} → ${newStock}`);
+            graphicsUpdated.push({
+              variant_id: graphicVariantId,
+              product_title: graphicData.product_title || "N/A",
+              size: graphicData.size,
+              color: graphicData.color,
+              numero_grafica: graphicData.numero_grafica,
+            });
+
+            console.log(`  ✅ ${graphicVariantId} → ${newStock.new}`);
           } catch (err: any) {
+            // Retry su 429
+            if (err.message.includes("429")) {
+              console.log(`  ⏳ Rate limit, retry...`);
+              await delay(2000);
+              
+              try {
+                const retryRes = await shopify2.api(`/variants/${graphicVariantId}.json`);
+                const retryInvId = retryRes.variant?.inventory_item_id;
+
+                if (retryInvId) {
+                  await delay(600);
+                  await shopify2.api(`/inventory_levels/set.json`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                      location_id: locationId,
+                      inventory_item_id: retryInvId,
+                      available: newStock.new,
+                    }),
+                  });
+
+                  graphicsUpdated.push({
+                    variant_id: graphicVariantId,
+                    product_title: graphicData.product_title || "N/A",
+                    size: graphicData.size,
+                    color: graphicData.color,
+                  });
+                  continue;
+                }
+              } catch (retryErr) {
+                // Fallthrough to error
+              }
+            }
+
             graphicsErrors.push({
               variant_id: graphicVariantId,
+              product_title: graphicData.product_title || "N/A",
+              size: graphicData.size,
+              color: graphicData.color,
               error: err.message,
             });
-            console.log(`  ❌ Errore grafica ${graphicVariantId}: ${err.message}`);
           }
         }
 
         results.push({
           order_item: item.title,
-          variant_id_grafica: variantIdGrafica,
           blank_key: blankKey,
-          blank_variant_id: blankVariantId,
-          previous_stock: currentStock,
-          new_stock: newStock,
+          size: assoc.size,
+          color: assoc.color,
+          previous_stock: newStock.previous,
+          new_stock: newStock.new,
           quantity_ordered: quantity,
-          graphics_updated: graphicsUpdated.length,
-          graphics_errors_count: graphicsErrors.length,
+          graphics_updated: graphicsUpdated,
+          graphics_errors: graphicsErrors,
         });
 
       } catch (err: any) {
@@ -170,55 +304,32 @@ export async function POST(req: Request) {
           title: item.title,
           error: err.message,
         });
-        console.error(`❌ Errore processing variant ${variantIdGrafica}:`, err);
       }
     }
 
-    // Log finale
-    console.log(`\n✅ Ordine #${order.order_number} processato:`);
-    console.log(`  - Items processati: ${results.length}/${order.line_items.length}`);
-    console.log(`  - Errori: ${errors.length}`);
-
-    // Salva log in Firebase
-    await adminDb.collection("orders_stock_log").add({
-      order_number: order.order_number,
-      order_id: order.id,
+    // Salva risultato finale
+    await logDocRef.update({
+      status: "completed",
       processed_at: new Date().toISOString(),
-      total_items: order.line_items.length,
       successful: results.length,
       errors_count: errors.length,
       results,
       error_details: errors,
     });
 
-    return NextResponse.json({
-      ok: true,
-      order_number: order.order_number,
-      processed: results.length,
-      errors_count: errors.length,
-      results,
-      error_details: errors,
-    });
+    console.log(`✅ Ordine #${order.order_number} completato`);
 
   } catch (err: any) {
-    console.error("❌ Errore webhook orders-paid:", err);
+    console.error("❌ Errore processing:", err);
     
-    // Salva errore critico
-    try {
-      await adminDb.collection("orders_stock_log").add({
-        error: err.message,
-        stack: err.stack,
-        processed_at: new Date().toISOString(),
-        critical: true,
-      });
-    } catch (logErr) {
-      console.error("❌ Errore logging:", logErr);
-    }
+    await logDocRef.update({
+      status: "failed",
+      processed_at: new Date().toISOString(),
+      error: err.message,
+      critical: true,
+    });
 
-    return NextResponse.json(
-      { ok: false, error: err.message },
-      { status: 500 }
-    );
+    throw err;
   }
 }
 
