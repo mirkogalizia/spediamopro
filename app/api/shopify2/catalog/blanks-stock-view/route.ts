@@ -12,11 +12,11 @@ export async function GET() {
     for (const doc of blanksSnap.docs) {
       const blank_key = doc.id;
 
-      // ✅ FIX: cambia "inventory" → "variants"
+      // ✅ FIX CORRETTO: SUBCOLLECTION GIUSTA
       const variantsSnap = await adminDb
         .collection("blanks_stock")
         .doc(blank_key)
-        .collection("variants")  // ← QUI IL FIX
+        .collection("variants")
         .get();
 
       const inventory: any[] = [];
@@ -40,6 +40,7 @@ export async function GET() {
     }
 
     return NextResponse.json({ ok: true, blanks });
+
   } catch (err: any) {
     console.error("❌ Errore blanks-stock-view:", err);
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
