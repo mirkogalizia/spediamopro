@@ -1,8 +1,10 @@
+'use client';
+
 import './globals.css';
 import Sidebar from './components/Sidebar';
 import { usePathname } from 'next/navigation';
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }) {
   return (
     <html lang="it">
       <body>
@@ -12,9 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   );
 }
 
-function RootContent({ children }: { children: React.ReactNode }) {
-  'use client';
-  
+function RootContent({ children }) {
   const pathname = usePathname();
   const showSidebar = pathname !== '/';
 
