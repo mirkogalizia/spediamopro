@@ -1,5 +1,6 @@
 'use client';
 
+import './globals.css';
 import { usePathname } from 'next/navigation';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import Sidebar from './components/Sidebar';
@@ -18,33 +19,29 @@ const theme = createTheme({
 
 export default function RootLayout({ children }) {
   const pathname = usePathname();
-  const showSidebar = pathname !== '/'; // 👈 mostra sidebar solo se non sei in home/login
+  const showSidebar = pathname !== '/';
 
   return (
     <html lang="it">
       <body>
         <ThemeProvider theme={theme}>
           <CssBaseline />
-          <div style={{ display: 'flex', minHeight: '100vh', width: '100%' }}>
+
+          <div className="flex min-h-screen w-full bg-gray-50">
             {showSidebar && (
-              <div style={{ width: 256 }}>
+              <aside className="w-64 border-r bg-white shadow-sm">
                 <Sidebar />
-              </div>
+              </aside>
             )}
-            <main
-              style={{
-                flex: 1,
-                background: '#f5f5f7',
-                padding: '2rem',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center', // 👈 centra tutto orizzontalmente
-                justifyContent: 'center', // 👈 centra tutto verticalmente
-              }}
-            >
-              {children}
+
+            {/* MAIN CONTENT */}
+            <main className="flex-1 p-6">
+              <div className="max-w-7xl mx-auto">
+                {children}
+              </div>
             </main>
           </div>
+
         </ThemeProvider>
       </body>
     </html>
