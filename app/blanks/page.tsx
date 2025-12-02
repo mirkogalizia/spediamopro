@@ -1,32 +1,6 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
-import {
-  Box,
-  Card,
-  CardContent,
-  CardHeader,
-  Chip,
-  TextField,
-  Typography,
-  Paper,
-  Stack,
-  Avatar,
-  Divider,
-  CircularProgress,
-  Alert,
-  ToggleButton,
-  ToggleButtonGroup,
-  Tooltip,
-} from "@mui/material";
-import Grid from "@mui/material/Unstable_Grid2"; // ✅ Usa Grid2
-import {
-  Inventory2,
-  Warning,
-  CheckCircle,
-  Cancel,
-  Search,
-} from "@mui/icons-material";
 
 const COLOR_MAP: Record<string, string> = {
   nero: "#000000",
@@ -74,11 +48,12 @@ export default function BlanksPage() {
     load();
   }, []);
 
+  // Calcolo statistiche globali
   const stats = useMemo(() => {
     let totalVariants = 0;
     let outOfStock = 0;
     let lowStock = 0;
-
+    
     data.forEach((blank) => {
       blank.inventory.forEach((v: any) => {
         totalVariants++;
@@ -90,17 +65,20 @@ export default function BlanksPage() {
     return { totalVariants, outOfStock, lowStock };
   }, [data]);
 
+  // Filtraggio dati
   const filteredData = useMemo(() => {
     return data
       .map((blank) => ({
         ...blank,
         inventory: blank.inventory
           .filter((v: any) => {
-            const matchSearch =
+            // Filtro per termine di ricerca
+            const matchSearch = 
               blank.blank_key.toLowerCase().includes(searchTerm.toLowerCase()) ||
               v.colore.toLowerCase().includes(searchTerm.toLowerCase()) ||
               v.taglia.toLowerCase().includes(searchTerm.toLowerCase());
 
+            // Filtro per stock
             const matchStock =
               filterStock === "all" ||
               (filterStock === "out" && v.stock === 0) ||
@@ -109,6 +87,7 @@ export default function BlanksPage() {
             return matchSearch && matchStock;
           })
           .sort((a: any, b: any) => {
+            // Ordina per taglia poi colore
             const sizeA = SIZE_ORDER.indexOf(a.taglia.toUpperCase());
             const sizeB = SIZE_ORDER.indexOf(b.taglia.toUpperCase());
             if (sizeA !== sizeB) return sizeA - sizeB;
@@ -120,272 +99,216 @@ export default function BlanksPage() {
 
   if (loading) {
     return (
-      <Box
-        sx={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "100vh",
-          gap: 2,
-        }}
-      >
-        <CircularProgress size={60} />
-        <Typography variant="h6" color="text.secondary">
-          Caricamento stock...
-        </Typography>
-      </Box>
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600 font-medium">Caricamento stock...</p>
+        </div>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Box sx={{ p: 3, maxWidth: 600, mx: "auto", mt: 8 }}>
-        <Alert severity="error" variant="filled">
-          <Typography variant="h6" gutterBottom>
-            Errore nel caricamento
-          </Typography>
-          {error}
-        </Alert>
-      </Box>
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-red-50 to-red-100">
+        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-3xl">⚠️</span>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Errore</h2>
+          <p className="text-gray-600">{error}</p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "grey.50", pb: 4 }}>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50">
       {/* Header con Stats */}
-      <Paper elevation={0} sx={{ mb: 3, borderRadius: 0 }}>
-        <Box sx={{ maxWidth: 1400, mx: "auto", px: 3, py: 4 }}>
-          <Stack direction="row" alignItems="center" spacing={2} mb={3}>
-            <Inventory2 sx={{ fontSize: 40, color: "primary.main" }} />
-            <Box>
-              <Typography variant="h4" fontWeight="bold" gutterBottom>
-                Gestione Stock Blanks
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Monitoraggio inventario prodotti base
-              </Typography>
-            </Box>
-          </Stack>
+      <div className="bg-white shadow-sm border-b sticky top-0 z-10 backdrop-blur-sm bg-white/90">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                📦 Stock Blanks
+              </h1>
+              <p className="text-gray-600">Gestione inventario prodotti base</p>
+            </div>
 
-          {/* Stats Cards */}
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid xs={12} sm={4}>
-              <Paper elevation={2} sx={{ p: 2, bgcolor: "primary.50" }}>
-                <Stack direction="row" alignItems="center" spacing={2}>
-                  <Avatar sx={{ bgcolor: "primary.main" }}>
-                    <Inventory2 />
-                  </Avatar>
-                  <Box>
-                    <Typography variant="h4" fontWeight="bold" color="primary">
-                      {stats.totalVariants}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Varianti Totali
-                    </Typography>
-                  </Box>
-                </Stack>
-              </Paper>
-            </Grid>
+            {/* Stats Cards */}
+            <div className="flex gap-3">
+              <div className="bg-blue-50 rounded-xl px-4 py-3 border border-blue-100">
+                <div className="text-2xl font-bold text-blue-600">
+                  {stats.totalVariants}
+                </div>
+                <div className="text-xs text-blue-700 font-medium">
+                  Varianti Totali
+                </div>
+              </div>
+              <div className="bg-yellow-50 rounded-xl px-4 py-3 border border-yellow-100">
+                <div className="text-2xl font-bold text-yellow-600">
+                  {stats.lowStock}
+                </div>
+                <div className="text-xs text-yellow-700 font-medium">
+                  Stock Basso
+                </div>
+              </div>
+              <div className="bg-red-50 rounded-xl px-4 py-3 border border-red-100">
+                <div className="text-2xl font-bold text-red-600">
+                  {stats.outOfStock}
+                </div>
+                <div className="text-xs text-red-700 font-medium">
+                  Esauriti
+                </div>
+              </div>
+            </div>
+          </div>
 
-            <Grid xs={12} sm={4}>
-              <Paper elevation={2} sx={{ p: 2, bgcolor: "warning.50" }}>
-                <Stack direction="row" alignItems="center" spacing={2}>
-                  <Avatar sx={{ bgcolor: "warning.main" }}>
-                    <Warning />
-                  </Avatar>
-                  <Box>
-                    <Typography variant="h4" fontWeight="bold" color="warning.main">
-                      {stats.lowStock}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Stock Basso
-                    </Typography>
-                  </Box>
-                </Stack>
-              </Paper>
-            </Grid>
+          {/* Filtri e Ricerca */}
+          <div className="mt-6 flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                placeholder="🔍 Cerca per prodotto, colore o taglia..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-4 py-3 pl-10 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+              />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                🔍
+              </span>
+            </div>
 
-            <Grid xs={12} sm={4}>
-              <Paper elevation={2} sx={{ p: 2, bgcolor: "error.50" }}>
-                <Stack direction="row" alignItems="center" spacing={2}>
-                  <Avatar sx={{ bgcolor: "error.main" }}>
-                    <Cancel />
-                  </Avatar>
-                  <Box>
-                    <Typography variant="h4" fontWeight="bold" color="error.main">
-                      {stats.outOfStock}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Esauriti
-                    </Typography>
-                  </Box>
-                </Stack>
-              </Paper>
-            </Grid>
-          </Grid>
-
-          {/* Filtri */}
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField
-              fullWidth
-              placeholder="Cerca per prodotto, colore o taglia..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              InputProps={{
-                startAdornment: <Search sx={{ mr: 1, color: "text.secondary" }} />,
-              }}
-              variant="outlined"
-            />
-
-            <ToggleButtonGroup
-              value={filterStock}
-              exclusive
-              onChange={(_, value) => value && setFilterStock(value)}
-              sx={{ flexShrink: 0 }}
-            >
-              <ToggleButton value="all">Tutti</ToggleButton>
-              <ToggleButton value="low">Stock Basso</ToggleButton>
-              <ToggleButton value="out">Esauriti</ToggleButton>
-            </ToggleButtonGroup>
-          </Stack>
-        </Box>
-      </Paper>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setFilterStock("all")}
+                className={`px-4 py-3 rounded-xl font-medium transition-all ${
+                  filterStock === "all"
+                    ? "bg-blue-500 text-white shadow-lg shadow-blue-200"
+                    : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
+                }`}
+              >
+                Tutti
+              </button>
+              <button
+                onClick={() => setFilterStock("low")}
+                className={`px-4 py-3 rounded-xl font-medium transition-all ${
+                  filterStock === "low"
+                    ? "bg-yellow-500 text-white shadow-lg shadow-yellow-200"
+                    : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
+                }`}
+              >
+                Stock Basso
+              </button>
+              <button
+                onClick={() => setFilterStock("out")}
+                className={`px-4 py-3 rounded-xl font-medium transition-all ${
+                  filterStock === "out"
+                    ? "bg-red-500 text-white shadow-lg shadow-red-200"
+                    : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
+                }`}
+              >
+                Esauriti
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Content */}
-      <Box sx={{ maxWidth: 1400, mx: "auto", px: 3 }}>
+      <div className="max-w-7xl mx-auto px-6 py-8">
         {filteredData.length === 0 ? (
-          <Paper elevation={1} sx={{ p: 6, textAlign: "center" }}>
-            <Search sx={{ fontSize: 80, color: "text.disabled", mb: 2 }} />
-            <Typography variant="h5" gutterBottom color="text.secondary">
-              Nessun risultato trovato
-            </Typography>
-            <Typography variant="body2" color="text.disabled">
+          <div className="text-center py-16">
+            <div className="text-6xl mb-4">🔍</div>
+            <h3 className="text-xl font-semibold text-gray-700 mb-2">
+              Nessun risultato
+            </h3>
+            <p className="text-gray-500">
               Prova a modificare i filtri di ricerca
-            </Typography>
-          </Paper>
+            </p>
+          </div>
         ) : (
-          <Grid container spacing={3}>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {filteredData.map((blank) => (
-              <Grid xs={12} lg={6} key={blank.blank_key}>
-                <Card elevation={3}>
-                  <CardHeader
-                    avatar={
-                      <Avatar sx={{ bgcolor: "primary.main" }}>
-                        <Inventory2 />
-                      </Avatar>
-                    }
-                    title={
-                      <Typography variant="h6" fontWeight="bold" textTransform="capitalize">
-                        {blank.blank_key.replaceAll("_", " ")}
-                      </Typography>
-                    }
-                    subheader={`${blank.inventory.length} varianti disponibili`}
-                    sx={{ bgcolor: "primary.50" }}
-                  />
-                  <Divider />
-                  <CardContent>
-                    <Grid container spacing={1.5}>
-                      {blank.inventory.map((v: any) => (
-                        <Grid xs={6} sm={4} md={3} key={v.id}>
-                          <Tooltip
-                            title={`${v.colore} - ${v.taglia} | Stock: ${v.stock}`}
-                            arrow
+              <div
+                key={blank.blank_key}
+                className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100"
+              >
+                {/* Card Header */}
+                <div className="bg-gradient-to-r from-blue-500 to-purple-500 px-6 py-4">
+                  <h2 className="text-2xl font-bold text-white capitalize flex items-center gap-2">
+                    <span>👕</span>
+                    {blank.blank_key.replaceAll("_", " ")}
+                  </h2>
+                  <p className="text-blue-100 text-sm mt-1">
+                    {blank.inventory.length} varianti disponibili
+                  </p>
+                </div>
+
+                {/* Varianti Grid */}
+                <div className="p-6">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+                    {blank.inventory.map((v: any) => (
+                      <div
+                        key={v.id}
+                        className={`relative p-4 rounded-xl border-2 transition-all duration-200 hover:scale-105 hover:shadow-md ${
+                          v.stock === 0
+                            ? "bg-red-50 border-red-200"
+                            : v.stock <= 5
+                            ? "bg-yellow-50 border-yellow-200"
+                            : "bg-green-50 border-green-200"
+                        }`}
+                      >
+                        {/* Colore */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <div
+                            className="w-5 h-5 rounded-full border-2 border-gray-300 shadow-sm"
+                            style={{
+                              backgroundColor: COLOR_MAP[v.colore] || "#CCCCCC",
+                            }}
+                          />
+                          <span className="text-xs font-medium text-gray-700 capitalize truncate">
+                            {v.colore}
+                          </span>
+                        </div>
+
+                        {/* Taglia */}
+                        <div className="text-center mb-2">
+                          <span className="text-lg font-bold text-gray-900">
+                            {v.taglia}
+                          </span>
+                        </div>
+
+                        {/* Stock Badge */}
+                        <div className="text-center">
+                          <span
+                            className={`inline-block px-3 py-1.5 rounded-lg text-sm font-bold ${
+                              v.stock === 0
+                                ? "bg-red-500 text-white"
+                                : v.stock <= 5
+                                ? "bg-yellow-500 text-white"
+                                : "bg-green-500 text-white"
+                            }`}
                           >
-                            <Paper
-                              elevation={1}
-                              sx={{
-                                p: 1.5,
-                                textAlign: "center",
-                                transition: "all 0.2s",
-                                cursor: "pointer",
-                                border: 2,
-                                borderColor:
-                                  v.stock === 0
-                                    ? "error.light"
-                                    : v.stock <= 5
-                                    ? "warning.light"
-                                    : "success.light",
-                                bgcolor:
-                                  v.stock === 0
-                                    ? "error.50"
-                                    : v.stock <= 5
-                                    ? "warning.50"
-                                    : "success.50",
-                                "&:hover": {
-                                  transform: "translateY(-4px)",
-                                  boxShadow: 4,
-                                },
-                              }}
-                            >
-                              {/* Colore */}
-                              <Stack
-                                direction="row"
-                                alignItems="center"
-                                spacing={0.5}
-                                justifyContent="center"
-                                sx={{ mb: 1 }}
-                              >
-                                <Box
-                                  sx={{
-                                    width: 16,
-                                    height: 16,
-                                    borderRadius: "50%",
-                                    bgcolor: COLOR_MAP[v.colore] || "#CCC",
-                                    border: "2px solid",
-                                    borderColor: "grey.400",
-                                  }}
-                                />
-                                <Typography
-                                  variant="caption"
-                                  fontWeight="medium"
-                                  textTransform="capitalize"
-                                  noWrap
-                                  sx={{ maxWidth: 60 }}
-                                >
-                                  {v.colore}
-                                </Typography>
-                              </Stack>
+                            {v.stock === 0 ? "OUT" : v.stock}
+                          </span>
+                        </div>
 
-                              {/* Taglia */}
-                              <Typography variant="h6" fontWeight="bold" sx={{ mb: 1 }}>
-                                {v.taglia}
-                              </Typography>
-
-                              {/* Stock Badge */}
-                              <Chip
-                                label={v.stock === 0 ? "OUT" : v.stock}
-                                size="small"
-                                icon={
-                                  v.stock === 0 ? (
-                                    <Cancel />
-                                  ) : v.stock <= 5 ? (
-                                    <Warning />
-                                  ) : (
-                                    <CheckCircle />
-                                  )
-                                }
-                                color={
-                                  v.stock === 0
-                                    ? "error"
-                                    : v.stock <= 5
-                                    ? "warning"
-                                    : "success"
-                                }
-                                sx={{ fontWeight: "bold" }}
-                              />
-                            </Paper>
-                          </Tooltip>
-                        </Grid>
-                      ))}
-                    </Grid>
-                  </CardContent>
-                </Card>
-              </Grid>
+                        {/* Alert Icon per stock basso */}
+                        {v.stock > 0 && v.stock <= 5 && (
+                          <div className="absolute top-1 right-1">
+                            <span className="text-xs">⚠️</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             ))}
-          </Grid>
+          </div>
         )}
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 }
