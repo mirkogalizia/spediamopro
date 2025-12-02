@@ -32,21 +32,26 @@ export default function BlanksPage() {
   }
 
   async function updateStock(variantId: string, blankKey: string) {
-    const value = newStock[variantId];
-    if (value == null || value === "") return alert("Inserisci un valore!");
+  const raw = newStock[variantId];
 
-    await fetch("/api/shopify2/catalog/sync-blanks-stock", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        blank_key: blankKey,
-        variant_id: variantId,
-        new_stock: Number(value),
-      }),
-    });
-
-    await loadStock();
+  const value = Number(raw);
+  if (isNaN(value)) {
+    alert("Inserisci un numero valido!");
+    return;
   }
+
+  await fetch("/api/shopify2/catalog/sync-blanks-stock", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      blank_key: blankKey,
+      variant_id: variantId,
+      new_stock: value,
+    }),
+  });
+
+  await loadStock();
+}
 
   useEffect(() => {
     loadStock();
