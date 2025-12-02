@@ -1,4 +1,3 @@
-// app/api/shopify2/catalog/build-blanks-stock/route.ts
 import { NextResponse } from "next/server";
 import { shopify2 } from "@/lib/shopify2";
 import { adminDb } from "@/lib/firebaseAdminServer";
@@ -7,61 +6,96 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const snap = await adminDb.collection("blanks_mapping").get();
+    console.log("🚀 Avvio build-blanks-stock…");
 
-    const blanks = [];
-    snap.forEach((doc) => {
+    // 1️⃣ Leggo mapping categorie → produtt_id blank
+    const snapshot = await adminDb.collection("blanks_mapping").get();
+
+    const items: { blank_key: string; product_id: number }[] = [];
+    snapshot.forEach((doc) => {
       const d = doc.data();
-      if (d.blank_assigned && d.product_id) blanks.push(d);
+      if (d.blank_assigned && d.product_id) {
+        items.push({
+          blank_key: d.blank_key,
+          product_id: d.product_id,
+        });
+      }
     });
 
-    const processed = [];
+    if (items.length === 0) {
+      return NextResponse.json({
+        ok: false,
+        message: "Nessun blank mappato",
+      });
+    }
 
-    for (const b of blanks) {
-      const { blank_key, product_id } = b;
+    const results: any[] = [];
 
-      // Scarica il prodotto con TUTTE le varianti
-      const productRes = await shopify2.getProduct(product_id);
+    // 2️⃣ Ciclo ogni blank
+    for (const item of items) {
+      const { blank_key, product_id } = item;
 
-      if (!productRes?.product?.variants) continue;
+      console.log(`📦 Scarico varianti per: ${blank_key} (ID: ${product_id})`);
 
-      const variants = productRes.product.variants;
+      // Shopify call
+      const res = await shopify2.getProduct(product_id);
+      if (!res?.product?.variants) {
+        console.log(`❌ Nessuna variante trovata per ${product_id}`);
+        continue;
+      }
 
+      const variants = res.product.variants;
+
+      // 3️⃣ Path Firestore: blanks_stock/{blank_key}/variants/*
+      const variantsRef = adminDb
+        .collection("blanks_stock")
+        .doc(blank_key)
+        .collection("variants");
+
+      // 4️⃣ Cancello vecchie varianti
+      const old = await variantsRef.get();
+      const batchDelete = adminDb.batch();
+      old.forEach((d) => batchDelete.delete(d.ref));
+      await batchDelete.commit();
+
+      // 5️⃣ Inserisco aggiornate
       const batch = adminDb.batch();
-      const ref = adminDb.collection("blanks_stock").doc(blank_key);
 
       for (const v of variants) {
-        const size = v.option1 || "NO_SIZE";
-        const color = v.option2 || "NO_COLOR";
+        const taglia = (v.option1 || "NO_SIZE").toUpperCase().trim();
+        const colore = (v.option2 || "NO_COLOR").toLowerCase().trim();
+        const key = `${taglia}-${colore}`;
 
-        const docId = `${size}-${color}`.toLowerCase().replace(/\s+/g, "_");
+        const ref = variantsRef.doc(key);
 
-        batch.set(ref.collection("variants").doc(docId), {
-          size,
-          color,
-          qty: v.inventory_quantity,
+        batch.set(ref, {
+          taglia,
+          colore,
+          stock: v.inventory_quantity,
           variant_id: v.id,
-          inventory_item_id: v.inventory_item_id,
           updated_at: new Date().toISOString(),
         });
       }
 
       await batch.commit();
 
-      processed.push({
+      results.push({
         blank_key,
-        variants: variants.length,
+        product_id,
+        total_variants: variants.length,
       });
     }
 
     return NextResponse.json({
       ok: true,
-      message: "Stock blanks generato su Firestore",
-      processed,
+      message: "Blanks stock aggiornato correttamente",
+      processed: results,
     });
-
   } catch (err: any) {
-    console.error("Errore build blanks stock:", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    console.error("❌ Errore build-blanks-stock:", err);
+    return NextResponse.json(
+      { ok: false, error: err.message },
+      { status: 500 }
+    );
   }
 }
