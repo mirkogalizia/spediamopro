@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
   getFirestore, 
   collection, 
@@ -19,7 +19,8 @@ const firebaseConfig = {
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
 };
 
-const app = initializeApp(firebaseConfig);
+// ✅ Singleton: Inizializza solo se non esiste già
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
 type OrderStatus = "received" | "pending" | "processing" | "completed" | "failed";
@@ -339,7 +340,7 @@ export default function OrdersMonitorPage() {
                         )}
                       </p>
 
-                      {/* Current Item (solo se processing) */}
+                      {/* Current Item */}
                       {order.status === "processing" && order.current_item && (
                         <p className="text-sm text-gray-700 font-semibold mt-2 animate-pulse">
                           📝 {order.current_item}
@@ -347,7 +348,7 @@ export default function OrdersMonitorPage() {
                       )}
                     </div>
 
-                    {/* Progress & Stats */}
+                    {/* Stats */}
                     <div className="flex gap-6 items-center">
                       {order.status !== "received" && order.status !== "pending" && (
                         <>
@@ -418,131 +419,44 @@ export default function OrdersMonitorPage() {
                   )}
 
                   {/* Details */}
-                  {isExpanded && (
+                  {isExpanded && order.items && (
                     <div className="p-8 border-t-2 border-gray-100">
-                      {order.items && Object.keys(order.items).length > 0 ? (
-                        <div className="space-y-4">
-                          <h3 className="text-xl font-bold text-gray-800 mb-4">
-                            📦 Dettagli Items
-                          </h3>
-                          {Object.entries(order.items).map(([variantId, itemData]: [string, any]) => (
-                            <div
-                              key={variantId}
-                              className={`rounded-xl p-4 border-2 ${
-                                itemData.status === "completed"
-                                  ? "bg-green-50 border-green-200"
-                                  : itemData.status === "failed"
-                                  ? "bg-red-50 border-red-200"
-                                  : itemData.status === "skipped"
-                                  ? "bg-gray-50 border-gray-200"
-                                  : "bg-blue-50 border-blue-200"
-                              }`}
-                            >
-                              <div className="flex items-start justify-between mb-3">
-                                <div className="flex-1">
-                                  <p className="font-bold text-gray-800 mb-1">
-                                    {itemData.blank_key?.replaceAll("_", " ").toUpperCase() || "N/A"}
-                                  </p>
-                                  {itemData.size && itemData.color && (
-                                    <div className="flex gap-4 text-sm text-gray-600">
-                                      <span>
-                                        <strong>Taglia:</strong> {itemData.size}
-                                      </span>
-                                      <span>
-                                        <strong>Colore:</strong> {itemData.color}
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-
-                                <span
-                                  className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                    itemData.status === "completed"
-                                      ? "bg-green-200 text-green-800"
-                                      : itemData.status === "failed"
-                                      ? "bg-red-200 text-red-800"
-                                      : itemData.status === "skipped"
-                                      ? "bg-gray-200 text-gray-800"
-                                      : itemData.status === "updating_graphics"
-                                      ? "bg-blue-200 text-blue-800"
-                                      : "bg-yellow-200 text-yellow-800"
-                                  }`}
-                                >
-                                  {itemData.status === "updating_blank" && "📦 Updating Blank"}
-                                  {itemData.status === "updating_graphics" && "🎨 Updating Graphics"}
-                                  {itemData.status === "completed" && "✅ Completato"}
-                                  {itemData.status === "failed" && "❌ Fallito"}
-                                  {itemData.status === "skipped" && "⏭️ Saltato"}
-                                </span>
-                              </div>
-
-                              {/* Stock Info */}
-                              {itemData.stock_updated && (
-                                <div className="mb-3">
-                                  <p className="text-sm font-semibold text-gray-700">
-                                    Stock: {itemData.previous_stock} → {itemData.new_stock}
-                                  </p>
-                                </div>
-                              )}
-
-                              {/* Graphics Progress */}
-                              {itemData.total_graphics && (
-                                <div>
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="text-sm font-semibold text-gray-700">
-                                      Grafiche: {itemData.graphics_processed || 0}/
-                                      {itemData.total_graphics}
-                                    </span>
-                                    <span className="text-sm font-bold text-blue-600">
-                                      {itemData.graphics_percent || 0}%
-                                    </span>
-                                  </div>
-                                  <div className="h-4 bg-white rounded-full overflow-hidden shadow-inner">
-                                    <div
-                                      className="h-full bg-gradient-to-r from-blue-400 to-purple-500 transition-all duration-300"
-                                      style={{
-                                        width: `${itemData.graphics_percent || 0}%`,
-                                      }}
-                                    ></div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Graphics Errors */}
-                              {itemData.graphics_errors && itemData.graphics_errors.length > 0 && (
-                                <div className="mt-3 bg-red-100 rounded-lg p-3">
-                                  <p className="text-sm font-bold text-red-800 mb-1">
-                                    ⚠️ {itemData.graphics_errors.length} grafiche con errori
-                                  </p>
-                                  <details className="text-xs text-red-700">
-                                    <summary className="cursor-pointer font-semibold">
-                                      Mostra dettagli
-                                    </summary>
-                                    <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
-                                      {itemData.graphics_errors.slice(0, 5).map((err: any, idx: number) => (
-                                        <p key={idx}>
-                                          • {err.product_title}: {err.error}
-                                        </p>
-                                      ))}
-                                    </div>
-                                  </details>
-                                </div>
-                              )}
-
-                              {/* Skipped reason */}
-                              {itemData.reason && (
-                                <div className="mt-3 text-sm text-gray-600">
-                                  ℹ️ {itemData.reason}
-                                </div>
-                              )}
+                      <h3 className="text-xl font-bold text-gray-800 mb-4">
+                        📦 Dettagli Items
+                      </h3>
+                      <div className="space-y-4">
+                        {Object.entries(order.items).map(([variantId, itemData]: [string, any]) => (
+                          <div
+                            key={variantId}
+                            className={`rounded-xl p-4 border-2 ${
+                              itemData.status === "completed"
+                                ? "bg-green-50 border-green-200"
+                                : itemData.status === "failed"
+                                ? "bg-red-50 border-red-200"
+                                : "bg-blue-50 border-blue-200"
+                            }`}
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <p className="font-bold text-gray-800">
+                                {itemData.blank_key || "N/A"}
+                              </p>
+                              <span className="text-xs font-bold px-2 py-1 rounded bg-white">
+                                {itemData.status}
+                              </span>
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 text-gray-500">
-                          <p className="text-lg">Nessun dettaglio disponibile</p>
-                        </div>
-                      )}
+                            {itemData.stock_updated && (
+                              <p className="text-sm text-gray-600">
+                                Stock: {itemData.previous_stock} → {itemData.new_stock}
+                              </p>
+                            )}
+                            {itemData.total_graphics > 0 && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                Grafiche: {itemData.graphics_processed || 0}/{itemData.total_graphics}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
