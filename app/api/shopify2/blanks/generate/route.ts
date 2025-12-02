@@ -8,84 +8,89 @@ export async function GET() {
   try {
     const db = adminDb;
 
-    // 1️⃣ Carica la mappatura BLANKS
+    // 1️⃣ Recupera mapping blanks
     const mappingSnap = await db.collection("blanks_mapping").get();
-
     if (mappingSnap.empty) {
       return NextResponse.json({
         ok: false,
-        error: "Nessuna mappatura trovata in blanks_mapping",
+        error: "Nessuna mappatura trovata",
       });
     }
 
-    const mappings = mappingSnap.docs.map((doc) => doc.data());
+    const mappings: {
+      category: string;
+      blank_key: string | null;
+      product_id: number | null;
+      blank_assigned: boolean;
+    }[] = [];
 
-    // 2️⃣ Filtra solo quelli con BLANK assegnato
-    const assigned = mappings.filter((m: any) => m.blank_assigned && m.product_id);
+    mappingSnap.forEach((doc) => mappings.push(doc.data() as any));
+
+    // 2️⃣ Filtra solo i blanks assegnati con un product_id valido
+    const assigned = mappings.filter(
+      (m) => m.blank_assigned && m.product_id && m.blank_key
+    );
 
     const processed: any[] = [];
 
-    // 3️⃣ Per ogni BLANK, scarica le varianti da Shopify
+    // 3️⃣ Cicla ogni BLANK
     for (const map of assigned) {
-      const { blank_key, product_id } = map;
+      const { product_id, blank_key, category } = map;
 
+      // > Sanity check
       if (!product_id || !blank_key) continue;
 
-      // 🟦 Scarica prodotto da Shopify
-const productRes = await shopify2.getProduct(product_id);
+      // 4️⃣ Scarica prodotto completo da Shopify — CORRETTO
+      const productRes = await shopify2.api(`products/${product_id}.json`);
 
-if (
-  !productRes ||
-  !productRes.product ||
-  !productRes.product.variants
-) {
-  console.log("❌ Nessun prodotto o varianti per", product_id);
-  continue;
-}
+      if (!productRes || !productRes.product || !productRes.product.variants) {
+        console.log("❌ Nessun prodotto o varianti per", product_id);
+        continue;
+      }
 
-// 🔥 UNA sola definizione
-const variants = productRes.product.variants;
+      const variants = productRes.product.variants;
 
-// 4️⃣ Salva lo stock nel Firestore
-const blankRef = db.collection("blanks_stock").doc(blank_key);
-const batch = db.batch();
+      // 5️⃣ Salva su Firestore
+      const blankRef = db.collection("blanks_stock").doc(blank_key);
+      const batch = db.batch();
 
-variants.forEach((v: any) => {
-  const size = v.option1;
-  const color = v.option2;
-  const qty = v.inventory_quantity ?? 0;
+      for (const v of variants) {
+        const size = v.option1;
+        const color = v.option2;
+        const qty = v.inventory_quantity ?? 0;
 
-  const key = `${size}_${color}`.replace(/\s+/g, "_").toLowerCase();
-  const docRef = blankRef.collection("variants").doc(key);
+        const key = `${size}_${color}`.replace(/\s+/g, "_").toLowerCase();
 
-  batch.set(docRef, {
-    size,
-    color,
-    qty,
-    variant_id: v.id,
-    inventory_item_id: v.inventory_item_id,
-    updated_at: new Date(),
-  });
-});
+        const docRef = blankRef.collection("variants").doc(key);
 
-await batch.commit();
+        batch.set(docRef, {
+          size,
+          color,
+          qty,
+          variant_id: v.id,
+          inventory_item_id: v.inventory_item_id,
+          updated_at: new Date(),
+        });
+      }
 
-processed.push({
-  blank_key,
-  product_id,
-  variants: variants.length,
-});
+      await batch.commit();
+
+      processed.push({
+        blank_key,
+        product_id,
+        variants: variants.length,
+      });
 
       console.log(`✔️ Salvato BLANK ${blank_key} con ${variants.length} varianti`);
     }
 
     return NextResponse.json({
       ok: true,
-      message: "Stock blanks generato su Firestore",
+      message: "Stock blanks generato correttamente",
       processed,
     });
   } catch (err: any) {
-    console.error("❌ Errore generate blanks:", err);
+    console.error("❌ Errore build blanks stock:", err);
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
