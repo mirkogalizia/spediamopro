@@ -34,45 +34,47 @@ export async function GET() {
       // 🟦 Scarica prodotto da Shopify
 const productRes = await shopify2.getProduct(product_id);
 
-if (!productRes || !productRes.product || !productRes.product.variants) {
+if (
+  !productRes ||
+  !productRes.product ||
+  !productRes.product.variants
+) {
   console.log("❌ Nessun prodotto o varianti per", product_id);
   continue;
 }
 
+// 🔥 UNA sola definizione
 const variants = productRes.product.variants;
 
-      const variants = productRes.product.variants;
+// 4️⃣ Salva lo stock nel Firestore
+const blankRef = db.collection("blanks_stock").doc(blank_key);
+const batch = db.batch();
 
-      // 4️⃣ Salva lo stock nel Firestore
-      const blankRef = db.collection("blanks_stock").doc(blank_key);
+variants.forEach((v: any) => {
+  const size = v.option1;
+  const color = v.option2;
+  const qty = v.inventory_quantity ?? 0;
 
-      const batch = db.batch();
+  const key = `${size}_${color}`.replace(/\s+/g, "_").toLowerCase();
+  const docRef = blankRef.collection("variants").doc(key);
 
-      variants.forEach((v: any) => {
-        const size = v.option1;
-        const color = v.option2;
-        const qty = v.inventory_quantity ?? 0;
+  batch.set(docRef, {
+    size,
+    color,
+    qty,
+    variant_id: v.id,
+    inventory_item_id: v.inventory_item_id,
+    updated_at: new Date(),
+  });
+});
 
-        const key = `${size}_${color}`.replace(/\s+/g, "_").toLowerCase();
-        const docRef = blankRef.collection("variants").doc(key);
+await batch.commit();
 
-        batch.set(docRef, {
-          size,
-          color,
-          qty,
-          variant_id: v.id,
-          inventory_item_id: v.inventory_item_id,
-          updated_at: new Date(),
-        });
-      });
-
-      await batch.commit();
-
-      processed.push({
-        blank_key,
-        product_id,
-        variants: variants.length,
-      });
+processed.push({
+  blank_key,
+  product_id,
+  variants: variants.length,
+});
 
       console.log(`✔️ Salvato BLANK ${blank_key} con ${variants.length} varianti`);
     }
