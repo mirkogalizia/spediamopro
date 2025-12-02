@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdminServer";
 import { shopify2 } from "@/lib/shopify2";
 import crypto from "crypto";
-import { FieldValue } from "firebase-admin/firestore";
+import { OrderQueue } from "@/lib/orderQueue";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -35,81 +35,37 @@ export async function POST(req: Request) {
     
     console.log(`📥 Webhook ricevuto: Ordine #${order.order_number}`);
 
-    // ✅ IDEMPOTENZA: Cerca documento esistente per questo order_id
-    const existingLogSnap = await adminDb
+    // ✅ CHECK IDEMPOTENZA
+    const existingLog = await adminDb
       .collection("orders_stock_log")
       .where("order_id", "==", order.id)
       .limit(1)
       .get();
 
-    let logDocRef;
-
-    if (!existingLogSnap.empty) {
-      const existing = existingLogSnap.docs[0];
-      const existingData = existing.data();
-      
-      // Se già completato, skip
-      if (existingData.status === "completed") {
-        console.log(`⚠️ Ordine #${order.order_number} già completato`);
-        return NextResponse.json({
-          ok: true,
-          message: "Order already processed",
-          skipped: true,
-        });
-      }
-
-      // Se in processing da > 5 minuti, reset
-      if (existingData.status === "processing") {
-        const startedAt = new Date(existingData.started_at);
-        const now = new Date();
-        const diffMs = now.getTime() - startedAt.getTime();
-        
-        if (diffMs < 300000) { // 5 minuti
-          console.log(`⚠️ Ordine #${order.order_number} già in processing`);
-          return NextResponse.json({
-            ok: true,
-            message: "Order already processing",
-            log_id: existing.id,
-          });
-        }
-        
-        console.log(`🔄 Reset ordine #${order.order_number} (timeout)`);
-      }
-
-      logDocRef = existing.ref;
-    } else {
-      // ✅ Crea nuovo documento log
-      logDocRef = await adminDb.collection("orders_stock_log").add({
-        order_number: order.order_number,
-        order_id: order.id,
-        status: "received",
-        received_at: new Date().toISOString(),
-        total_items: order.line_items.length,
-        items_processed: 0,
-        items_success: 0,
-        items_failed: 0,
+    if (!existingLog.empty) {
+      const existing = existingLog.docs[0].data();
+      console.log(`⚠️ Ordine #${order.order_number} già processato`);
+      return NextResponse.json({
+        ok: true,
+        message: "Order already processed",
+        skipped: true,
       });
     }
 
-    // ✅ Aggiorna stato → processing
-    await logDocRef.update({
-      status: "processing",
-      started_at: new Date().toISOString(),
-      current_item: null,
-      progress_percent: 0,
+    // ✅ AGGIUNGI ALLA CODA (invece di processare direttamente)
+    const queueId = await OrderQueue.enqueue(order);
+
+    // ✅ Avvia worker (se non già attivo)
+    processQueue().catch((err) => {
+      console.error("❌ Errore queue worker:", err);
     });
 
-    // ✅ Avvia processing asincrono
-    processOrderWithLiveUpdates(order, logDocRef).catch((err) => {
-      console.error("❌ Errore processing:", err);
-    });
-
-    // ✅ Rispondi subito a Shopify
+    // ✅ Rispondi immediatamente a Shopify
     return NextResponse.json({
       ok: true,
       order_number: order.order_number,
-      message: "Processing started",
-      log_id: logDocRef.id,
+      message: "Order queued for processing",
+      queue_id: queueId,
     });
 
   } catch (err: any) {
@@ -121,10 +77,47 @@ export async function POST(req: Request) {
   }
 }
 
-// ✅ PROCESSING con aggiornamenti live
-async function processOrderWithLiveUpdates(order: any, logDocRef: any) {
-  const allResults: any[] = [];
-  const allErrors: any[] = [];
+// ✅ WORKER: Processa coda in sequenza (1 ordine alla volta)
+async function processQueue() {
+  console.log("🔄 Queue worker started...");
+
+  while (true) {
+    const job = await OrderQueue.dequeue();
+
+    if (!job) {
+      console.log("✅ Coda vuota, worker termina");
+      break;
+    }
+
+    console.log(`🔨 Processing ordine #${job.order.order_number} dalla coda`);
+
+    try {
+      await processOrderWithLock(job.order, job.id);
+      await OrderQueue.complete(job.id, { success: true });
+    } catch (err: any) {
+      console.error(`❌ Errore processing ordine ${job.id}:`, err);
+      await OrderQueue.fail(job.id, err);
+    }
+
+    // Delay tra ordini
+    await delay(1000);
+  }
+}
+
+// ✅ PROCESSING con LOCK transazionale su stock
+async function processOrderWithLock(order: any, queueId: string) {
+  const results: any[] = [];
+  const errors: any[] = [];
+
+  // Crea log iniziale
+  const logDocRef = await adminDb.collection("orders_stock_log").add({
+    order_number: order.order_number,
+    order_id: order.id,
+    queue_id: queueId,
+    status: "processing",
+    started_at: new Date().toISOString(),
+    total_items: order.line_items.length,
+  });
 
   try {
     const locationsRes = await shopify2.api("/locations.json");
@@ -134,22 +127,11 @@ async function processOrderWithLiveUpdates(order: any, logDocRef: any) {
       throw new Error("Location ID non trovato");
     }
 
-    const totalItems = order.line_items.length;
-
-    for (let itemIdx = 0; itemIdx < totalItems; itemIdx++) {
-      const item = order.line_items[itemIdx];
+    for (const item of order.line_items) {
       const variantIdGrafica = item.variant_id;
       const quantity = item.quantity;
 
-      // ✅ Aggiorna progresso
-      await logDocRef.update({
-        current_item: item.title,
-        items_processed: itemIdx + 1,
-        progress_percent: Math.round(((itemIdx + 1) / totalItems) * 100),
-        last_update: new Date().toISOString(),
-      });
-
-      console.log(`\n📝 [${itemIdx + 1}/${totalItems}] ${item.title}`);
+      console.log(`\n📝 Processing: ${item.title} (${variantIdGrafica}, Qty: ${quantity})`);
 
       try {
         const assocSnap = await adminDb
@@ -158,33 +140,17 @@ async function processOrderWithLiveUpdates(order: any, logDocRef: any) {
           .get();
 
         if (!assocSnap.exists) {
-          const error = {
+          errors.push({
             variant_id: variantIdGrafica,
             title: item.title,
             error: "Associazione non trovata",
-            timestamp: new Date().toISOString(),
-          };
-          
-          allErrors.push(error);
-          
-          // ✅ Aggiorna log con errore
-          await logDocRef.update({
-            items_failed: FieldValue.increment(1),
-            [`errors.${variantIdGrafica}`]: error,
           });
-          
           continue;
         }
 
         const assoc = assocSnap.data();
         const blankKey = assoc.blank_key;
         const blankVariantId = assoc.blank_variant_id;
-
-        // ✅ Aggiorna status item
-        await logDocRef.update({
-          [`items.${variantIdGrafica}.status`]: "updating_blank",
-          [`items.${variantIdGrafica}.blank_key`]: blankKey,
-        });
 
         const variantsSnap = await adminDb
           .collection("blanks_stock")
@@ -194,26 +160,17 @@ async function processOrderWithLiveUpdates(order: any, logDocRef: any) {
           .get();
 
         if (variantsSnap.empty) {
-          const error = {
+          errors.push({
             variant_id: variantIdGrafica,
             title: item.title,
             error: "Blank variant non trovata",
-            timestamp: new Date().toISOString(),
-          };
-          
-          allErrors.push(error);
-          
-          await logDocRef.update({
-            items_failed: FieldValue.increment(1),
-            [`errors.${variantIdGrafica}`]: error,
           });
-          
           continue;
         }
 
         const blankVariantDoc = variantsSnap.docs[0];
 
-        // ✅ Transazione stock
+        // ✅ TRANSAZIONE per evitare race condition
         const newStock = await adminDb.runTransaction(async (transaction) => {
           const blankData = await transaction.get(blankVariantDoc.ref);
           const currentStock = blankData.data()?.stock || 0;
@@ -230,37 +187,22 @@ async function processOrderWithLiveUpdates(order: any, logDocRef: any) {
 
         console.log(`📉 Stock: ${newStock.previous} → ${newStock.new}`);
 
-        // ✅ Aggiorna log stock
-        await logDocRef.update({
-          [`items.${variantIdGrafica}.stock_updated`]: true,
-          [`items.${variantIdGrafica}.previous_stock`]: newStock.previous,
-          [`items.${variantIdGrafica}.new_stock`]: newStock.new,
-          [`items.${variantIdGrafica}.status`]: "updating_graphics",
-        });
-
-        // Trova grafiche
+        // Aggiorna grafiche (con throttling)
         const allGraphicsSnap = await adminDb
           .collection("graphics_blanks")
           .where("blank_key", "==", blankKey)
           .where("blank_variant_id", "==", blankVariantId)
           .get();
 
-        const totalGraphics = allGraphicsSnap.size;
-        console.log(`🎨 ${totalGraphics} grafiche da aggiornare`);
-
-        // ✅ Aggiorna count grafiche
-        await logDocRef.update({
-          [`items.${variantIdGrafica}.total_graphics`]: totalGraphics,
-          [`items.${variantIdGrafica}.graphics_processed`]: 0,
-        });
+        console.log(`🎨 ${allGraphicsSnap.size} grafiche da aggiornare`);
 
         const graphicsUpdated: any[] = [];
         const graphicsErrors: any[] = [];
+
         let callCount = 0;
         const DELAY_MS = 600;
 
-        for (let gIdx = 0; gIdx < allGraphicsSnap.docs.length; gIdx++) {
-          const graphicDoc = allGraphicsSnap.docs[gIdx];
+        for (const graphicDoc of allGraphicsSnap.docs) {
           const graphicData = graphicDoc.data();
           const graphicVariantId = graphicData.variant_id_grafica;
 
@@ -296,17 +238,10 @@ async function processOrderWithLiveUpdates(order: any, logDocRef: any) {
               product_title: graphicData.product_title || "N/A",
               size: graphicData.size,
               color: graphicData.color,
+              numero_grafica: graphicData.numero_grafica,
             });
 
-            // ✅ Aggiorna progresso grafiche ogni 10
-            if ((gIdx + 1) % 10 === 0 || gIdx === allGraphicsSnap.docs.length - 1) {
-              await logDocRef.update({
-                [`items.${variantIdGrafica}.graphics_processed`]: gIdx + 1,
-                [`items.${variantIdGrafica}.graphics_percent`]: Math.round(((gIdx + 1) / totalGraphics) * 100),
-              });
-            }
-
-            console.log(`  ✅ [${gIdx + 1}/${totalGraphics}] ${graphicVariantId}`);
+            console.log(`  ✅ ${graphicVariantId} → ${newStock.new}`);
           } catch (err: any) {
             // Retry su 429
             if (err.message.includes("429")) {
@@ -337,78 +272,64 @@ async function processOrderWithLiveUpdates(order: any, logDocRef: any) {
                   continue;
                 }
               } catch (retryErr) {
-                // Fallthrough
+                // Fallthrough to error
               }
             }
 
             graphicsErrors.push({
               variant_id: graphicVariantId,
               product_title: graphicData.product_title || "N/A",
+              size: graphicData.size,
+              color: graphicData.color,
               error: err.message,
             });
           }
         }
 
-        // ✅ Finalizza item
-        await logDocRef.update({
-          items_success: FieldValue.increment(1),
-          [`items.${variantIdGrafica}.status`]: "completed",
-          [`items.${variantIdGrafica}.graphics_updated`]: graphicsUpdated,
-          [`items.${variantIdGrafica}.graphics_errors`]: graphicsErrors,
-          [`items.${variantIdGrafica}.completed_at`]: new Date().toISOString(),
-        });
-
-        allResults.push({
+        results.push({
           order_item: item.title,
           blank_key: blankKey,
           size: assoc.size,
           color: assoc.color,
           previous_stock: newStock.previous,
           new_stock: newStock.new,
+          quantity_ordered: quantity,
           graphics_updated: graphicsUpdated,
           graphics_errors: graphicsErrors,
         });
 
       } catch (err: any) {
-        const error = {
+        errors.push({
           variant_id: variantIdGrafica,
           title: item.title,
           error: err.message,
-          timestamp: new Date().toISOString(),
-        };
-        
-        allErrors.push(error);
-        
-        await logDocRef.update({
-          items_failed: FieldValue.increment(1),
-          [`items.${variantIdGrafica}.status`]: "failed",
-          [`items.${variantIdGrafica}.error`]: error,
         });
       }
     }
 
-    // ✅ COMPLETA ordine
+    // Salva risultato finale
     await logDocRef.update({
       status: "completed",
-      completed_at: new Date().toISOString(),
-      progress_percent: 100,
-      summary: {
-        total_items: totalItems,
-        successful: allResults.length,
-        failed: allErrors.length,
-      },
+      processed_at: new Date().toISOString(),
+      successful: results.length,
+      errors_count: errors.length,
+      results,
+      error_details: errors,
     });
 
-    console.log(`✅ Ordine #${order.order_number} completato: ${allResults.length}/${totalItems}`);
+    console.log(`✅ Ordine #${order.order_number} completato`);
 
   } catch (err: any) {
-    console.error("❌ Errore critico:", err);
+    console.error("❌ Errore processing:", err);
     
     await logDocRef.update({
       status: "failed",
-      failed_at: new Date().toISOString(),
-      critical_error: err.message,
+      processed_at: new Date().toISOString(),
+      error: err.message,
+      critical: true,
     });
+
+    throw err;
   }
 }
 
