@@ -1,68 +1,99 @@
-// app/api/shopify2/catalog/scan/route.js
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebaseAdminServer";   // ← NOME ESATTO DEL TUO FILE
-import { getAllProducts } from "@/lib/shopify2";        // ← FUNZIONE CHE GIÀ USI PER LO SHOP 2
+import { shopify2 } from "@/lib/shopify2";
+import { firestoreAdmin } from "@/lib/firebaseAdminServer";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    console.log("⏳ Avvio SCAN prodotti Shopify (Store #2)...");
+    console.log("🔍 Avvio scansione catalogo Shopify 2...");
 
-    // 1️⃣ Scarica TUTTI i prodotti dallo store Shopify 2
-    const products = await getAllProducts();
-    console.log(`📦 Prodotti scaricati: ${products.length}`);
+    // 1️⃣ Scarica TUTTI i prodotti
+    const res = await shopify2(`/products.json?limit=250`);
+    const products = res.products || [];
 
-    if (!products || !Array.isArray(products)) {
-      throw new Error("Prodotti non validi ricevuti da Shopify.");
+    console.log(`📦 Prodotti ottenuti: ${products.length}`);
+
+    if (products.length === 0) {
+      return NextResponse.json({
+        ok: false,
+        error: "Nessun prodotto trovato",
+      });
     }
 
-    // 2️⃣ Collezione Firestore
-    const colRef = adminDb.collection("shopify_catalog");
+    // 2️⃣ Raccolta categorie
+    const categories: Record<string, any[]> = {};
 
-    // 3️⃣ Firestore Admin batch (scrive fino a 500 documenti per batch)
-    let batch = adminDb.batch();
-    let counter = 0;
-    let batchCount = 1;
+    for (const product of products) {
+      const type = product.product_type?.trim() || "NO_TYPE";
 
-    for (const p of products) {
-      const docRef = colRef.doc("product_" + p.id);
+      if (!categories[type]) categories[type] = [];
+      categories[type].push(product);
+    }
 
-      batch.set(docRef, p);
-      counter++;
+    console.log("📑 Categoria → prodotti:", Object.keys(categories));
 
-      // Commit ogni 450 (massimo sicuro)
-      if (counter >= 450) {
-        console.log(`📤 Commit batch #${batchCount}`);
-        await batch.commit();
-        batch = adminDb.batch();
-        counter = 0;
-        batchCount++;
+    // 3️⃣ Controllo categorie che NON hanno un Blanks
+    const missingBlanks: string[] = [];
+
+    for (const type of Object.keys(categories)) {
+      const normalized = type.toLowerCase();
+
+      // Condizioni per considerare “BLANKS”
+      const hasBlanks = normalized.includes("blank") || normalized.includes("blanks");
+
+      if (!hasBlanks) {
+        missingBlanks.push(type);
       }
     }
 
-    // ultimo batch
-    if (counter > 0) {
-      console.log(`📤 Commit ultimo batch #${batchCount}`);
-      await batch.commit();
+    // 4️⃣ Salvataggio su Firestore (chunk per evitare limite 1MB)
+    const batch = firestoreAdmin.batch();
+    const rootRef = firestoreAdmin.collection("shopify_catalog_scan");
+
+    // Cancella vecchi dati
+    const oldDocs = await rootRef.listDocuments();
+    oldDocs.forEach((doc) => batch.delete(doc));
+
+    // Aggiungi dati nuovi
+    for (const [type, items] of Object.entries(categories)) {
+      const docRef = rootRef.doc(type.replace(/\//g, "_"));
+
+      batch.set(docRef, {
+        type,
+        count: items.length,
+        products: items.map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          handle: p.handle,
+          product_type: p.product_type,
+          tags: p.tags,
+          status: p.status,
+          variants: p.variants?.map((v: any) => ({
+            id: v.id,
+            title: v.title,
+            option1: v.option1,
+            option2: v.option2,
+            inventory_quantity: v.inventory_quantity,
+          })),
+        })),
+        updated_at: new Date().toISOString(),
+      });
     }
 
-    console.log("✅ SCAN completato e salvato su Firestore.");
+    await batch.commit();
 
     return NextResponse.json({
       ok: true,
-      message: "Dati prodotti salvati su Firestore",
       total_products: products.length,
-      batches: batchCount,
+      categories: Object.keys(categories),
+      missingBlanks,
+      message: "Scansione completata e salvata su Firestore",
     });
-
-  } catch (err) {
-    console.error("❌ ERRORE DURANTE LO SCAN:", err);
-
+  } catch (error: any) {
+    console.error("❌ ERRORE SCAN CATALOGO:", error);
     return NextResponse.json(
-      {
-        ok: false,
-        error: err.message,
-        stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
-      },
+      { ok: false, error: error.message },
       { status: 500 }
     );
   }
