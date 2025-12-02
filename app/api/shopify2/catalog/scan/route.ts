@@ -6,77 +6,45 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    console.log("🔍 Avvio scansione catalogo Shopify 2...");
+    // 1️⃣ Scarica TUTTI i prodotti dal secondo store
+    const res = await shopify2.api("products.json?limit=250");
 
-    // 1️⃣ Scarica TUTTI i prodotti
-    const res = await shopify2(`/products.json?limit=250`);
-    const products = res.products || [];
+    const products = res?.products || [];
 
-    console.log(`📦 Prodotti ottenuti: ${products.length}`);
+    console.log("📦 Prodotti ottenuti:", products.length);
 
-    if (products.length === 0) {
-      return NextResponse.json({
-        ok: false,
-        error: "Nessun prodotto trovato",
-      });
-    }
-
-    // 2️⃣ Raccolta categorie
+    // 2️⃣ Crea lista categorie
     const categories: Record<string, any[]> = {};
 
     for (const product of products) {
-      const type = product.product_type?.trim() || "NO_TYPE";
+      const type =
+        product.product_type?.trim().toLowerCase() || "no_type";
 
       if (!categories[type]) categories[type] = [];
-      categories[type].push(product);
+
+      categories[type].push({
+        id: product.id,
+        title: product.title,
+        handle: product.handle,
+      });
     }
 
-    console.log("📑 Categoria → prodotti:", Object.keys(categories));
+    // 3️⃣ Categorie senza blanks
+    const missing: string[] = Object.keys(categories);
 
-    // 3️⃣ Controllo categorie che NON hanno un Blanks
-    const missingBlanks: string[] = [];
+    // 4️⃣ Salvo tutto in Firestore
+    const batch = adminDb.batch();
+    const colRef = adminDb.collection("catalog_scan");
+
+    // elimino vecchia struttura
+    const oldSnap = await colRef.get();
+    oldSnap.forEach((doc) => batch.delete(doc.ref));
 
     for (const type of Object.keys(categories)) {
-      const normalized = type.toLowerCase();
-
-      // Condizioni per considerare “BLANKS”
-      const hasBlanks = normalized.includes("blank") || normalized.includes("blanks");
-
-      if (!hasBlanks) {
-        missingBlanks.push(type);
-      }
-    }
-
-    // 4️⃣ Salvataggio su Firestore (chunk per evitare limite 1MB)
-    const batch = firestoreAdmin.batch();
-    const rootRef = firestoreAdmin.collection("shopify_catalog_scan");
-
-    // Cancella vecchi dati
-    const oldDocs = await rootRef.listDocuments();
-    oldDocs.forEach((doc) => batch.delete(doc));
-
-    // Aggiungi dati nuovi
-    for (const [type, items] of Object.entries(categories)) {
-      const docRef = rootRef.doc(type.replace(/\//g, "_"));
-
-      batch.set(docRef, {
+      batch.set(colRef.doc(type), {
         type,
-        count: items.length,
-        products: items.map((p: any) => ({
-          id: p.id,
-          title: p.title,
-          handle: p.handle,
-          product_type: p.product_type,
-          tags: p.tags,
-          status: p.status,
-          variants: p.variants?.map((v: any) => ({
-            id: v.id,
-            title: v.title,
-            option1: v.option1,
-            option2: v.option2,
-            inventory_quantity: v.inventory_quantity,
-          })),
-        })),
+        total: categories[type].length,
+        products: categories[type],
         updated_at: new Date().toISOString(),
       });
     }
@@ -87,13 +55,16 @@ export async function GET() {
       ok: true,
       total_products: products.length,
       categories: Object.keys(categories),
-      missingBlanks,
+      missingBlanks: missing,
       message: "Scansione completata e salvata su Firestore",
     });
-  } catch (error: any) {
-    console.error("❌ ERRORE SCAN CATALOGO:", error);
+  } catch (err: any) {
+    console.error("❌ Errore catalog scan:", err);
     return NextResponse.json(
-      { ok: false, error: error.message },
+      {
+        ok: false,
+        error: err.message,
+      },
       { status: 500 }
     );
   }
