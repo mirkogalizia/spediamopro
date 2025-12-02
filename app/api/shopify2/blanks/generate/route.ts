@@ -32,12 +32,14 @@ export async function GET() {
       if (!product_id || !blank_key) continue;
 
       // 🟦 Scarica prodotto da Shopify
-      const productRes = await shopify2(`/products/${product_id}.json`);
+const productRes = await shopify2.getProduct(product_id);
 
-      if (!productRes || !productRes.product || !productRes.product.variants) {
-        console.log("❌ Nessun prodotto o varianti per", product_id);
-        continue;
-      }
+if (!productRes || !productRes.product || !productRes.product.variants) {
+  console.log("❌ Nessun prodotto o varianti per", product_id);
+  continue;
+}
+
+const variants = productRes.product.variants;
 
       const variants = productRes.product.variants;
 
