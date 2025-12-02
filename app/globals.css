@@ -2,9 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Font globale */
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
+
+html, body {
+  height: 100%;
+}
 
 body {
   font-family: 'Montserrat', ui-sans-serif, system-ui, sans-serif;
-  background: #f5f5f7;
+  background-color: #f5f5f7;
+  margin: 0;
+  padding: 0;
+}
+
+/* Fix per MUI + Tailwind */
+* {
+  box-sizing: border-box;
 }
