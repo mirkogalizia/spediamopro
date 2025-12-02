@@ -1,6 +1,6 @@
 // app/api/shopify2/catalog/full/route.js
 import { NextResponse } from "next/server";
-import { adminDB } from "@/lib/firebaseAdminPRO";
+import { adminDB } from "@/lib/firebaseAdminServer";
 
 const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN_2;
 const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN_2;
