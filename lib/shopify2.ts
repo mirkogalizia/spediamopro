@@ -1,44 +1,46 @@
 // lib/shopify2.ts
-const DOMAIN = process.env.SHOPIFY_DOMAIN_2!;
-const TOKEN = process.env.SHOPIFY_TOKEN_2!;
+const domain = process.env.SHOPIFY_DOMAIN_2!;
+const token = process.env.SHOPIFY_TOKEN_2!;
 
-if (!DOMAIN) throw new Error("Missing SHOPIFY_DOMAIN_2");
-if (!TOKEN) throw new Error("Missing SHOPIFY_TOKEN_2");
+if (!domain) throw new Error("Missing SHOPIFY_DOMAIN_2");
+if (!token) throw new Error("Missing SHOPIFY_TOKEN_2");
 
-const BASE = `https://${DOMAIN}/admin/api/2023-10`;
+// ✅ Usa la versione API corrente (supportata fino a ottobre 2026)
+const BASE_URL = `https://${domain}/admin/api/2025-10`;
 
 export const shopify2 = {
-  async api(path: string, options: any = {}) {
-    const url = `${BASE}${path}`;
+  async api(endpoint: string, options: any = {}) {
+    const url = `${BASE_URL}${endpoint}`;
 
     const res = await fetch(url, {
-      method: options.method || "GET",
+      ...options,
       headers: {
-        "X-Shopify-Access-Token": TOKEN,
+        "X-Shopify-Access-Token": token,
         "Content-Type": "application/json",
         Accept: "application/json",
+        ...(options.headers || {}),
       },
       cache: "no-store",
     });
 
     if (!res.ok) {
-      const text = await res.text();
-      console.error("❌ Shopify2 API error", res.status, text);
-      throw new Error(`Shopify2 API Error ${res.status}`);
+      const err = await res.text();
+      console.error("❌ Shopify2 API error", {
+        status: res.status,
+        endpoint,
+        error: err,
+      });
+      throw new Error(`Shopify2 API Error ${res.status}: ${endpoint}`);
     }
 
     return res.json();
   },
 
+  async getProduct(productId: number) {
+    return this.api(`/products/${productId}.json`);
+  },
+
   async listProducts() {
     return this.api(`/products.json?limit=250`);
-  },
-
-  async getProduct(id: number) {
-    return this.api(`/products/${id}.json`);
-  },
-
-  async listVariants(productId: number) {
-    return this.api(`/products/${productId}/variants.json`);
   },
 };
