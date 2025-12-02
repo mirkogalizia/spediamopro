@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
     const order = JSON.parse(body);
     
-    console.log(`🛒 Ordine pagato ricevuto: #${order.order_number}`);
+    console.log(`🛒 Ordine ricevuto: #${order.order_number}`);
     console.log(`📦 Line items: ${order.line_items.length}`);
 
     const results: any[] = [];
@@ -161,7 +161,7 @@ export async function POST(req: Request) {
           new_stock: newStock,
           quantity_ordered: quantity,
           graphics_updated: graphicsUpdated.length,
-          graphics_errors: graphicsErrors.length,
+          graphics_errors_count: graphicsErrors.length,
         });
 
       } catch (err: any) {
@@ -186,18 +186,18 @@ export async function POST(req: Request) {
       processed_at: new Date().toISOString(),
       total_items: order.line_items.length,
       successful: results.length,
-      errors: errors.length,
+      errors_count: errors.length,
       results,
-      errors,
+      error_details: errors,
     });
 
     return NextResponse.json({
       ok: true,
       order_number: order.order_number,
       processed: results.length,
-      errors: errors.length,
+      errors_count: errors.length,
       results,
-      errors,
+      error_details: errors,
     });
 
   } catch (err: any) {
@@ -221,3 +221,4 @@ export async function POST(req: Request) {
     );
   }
 }
+
