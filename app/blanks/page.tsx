@@ -1,132 +1,176 @@
-'use client';
+"use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent } from "../components/ui/card";
-import { Input } from "../components/ui/input";
-import { Button } from "../components/ui/button";
-import { Separator } from "../components/ui/separator";
 
-interface Variant {
+type Variant = {
   id: string;
   taglia: string;
   colore: string;
   stock: number;
-}
+};
 
-interface BlankGroup {
+type Blank = {
   blank_key: string;
   inventory: Variant[];
-}
+};
 
 export default function BlanksPage() {
-  const [data, setData] = useState<BlankGroup[]>([]);
+  const [blanks, setBlanks] = useState<Blank[]>([]);
   const [loading, setLoading] = useState(true);
   const [newStock, setNewStock] = useState<{ [key: string]: number }>({});
+  const [search, setSearch] = useState("");
 
-  async function loadStock() {
+  async function loadData() {
     setLoading(true);
-    const res = await fetch("/api/shopify2/catalog/blanks-stock-view");
-    const json = await res.json();
-    setData(json.blanks || []);
+    try {
+      const res = await fetch("/api/shopify2/catalog/blanks-stock-view", {
+        cache: "no-store",
+      });
+      const json = await res.json();
+      setBlanks(json.blanks);
+    } catch (err) {
+      console.error("Errore load:", err);
+    }
     setLoading(false);
   }
 
   async function updateStock(variantId: string, blankKey: string) {
-  const raw = newStock[variantId];
+    const value = newStock[variantId];
 
-  const value = Number(raw);
-  if (isNaN(value)) {
-    alert("Inserisci un numero valido!");
-    return;
+    if (value == null || Number.isNaN(value))
+      return alert("Inserisci un numero valido");
+
+    await fetch("/api/shopify2/catalog/sync-blanks-stock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variant_id: variantId,
+        new_stock: value,
+        blank_key: blankKey,
+      }),
+    });
+
+    alert("Stock aggiornato!");
+    loadData();
   }
 
-  await fetch("/api/shopify2/catalog/sync-blanks-stock", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      blank_key: blankKey,
-      variant_id: variantId,
-      new_stock: value,
-    }),
-  });
-
-  await loadStock();
-}
-
   useEffect(() => {
-    loadStock();
+    loadData();
   }, []);
 
+  if (loading)
+    return (
+      <div className="text-center pt-20 text-xl font-semibold">
+        Caricamento...
+      </div>
+    );
+
   return (
-    <div className="w-full max-w-5xl mx-auto mt-8">
-      <h1 className="text-4xl font-bold text-center mb-8 flex items-center justify-center gap-2">
+    <div className="max-w-6xl mx-auto pt-10 pb-20 px-6">
+      <h1 className="text-4xl font-bold text-center mb-10 flex items-center justify-center gap-2">
         📦 Stock Blanks
       </h1>
 
-      {loading && <p className="text-center text-xl">Caricamento...</p>}
+      {/* 🔍 SEARCH */}
+      <div className="mb-8">
+        <input
+          type="text"
+          value={search}
+          placeholder="Cerca colore, taglia o categoria..."
+          onChange={(e) => setSearch(e.target.value.toLowerCase())}
+          className="w-full px-4 py-3 rounded-xl border border-gray-300 shadow-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+        />
+      </div>
 
-      {!loading &&
-        data.map((group) => {
-          // Raggruppo per colore
-          const colors: Record<string, Variant[]> = {};
+      {blanks.map((blank) => {
+        // grouping by color
+        const grouped: Record<string, Variant[]> = {};
+        blank.inventory.forEach((v) => {
+          if (!grouped[v.colore]) grouped[v.colore] = [];
+          grouped[v.colore].push(v);
+        });
 
-          group.inventory.forEach((v) => {
-            if (!colors[v.colore]) colors[v.colore] = [];
-            colors[v.colore].push(v);
-          });
+        return (
+          <div
+            key={blank.blank_key}
+            className="mb-12 bg-white shadow-xl rounded-2xl overflow-hidden"
+          >
+            {/* header */}
+            <div className="px-6 py-5 bg-gradient-to-r from-blue-600 to-teal-500 text-white">
+              <h2 className="text-2xl font-semibold capitalize">
+                {blank.blank_key.replace(/_/g, " ")}
+              </h2>
+              <p className="text-sm opacity-80">
+                {blank.inventory.length} varianti
+              </p>
+            </div>
 
-          return (
-            <Card key={group.blank_key} className="mb-10 shadow-md">
-              <CardContent className="p-6">
-                <h2 className="text-3xl font-semibold mb-4 capitalize">
-                  {group.blank_key.replace("-", " ")}
-                </h2>
-                <Separator className="my-4" />
+            {/* GRIGLIA PER COLORE */}
+            <div className="p-6 space-y-10">
+              {Object.entries(grouped).map(([colore, variants]) => (
+                <div key={colore} className="border-b pb-6">
+                  <h3 className="text-xl font-bold capitalize mb-4 flex items-center gap-2">
+                    🎨 {colore}
+                  </h3>
 
-                {Object.entries(colors).map(([colore, variants]) => (
-                  <div key={colore} className="mb-8">
-                    <h3 className="text-xl font-semibold mb-3 capitalize flex items-center gap-2">
-                      🎨 {colore}
-                    </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {variants.map((v) => (
+                      <div
+                        key={v.id}
+                        className="border rounded-xl p-4 shadow-md bg-gray-50 hover:bg-gray-100 transition"
+                      >
+                        <div className="font-semibold text-lg">
+                          Taglia:{" "}
+                          <span className="font-bold text-blue-600 uppercase">
+                            {v.taglia}
+                          </span>
+                        </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {variants.map((v) => (
-                        <Card key={v.id} className="p-4 border shadow-sm">
-                          <div className="flex justify-between">
-                            <div>
-                              <p className="text-lg font-semibold uppercase">{v.taglia}</p>
-                              <p className="text-gray-600 mt-1">Stock: {v.stock}</p>
-                            </div>
-                          </div>
+                        <div className="mt-2 text-gray-700">
+                          Stock attuale:{" "}
+                          <span
+                            className={`font-bold ${
+                              v.stock <= 0
+                                ? "text-red-600"
+                                : v.stock <= 5
+                                ? "text-orange-500"
+                                : "text-green-600"
+                            }`}
+                          >
+                            {v.stock}
+                          </span>
+                        </div>
 
-                          <div className="mt-4 flex gap-3">
-                            <Input
-                              type="number"
-                              className="w-24"
-                              placeholder="Qty"
-                              onChange={(e) =>
-                                setNewStock((prev) => ({
-                                  ...prev,
-                                  [v.id]: e.target.value,
-                                }))
-                              }
-                            />
-                            <Button
-                              onClick={() => updateStock(v.id, group.blank_key)}
-                              className="bg-blue-600 text-white"
-                            >
-                              Aggiorna
-                            </Button>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
+                        {/* INPUT STOCK */}
+                        <input
+                          type="number"
+                          placeholder="Nuovo stock"
+                          className="w-full mt-3 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          value={newStock[v.id] ?? ""}
+                          onChange={(e) =>
+                            setNewStock((prev) => ({
+                              ...prev,
+                              [v.id]: Number(e.target.value), // <-- FIX DEFINITIVO
+                            }))
+                          }
+                        />
+
+                        {/* BUTTON UPDATE */}
+                        <button
+                          onClick={() => updateStock(v.id, blank.blank_key)}
+                          className="mt-3 w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition"
+                        >
+                          Aggiorna
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </CardContent>
-            </Card>
-          );
-        })}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -1,0 +1,73 @@
+.
+├── app
+│   ├── api
+│   │   ├── facebook
+│   │   ├── forecast
+│   │   ├── products
+│   │   ├── produzione
+│   │   ├── shopify
+│   │   ├── shopify2
+│   │   ├── spediamo
+│   │   ├── spediamo2
+│   │   ├── test-firestore
+│   │   └── upload
+│   ├── blanks
+│   │   └── page.tsx
+│   ├── cashflow
+│   │   └── page.tsx
+│   ├── components
+│   │   ├── AuthGuard.js
+│   │   ├── Sidebar.js
+│   │   └── ui
+│   ├── dtf
+│   │   └── page.tsx
+│   ├── forecast
+│   │   └── page.tsx
+│   ├── globals.css
+│   ├── layout.js
+│   ├── lib
+│   │   └── spediamo.js
+│   ├── page.js
+│   ├── previsionale
+│   │   └── page.tsx
+│   ├── products
+│   │   ├── [id]
+│   │   ├── page.tsx
+│   │   └── sales
+│   ├── products2
+│   │   ├── [id]
+│   │   ├── page.tsx
+│   │   └── sales
+│   ├── produzione
+│   │   └── page.tsx
+│   ├── shipment
+│   │   └── page.js
+│   ├── shipment2
+│   │   └── page.js
+│   ├── testfirestore
+│   │   └── page.js
+│   ├── upload
+│   │   └── page.tsx
+│   └── upload-from-api
+│       └── paje.js
+├── components.json
+├── ldv_3977005.zip
+├── lib
+│   ├── firebase.js
+│   ├── firebaseAdmin.js
+│   ├── firebaseAdminServer.js
+│   ├── shopify2.ts
+│   └── utils.ts
+├── next-env.d.ts
+├── next.config.js
+├── package-lock.json
+├── package.json
+├── postcss.config.js
+├── public
+│   └── logo.png
+├── struttura.txt
+├── tailwind.config.js
+├── tsconfig.json
+└── upload-all.js
+
+35 directories, 36 files
