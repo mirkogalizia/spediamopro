@@ -12,16 +12,16 @@ export async function GET() {
     for (const doc of blanksSnap.docs) {
       const blank_key = doc.id;
 
-      // Legge la sottocollezione "inventory"
-      const invSnap = await adminDb
+      // ✅ FIX: cambia "inventory" → "variants"
+      const variantsSnap = await adminDb
         .collection("blanks_stock")
         .doc(blank_key)
-        .collection("inventory")
+        .collection("variants")  // ← QUI IL FIX
         .get();
 
       const inventory: any[] = [];
 
-      invSnap.forEach((v) => {
+      variantsSnap.forEach((v) => {
         const d = v.data();
         inventory.push({
           id: v.id,
