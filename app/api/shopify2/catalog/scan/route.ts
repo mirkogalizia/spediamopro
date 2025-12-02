@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { shopify2 } from "@/lib/shopify2";
-import { firestoreAdmin } from "@/lib/firebaseAdminServer";
+import { adminDb } from "@/lib/firebaseAdminServer";
 
 export const dynamic = "force-dynamic";
 
