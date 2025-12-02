@@ -8,7 +8,7 @@ export async function GET() {
   try {
     console.log("🚀 Avvio build-blanks-stock…");
 
-    // 1️⃣ Leggo mapping categorie → produtt_id blank
+    // 1️⃣ Leggo mapping categorie → product_id blank
     const snapshot = await adminDb.collection("blanks_mapping").get();
 
     const items: { blank_key: string; product_id: number }[] = [];
@@ -46,6 +46,17 @@ export async function GET() {
 
       const variants = res.product.variants;
 
+      // 🔥 AGGIUNTO: Scrivi il documento padre
+      await adminDb
+        .collection("blanks_stock")
+        .doc(blank_key)
+        .set({
+          product_id: product_id,
+          name: blank_key,
+          last_sync: new Date().toISOString(),
+          total_variants: variants.length,
+        });
+
       // 3️⃣ Path Firestore: blanks_stock/{blank_key}/variants/*
       const variantsRef = adminDb
         .collection("blanks_stock")
@@ -71,7 +82,7 @@ export async function GET() {
         batch.set(ref, {
           taglia,
           colore,
-          stock: v.inventory_quantity,
+          stock: v.inventory_quantity || 0,
           variant_id: v.id,
           updated_at: new Date().toISOString(),
         });

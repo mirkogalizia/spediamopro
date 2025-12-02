@@ -1,3 +1,4 @@
+// app/api/shopify2/catalog/blanks-stock-view/route.ts
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdminServer";
 
@@ -6,24 +7,32 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     console.log("🔍 Inizio query blanks_stock...");
-    
-    const blanksSnap = await adminDb.collection("blanks_stock").get();
 
-    console.log("📊 Documenti trovati in blanks_stock:", blanksSnap.size);
+    // ✅ FIX: Leggi i blank_key da blanks_mapping invece di blanks_stock
+    const mappingSnap = await adminDb.collection("blanks_mapping").get();
 
-    if (blanksSnap.empty) {
-      console.warn("⚠️ Collection blanks_stock è VUOTA!");
-      return NextResponse.json({ 
-        ok: true, 
+    const blankKeys = new Set<string>();
+    mappingSnap.forEach((doc) => {
+      const d = doc.data();
+      if (d.blank_assigned && d.blank_key) {
+        blankKeys.add(d.blank_key);
+      }
+    });
+
+    console.log("📊 Blanks trovati:", Array.from(blankKeys));
+
+    if (blankKeys.size === 0) {
+      return NextResponse.json({
+        ok: true,
         blanks: [],
-        warning: "Collection blanks_stock è vuota"
+        warning: "Nessun blank mappato in blanks_mapping",
       });
     }
 
     const blanks: any[] = [];
 
-    for (const doc of blanksSnap.docs) {
-      const blank_key = doc.id;
+    // Cicla su ogni blank_key
+    for (const blank_key of blankKeys) {
       console.log(`📦 Elaboro blank: ${blank_key}`);
 
       const variantsSnap = await adminDb
@@ -34,19 +43,31 @@ export async function GET() {
 
       console.log(`  └─ Varianti trovate per ${blank_key}:`, variantsSnap.size);
 
+      if (variantsSnap.empty) {
+        console.warn(`⚠️ Nessuna variante per ${blank_key}`);
+        continue;
+      }
+
       const inventory: any[] = [];
 
       variantsSnap.forEach((v) => {
         const d = v.data();
-        console.log(`    ├─ Variante: ${v.id}`, d);
         inventory.push({
           id: v.id,
           taglia: d.taglia,
           colore: d.colore,
-          stock: d.stock,
+          stock: d.stock || 0,
           updated_at: d.updated_at,
           variant_id: d.variant_id,
         });
+      });
+
+      // Ordina per taglia e colore
+      inventory.sort((a, b) => {
+        if (a.taglia !== b.taglia) {
+          return a.taglia.localeCompare(b.taglia, undefined, { numeric: true });
+        }
+        return a.colore.localeCompare(b.colore);
       });
 
       blanks.push({
@@ -61,10 +82,10 @@ export async function GET() {
 
   } catch (err: any) {
     console.error("❌ Errore blanks-stock-view:", err);
-    return NextResponse.json({ 
-      ok: false, 
-      error: err.message,
-      stack: err.stack 
-    }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: err.message },
+      { status: 500 }
+    );
   }
 }
+
