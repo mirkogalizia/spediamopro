@@ -5,8 +5,14 @@ const token = process.env.SHOPIFY_TOKEN_2!;
 if (!domain) throw new Error("Missing SHOPIFY_DOMAIN_2");
 if (!token) throw new Error("Missing SHOPIFY_TOKEN_2");
 
-// ✅ Usa la versione API corrente (supportata fino a ottobre 2026)
-const BASE_URL = `https://${domain}/admin/api/2025-10`;
+// Sanitizza il dominio rimuovendo https://, slash finali e spazi
+const cleanDomain = domain
+  .trim()
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '')
+  .replace(/\s+/g, '');
+
+const BASE_URL = `https://${cleanDomain}/admin/api/2025-10`;
 
 export const shopify2 = {
   async api(endpoint: string, options: any = {}) {
@@ -27,6 +33,7 @@ export const shopify2 = {
       const err = await res.text();
       console.error("❌ Shopify2 API error", {
         status: res.status,
+        url,
         endpoint,
         error: err,
       });
@@ -40,7 +47,20 @@ export const shopify2 = {
     return this.api(`/products/${productId}.json`);
   },
 
-  async listProducts() {
-    return this.api(`/products.json?limit=250`);
+  async listProducts(limit: number = 250) {
+    return this.api(`/products.json?limit=${limit}`);
+  },
+
+  async getProductsByIds(productIds: number[]) {
+    const ids = productIds.join(',');
+    return this.api(`/products.json?ids=${ids}`);
+  },
+
+  async getProductVariant(variantId: number) {
+    return this.api(`/variants/${variantId}.json`);
+  },
+
+  async getInventoryLevel(inventoryItemId: number, locationId: number) {
+    return this.api(`/inventory_levels.json?inventory_item_ids=${inventoryItemId}&location_ids=${locationId}`);
   },
 };
