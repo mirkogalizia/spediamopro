@@ -1,194 +1,85 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { Card, CardContent } from "@/app/components/ui/card";
-import { Button } from "@/app/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/app/components/ui/table";
+import { useEffect, useState } from "react";
 
-export default function BlanksDashboard() {
-  const [mapping, setMapping] = useState<any[]>([]);
-  const [stock, setStock] = useState<any>({});
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+export default function BlanksStockPage() {
+  const [loading, setLoading] = useState(true);
+  const [blanks, setBlanks] = useState<any[]>([]);
 
-  // -------------------------------------------------------
-  //  FETCH: mapping categorie → blanks
-  // -------------------------------------------------------
-  const loadMapping = async () => {
-    const res = await fetch("/api/shopify2/catalog/create-mapping", {
-      method: "GET",
-    });
-    const data = await res.json();
-    if (data.mapping) setMapping(data.mapping);
-  };
-
-  // -------------------------------------------------------
-  //  FETCH: stock blanks
-  // -------------------------------------------------------
-  const loadStock = async () => {
-    const res = await fetch("/api/shopify2/catalog/full", {
-      method: "GET",
-    });
-    const data = await res.json();
-    if (data.stock) setStock(data.stock);
-  };
-
-  // -------------------------------------------------------
-  //  FIRST LOAD
-  // -------------------------------------------------------
   useEffect(() => {
-    loadMapping();
-    loadStock();
+    async function load() {
+      const res = await fetch("/api/shopify2/catalog/blanks-stock-view");
+      const data = await res.json();
+      setBlanks(data.blanks || []);
+      setLoading(false);
+    }
+    load();
   }, []);
 
-  // -------------------------------------------------------
-  //  AZIONI
-  // -------------------------------------------------------
-
-  const reScanCatalog = async () => {
-    setRefreshing(true);
-    await fetch("/api/shopify2/catalog/scan");
-    await loadMapping();
-    setRefreshing(false);
-  };
-
-  const rebuildBlanksStock = async () => {
-    setRefreshing(true);
-    await fetch("/api/shopify2/catalog/build-blanks-stock");
-    await loadStock();
-    setRefreshing(false);
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-xl text-gray-500 animate-pulse">
+        Caricamento…
+      </div>
+    );
+  }
 
   return (
-    <div className="p-8 flex flex-col gap-10">
-      {/* -------------------------------------------------------
-         TITOLO STILE REVOLUT
-      -------------------------------------------------------- */}
-      <motion.h1
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-4xl font-bold tracking-tight text-[#0f172a]"
-      >
-        Blanks Dashboard
-      </motion.h1>
+    <div className="min-h-screen bg-gradient-to-br from-[#f8fafc] via-[#eef1ff] to-[#e6f9f5] p-6">
+      <div className="max-w-6xl mx-auto space-y-12">
 
-      {/* -------------------------------------------------------
-         SEZIONE AZIONI (CARDS REVOLUT)
-      -------------------------------------------------------- */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className="rounded-2xl shadow-lg hover:shadow-xl transition bg-white">
-            <CardContent className="p-6 flex flex-col gap-4">
-              <h2 className="text-xl font-semibold">Ricarica Catalogo</h2>
-              <p className="text-sm text-gray-500">Scarica tutti i prodotti dal tuo Shopify.</p>
-              <Button onClick={reScanCatalog} disabled={refreshing}>
-                {refreshing ? "Caricamento..." : "Ricarica Catalogo →"}
-              </Button>
-            </CardContent>
-          </Card>
-        </motion.div>
+        {blanks.map((blank) => (
+          <div key={blank.blank_key} className="space-y-6">
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className="rounded-2xl shadow-lg hover:shadow-xl transition bg-white">
-            <CardContent className="p-6 flex flex-col gap-4">
-              <h2 className="text-xl font-semibold">Rigenera Mapping</h2>
-              <p className="text-sm text-gray-500">Ricalcola associazioni categoria → blank.</p>
-              <Button onClick={loadMapping}>Rigenera Mapping →</Button>
-            </CardContent>
-          </Card>
-        </motion.div>
+            {/* TITOLO CATEGORIA */}
+            <div className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#2b59ff] to-[#00c9a7] capitalize">
+              {blank.blank_key.replace("_", " ")}
+            </div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className="rounded-2xl shadow-lg hover:shadow-xl transition bg-white">
-            <CardContent className="p-6 flex flex-col gap-4">
-              <h2 className="text-xl font-semibold">Aggiorna Stock</h2>
-              <p className="text-sm text-gray-500">Legge i BLANK da Shopify e aggiorna Firestore.</p>
-              <Button onClick={rebuildBlanksStock}>Aggiorna Stock →</Button>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </div>
+            {/* GRID CARDS */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {blank.inventory
+                .sort((a, b) => a.colore.localeCompare(b.colore))
+                .map((v: any) => (
+                <div
+                  key={v.id}
+                  className="rounded-2xl bg-white border shadow-sm p-4 flex flex-col items-center text-center hover:shadow-md transition-all"
+                >
+                  {/* COLORE */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <span
+                      className="w-4 h-4 rounded-full border"
+                      style={{ backgroundColor: v.colore }}
+                    />
+                    <span className="text-sm text-gray-600 capitalize">{v.colore}</span>
+                  </div>
 
-      {/* -------------------------------------------------------
-         MAPPING CATEGORIE → BLANKS
-      -------------------------------------------------------- */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        <Card className="rounded-2xl shadow-md">
-          <CardContent className="p-6">
-            <h2 className="text-2xl font-bold mb-4">Mapping Categorie</h2>
+                  {/* TAGLIA */}
+                  <div className="text-xl font-bold">{v.taglia}</div>
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Blank</TableHead>
-                  <TableHead>Product ID</TableHead>
-                  <TableHead>Assegnato</TableHead>
-                </TableRow>
-              </TableHeader>
-
-              <TableBody>
-                {mapping.map((m: any, i: number) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium">{m.category}</TableCell>
-                    <TableCell>{m.blank_key ?? "—"}</TableCell>
-                    <TableCell>{m.product_id ?? "—"}</TableCell>
-                    <TableCell>
-                      {m.blank_assigned ? (
-                        <span className="text-green-600 font-semibold">✔️ Si</span>
-                      ) : (
-                        <span className="text-red-500 font-semibold">❌ No</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      {/* -------------------------------------------------------
-         STOCK BLANKS
-      -------------------------------------------------------- */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        <Card className="rounded-2xl shadow-md">
-          <CardContent className="p-6">
-            <h2 className="text-2xl font-bold mb-4">Stock BLANKS</h2>
-
-            {Object.keys(stock).length === 0 ? (
-              <p className="text-gray-500">Nessuno stock trovato. Premi “Aggiorna Stock”.</p>
-            ) : (
-              Object.entries(stock).map(([blankKey, variants]: any) => (
-                <div key={blankKey} className="mb-10">
-                  <h3 className="text-xl font-semibold mb-3 capitalize">{blankKey}</h3>
-
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Taglia</TableHead>
-                        <TableHead>Colore</TableHead>
-                        <TableHead>Stock</TableHead>
-                      </TableRow>
-                    </TableHeader>
-
-                    <TableBody>
-                      {Object.values(variants).map((v: any, i: number) => (
-                        <TableRow key={i}>
-                          <TableCell>{v.taglia}</TableCell>
-                          <TableCell className="capitalize">{v.colore}</TableCell>
-                          <TableCell className="font-semibold">{v.stock}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  {/* STOCK BADGE */}
+                  <div
+                    className={`
+                      mt-3 w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-bold
+                      ${
+                        v.stock === 0
+                          ? "bg-red-500"
+                          : v.stock <= 5
+                          ? "bg-yellow-500"
+                          : "bg-green-500"
+                      }
+                    `}
+                  >
+                    {v.stock}
+                  </div>
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </motion.div>
+              ))}
+            </div>
+
+          </div>
+        ))}
+
+      </div>
     </div>
   );
 }
