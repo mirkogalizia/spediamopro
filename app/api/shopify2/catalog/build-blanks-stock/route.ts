@@ -6,14 +6,14 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    // 1️⃣ Recupero mapping categorie → blanks
+    // 1️⃣ Leggo la mappatura categorie → blanks
     const snapshot = await adminDb.collection("blanks_mapping").get();
 
     const activeBlanks: { blank_key: string; product_id: number }[] = [];
 
     snapshot.forEach((doc) => {
       const d = doc.data();
-      if (d.blank_assigned && d.product_id) {
+      if (d.blank_assigned && d.product_id && d.blank_key) {
         activeBlanks.push({
           blank_key: d.blank_key,
           product_id: d.product_id,
@@ -30,17 +30,23 @@ export async function GET() {
 
     const results: any[] = [];
 
-    // 2️⃣ Per ogni blank, scarico varianti da Shopify
+    // 2️⃣ Per ogni blank → scarico varianti da Shopify
     for (const blank of activeBlanks) {
       const { blank_key, product_id } = blank;
 
-      const url = `/products/${product_id}/variants.json`;
-      const res = await shopify2(url);
+      // CORRETTO: niente slash iniziale, uso shopify2.api
+      const response = await shopify2.api(
+        `products/${product_id}/variants.json`
+      );
 
-      if (!res?.data?.variants) continue;
+      const variants = response?.variants;
 
-      const variants = res.data.variants;
+      if (!variants || variants.length === 0) {
+        console.log(`⚠️ Nessuna variante trovata per prodotto ${product_id}`);
+        continue;
+      }
 
+      // 3️⃣ Scrivo nel Firestore
       const stockRef = adminDb
         .collection("blanks_stock")
         .doc(blank_key)
@@ -59,9 +65,10 @@ export async function GET() {
         batch.set(docRef, {
           taglia,
           colore,
-          stock: v.inventory_quantity,
-          updated_at: new Date().toISOString(),
+          stock: v.inventory_quantity ?? 0,
           variant_id: v.id,
+          inventory_item_id: v.inventory_item_id ?? null,
+          updated_at: new Date().toISOString(),
         });
       }
 
@@ -72,15 +79,22 @@ export async function GET() {
         product_id,
         total_variants: variants.length,
       });
+
+      console.log(
+        `✔️ BLANK ${blank_key} aggiornato — ${variants.length} varianti`
+      );
     }
 
     return NextResponse.json({
       ok: true,
-      message: "Stock blanks generato su Firestore",
+      message: "Stock blanks generato correttamente",
       processed: results,
     });
   } catch (err: any) {
-    console.error("Errore build-blanks-stock:", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    console.error("❌ Errore build-blanks-stock:", err);
+    return NextResponse.json(
+      { ok: false, error: err.message },
+      { status: 500 }
+    );
   }
 }
