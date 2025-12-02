@@ -1,137 +1,123 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/firebaseAdminServer";
-import { collection, doc, setDoc } from "firebase-admin/firestore";
+
+export const dynamic = "force-dynamic";
 
 const SHOP = process.env.SHOPIFY_DOMAIN_2;
 const TOKEN = process.env.SHOPIFY_TOKEN_2;
-const API_VERSION = "2023-10";
 
-const CATEGORY_MAP = {
-  "felpa cappuccio": "HOODIE_BASE",
-  "felpa cappuccio essential": "HOODIE_ESSENTIAL",
-  "felpa zip": "ZIP_BASE",
-  "felpa zip essential": "ZIP_ESSENTIAL",
-  "felpa girocollo": "CREWNECK",
-  "t shirt": "TSHIRT",
-  "sweatpants": "PANTS",
-};
+async function fetchShopifyProducts(url) {
+  const res = await fetch(url, {
+    headers: {
+      "X-Shopify-Access-Token": TOKEN,
+      "Content-Type": "application/json",
+    },
+    next: { revalidate: 0 }
+  });
 
-function normalize(str = "") {
-  return str.trim().toLowerCase();
-}
-
-function detectCategory(productType) {
-  const key = normalize(productType);
-  return CATEGORY_MAP[key] || null;
-}
-
-function extractMatrix(products) {
-  const matrix = {};
-
-  for (const p of products) {
-    const cat = detectCategory(p.product_type);
-    if (!cat) continue;
-
-    if (!matrix[cat]) matrix[cat] = {};
-
-    for (const v of p.variants) {
-      const size = v.option1;
-      const color = v.option2;
-      const qty = v.inventory_quantity ?? 0;
-
-      if (!matrix[cat][color]) matrix[cat][color] = {};
-      matrix[cat][color][size] = qty;
-    }
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Errore Shopify: ${res.status} - ${err}`);
   }
 
-  return matrix;
-}
+  const data = await res.json();
+  const linkHeader = res.headers.get("link");
+  let nextPage = null;
 
-function detectMissing(matrix) {
-  const missing = {};
-
-  for (const cat of Object.keys(matrix)) {
-    missing[cat] = {};
-
-    const colors = Object.keys(matrix[cat]);
-    const SIZES = ["XS", "S", "M", "L", "XL"];
-
-    for (const color of colors) {
-      const sizesAvailable = Object.keys(matrix[cat][color]);
-
-      const missingSizes = SIZES.filter(s => !sizesAvailable.includes(s));
-
-      if (missingSizes.length > 0) {
-        missing[cat][color] = missingSizes;
-      }
-    }
+  if (linkHeader && linkHeader.includes('rel="next"')) {
+    const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+    if (match && match[1]) nextPage = match[1];
   }
 
-  return missing;
-}
-
-async function fetchAllProducts() {
-  let pageInfo = null;
-  let products = [];
-
-  while (true) {
-    const url = `https://${SHOP}/admin/api/${API_VERSION}/products.json?limit=250` +
-      (pageInfo ? `&page_info=${pageInfo}` : "");
-
-    const res = await fetch(url, {
-      headers: {
-        "X-Shopify-Access-Token": TOKEN,
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
-    });
-
-    if (!res.ok) throw new Error("Errore caricamento prodotti");
-
-    const data = await res.json();
-    products.push(...data.products);
-
-    const link = res.headers.get("link");
-    if (!link || !link.includes('rel="next"')) break;
-
-    const match = link.match(/page_info=([^&>]+)/);
-    pageInfo = match ? match[1] : null;
-  }
-
-  return products;
+  return { data, nextPage };
 }
 
 export async function GET() {
-  try {
-    // 1. Fetch prodotti
-    const products = await fetchAllProducts();
+  if (!SHOP || !TOKEN) {
+    return NextResponse.json(
+      { ok: false, error: "Missing Shopify env variables" },
+      { status: 500 }
+    );
+  }
 
-    // 2. Salvataggio RAW
-    const productsCollection = collection(db, "shopify_catalog_raw");
-    for (const p of products) {
-      await setDoc(doc(productsCollection, String(p.id)), p);
+  let url = `https://${SHOP}/admin/api/2023-10/products.json?limit=250`;
+  let totalProducts = 0;
+
+  const blanksMatrix = {};
+  const missingBlanks = {};
+
+  while (url) {
+    const { data, nextPage } = await fetchShopifyProducts(url);
+
+    for (const prod of data.products) {
+      totalProducts++;
+
+      const productClean = {
+        id: prod.id,
+        title: prod.title,
+        handle: prod.handle,
+        product_type: prod.product_type?.trim() || "UNKNOWN",
+        tags: prod.tags || "",
+        options: prod.options || [],
+        images: prod.images || [],
+        variants: prod.variants || []
+      };
+
+      // 🔥 SALVATAGGIO FIRESTORE (modo corretto)
+      await db
+        .collection("shopify_catalog_raw")
+        .doc(String(prod.id))
+        .set(productClean);
+
+      // 🔥 COSTRUZIONE MATRICE BLANKS
+      const TYPE = productClean.product_type.toLowerCase();
+      const TAGLIE = productClean.options.find(o => o.name.toLowerCase() === "taglia")?.values || [];
+      const COLORI = productClean.options.find(o => o.name.toLowerCase() === "colore")?.values || [];
+
+      if (!blanksMatrix[TYPE]) blanksMatrix[TYPE] = {};
+
+      for (const tg of TAGLIE) {
+        if (!blanksMatrix[TYPE][tg]) blanksMatrix[TYPE][tg] = new Set();
+        for (const col of COLORI) {
+          blanksMatrix[TYPE][tg].add(col);
+        }
+      }
+
+      // 🔥 CHECK BLANKS MANCANTI
+      for (const v of productClean.variants) {
+        const size = v.option1;
+        const color = v.option2;
+
+        if (!size || !color) continue;
+
+        if (!blanksMatrix[TYPE]?.[size]?.has(color)) {
+          if (!missingBlanks[TYPE]) missingBlanks[TYPE] = {};
+          if (!missingBlanks[TYPE][size]) missingBlanks[TYPE][size] = new Set();
+          missingBlanks[TYPE][size].add(color);
+        }
+      }
     }
 
-    // 3. Costruzione matrices
-    const blanksMatrix = extractMatrix(products);
-
-    // 4. Detect missing
-    const missing = detectMissing(blanksMatrix);
-
-    // 5. Save matrix
-    await setDoc(doc(db, "shopify_catalog", "blanks_matrix"), blanksMatrix);
-
-    // 6. Save missing
-    await setDoc(doc(db, "shopify_catalog", "blanks_missing"), missing);
-
-    return NextResponse.json({
-      ok: true,
-      products: products.length,
-      blanks_matrix: blanksMatrix,
-      missing,
-    });
-  } catch (error) {
-    console.error("SCAN ERROR", error);
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    url = nextPage;
   }
+
+  // 🔥 Convert SET → Array
+  const blanksMatrixClean = JSON.parse(
+    JSON.stringify(blanksMatrix, (_, value) => (value instanceof Set ? [...value] : value))
+  );
+
+  const missingBlanksClean = JSON.parse(
+    JSON.stringify(missingBlanks, (_, value) => (value instanceof Set ? [...value] : value))
+  );
+
+  // 🔥 Salvataggio su Firestore
+  await db.collection("shopify_catalog").doc("blanks_matrix").set(blanksMatrixClean);
+  await db.collection("shopify_catalog").doc("blanks_missing").set(missingBlanksClean);
+
+  return NextResponse.json({
+    ok: true,
+    total_products: totalProducts,
+    blanks_matrix: blanksMatrixClean,
+    missing_blanks: missingBlanksClean,
+  });
 }
