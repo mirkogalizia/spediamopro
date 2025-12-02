@@ -42,8 +42,8 @@ export default function BlanksPage() {
   const [blanks, setBlanks] = useState<Blank[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [updating, setUpdating] = useState<string | null>(null);
-  const [newStock, setNewStock] = useState<Record<string, string>>({});
+  const [updating, setUpdating] = useState<number | null>(null);
+  const [newStock, setNewStock] = useState<Record<number, string>>({});
   const [updateMode, setUpdateMode] = useState<"set" | "add">("set");
   const [search, setSearch] = useState("");
   const [filterStock, setFilterStock] = useState<"all" | "low" | "out">("all");
@@ -85,7 +85,7 @@ export default function BlanksPage() {
     setSyncing(false);
   }
 
-  async function updateStock(variantId: string, blankKey: string, currentStock: number) {
+  async function updateStock(variantId: number, blankKey: string, currentStock: number) {
     const value = Number(newStock[variantId]);
 
     if (!newStock[variantId] || isNaN(value)) {
@@ -430,74 +430,77 @@ export default function BlanksPage() {
                         {/* Scroll orizzontale */}
                         <div className="relative">
                           <div className="flex gap-6 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-                            {variants.map((v) => (
-                              <div
-                                key={v.id}
-                                className={`flex-shrink-0 w-72 rounded-2xl border-3 p-6 transition-all transform hover:scale-105 hover:shadow-2xl ${
-                                  v.stock <= 0
-                                    ? "border-red-400 bg-gradient-to-br from-red-50 to-red-100"
-                                    : v.stock <= 5
-                                    ? "border-yellow-400 bg-gradient-to-br from-yellow-50 to-orange-50"
-                                    : "border-green-400 bg-gradient-to-br from-green-50 to-emerald-50"
-                                }`}
-                              >
-                                <div className="flex items-center justify-between mb-4">
-                                  <span className="text-4xl font-black text-gray-800">
-                                    {v.taglia}
-                                  </span>
-                                  <span
-                                    className={`px-4 py-2 rounded-xl text-base font-black shadow-lg ${
-                                      v.stock <= 0
-                                        ? "bg-red-600 text-white"
-                                        : v.stock <= 5
-                                        ? "bg-yellow-600 text-white"
-                                        : "bg-green-600 text-white"
-                                    }`}
-                                  >
-                                    {v.stock <= 0 ? "OUT" : v.stock}
-                                  </span>
-                                </div>
+                            {variants.map((v) => {
+                              const varId = v.variant_id || 0;
+                              return (
+                                <div
+                                  key={v.id}
+                                  className={`flex-shrink-0 w-72 rounded-2xl border-3 p-6 transition-all transform hover:scale-105 hover:shadow-2xl ${
+                                    v.stock <= 0
+                                      ? "border-red-400 bg-gradient-to-br from-red-50 to-red-100"
+                                      : v.stock <= 5
+                                      ? "border-yellow-400 bg-gradient-to-br from-yellow-50 to-orange-50"
+                                      : "border-green-400 bg-gradient-to-br from-green-50 to-emerald-50"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between mb-4">
+                                    <span className="text-4xl font-black text-gray-800">
+                                      {v.taglia}
+                                    </span>
+                                    <span
+                                      className={`px-4 py-2 rounded-xl text-base font-black shadow-lg ${
+                                        v.stock <= 0
+                                          ? "bg-red-600 text-white"
+                                          : v.stock <= 5
+                                          ? "bg-yellow-600 text-white"
+                                          : "bg-green-600 text-white"
+                                      }`}
+                                    >
+                                      {v.stock <= 0 ? "OUT" : v.stock}
+                                    </span>
+                                  </div>
 
-                                <div className="h-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent my-4"></div>
+                                  <div className="h-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent my-4"></div>
 
-                                <div className="space-y-3">
-                                  <input
-                                    type="number"
-                                    placeholder={updateMode === "add" ? "Quantità..." : "Nuovo stock..."}
-                                    value={newStock[v.id] || ""}
-                                    onChange={(e) =>
-                                      setNewStock((prev) => ({
-                                        ...prev,
-                                        [v.id]: e.target.value,
-                                      }))
-                                    }
-                                    disabled={updating === v.id}
-                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none font-semibold text-lg transition-all disabled:opacity-50"
-                                  />
-                                  <button
-                                    onClick={() =>
-                                      updateStock(v.id, blank.blank_key, v.stock)
-                                    }
-                                    disabled={updating === v.id}
-                                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl font-bold shadow-lg transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
-                                  >
-                                    {updating === v.id ? (
-                                      <>
-                                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                        <span>Aggiornamento...</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <span className="text-xl">
-                                          {updateMode === "add" ? "➕" : "🔄"}
-                                        </span>
-                                        <span>{updateMode === "add" ? "Aggiungi" : "Aggiorna"}</span>
-                                      </>
-                                    )}
-                                  </button>
+                                  <div className="space-y-3">
+                                    <input
+                                      type="number"
+                                      placeholder={updateMode === "add" ? "Quantità..." : "Nuovo stock..."}
+                                      value={newStock[varId] || ""}
+                                      onChange={(e) =>
+                                        setNewStock((prev) => ({
+                                          ...prev,
+                                          [varId]: e.target.value,
+                                        }))
+                                      }
+                                      disabled={updating === varId}
+                                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none font-semibold text-lg transition-all disabled:opacity-50"
+                                    />
+                                    <button
+                                      onClick={() =>
+                                        updateStock(varId, blank.blank_key, v.stock)
+                                      }
+                                      disabled={updating === varId}
+                                      className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl font-bold shadow-lg transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+                                    >
+                                      {updating === varId ? (
+                                        <>
+                                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                          <span>Aggiornamento...</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <span className="text-xl">
+                                            {updateMode === "add" ? "➕" : "🔄"}
+                                          </span>
+                                          <span>{updateMode === "add" ? "Aggiungi" : "Aggiorna"}</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       </div>
