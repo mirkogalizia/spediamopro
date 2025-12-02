@@ -11,7 +11,7 @@ const theme = createTheme({
     secondary: { main: '#00c9a7' },
     background: { default: '#f5f5f7' },
   },
-  shape: { borderRadius: 16 },
+  shape: { borderRadius: 12 },
   typography: {
     fontFamily: ['Inter', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'].join(','),
   },
@@ -28,18 +28,21 @@ export default function RootLayout({ children }) {
           <CssBaseline />
 
           <div className="flex min-h-screen w-full bg-gray-50">
+
+            {/* SIDEBAR FIXED */}
             {showSidebar && (
-              <aside className="w-64 border-r bg-white shadow-sm">
+              <aside className="fixed left-0 top-0 h-full w-64 shadow-md bg-white z-50">
                 <Sidebar />
               </aside>
             )}
 
-            {/* MAIN CONTENT */}
-            <main className="flex-1 p-6">
-              <div className="max-w-7xl mx-auto">
+            {/* CONTENT AREA */}
+            <main className={`flex-1 transition-all ${showSidebar ? 'ml-64' : ''}`}>
+              <div className="max-w-7xl mx-auto p-8">
                 {children}
               </div>
             </main>
+
           </div>
 
         </ThemeProvider>
