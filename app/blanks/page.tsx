@@ -7,26 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 
-type Variant = {
-  id: string;
-  taglia: string;
-  colore: string;
-  stock: number;
-};
-
-type Blank = {
-  blank_key: string;
-  inventory: Variant[];
-};
-
-const COLOR_DOTS: Record<string, string> = {
+const COLOR_DOTS = {
   nero: "bg-black",
   bianco: "bg-white border-2 border-gray-300",
   navy: "bg-blue-900",
   "dark grey": "bg-gray-700",
   "sport grey": "bg-gray-400",
   grigio: "bg-gray-500",
-  panna: "bg-amber-50",
+  panna: "bg-amber-50 border-2 border-amber-200",
   sand: "bg-yellow-200",
   army: "bg-green-800",
   bordeaux: "bg-red-900",
@@ -43,11 +31,11 @@ const COLOR_DOTS: Record<string, string> = {
 const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL"];
 
 export default function BlanksPage() {
-  const [blanks, setBlanks] = useState<Blank[]>([]);
+  const [blanks, setBlanks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [newStock, setNewStock] = useState<Record<string, string>>({});
+  const [newStock, setNewStock] = useState({});
   const [search, setSearch] = useState("");
-  const [filterStock, setFilterStock] = useState<"all" | "low" | "out">("all");
+  const [filterStock, setFilterStock] = useState("all");
 
   async function loadData() {
     setLoading(true);
@@ -63,7 +51,7 @@ export default function BlanksPage() {
     setLoading(false);
   }
 
-  async function updateStock(variantId: string, blankKey: string) {
+  async function updateStock(variantId, blankKey) {
     const value = Number(newStock[variantId]);
 
     if (!newStock[variantId] || isNaN(value)) {
@@ -93,7 +81,6 @@ export default function BlanksPage() {
     loadData();
   }, []);
 
-  // Statistiche globali
   const stats = useMemo(() => {
     let total = 0;
     let outOfStock = 0;
@@ -110,7 +97,6 @@ export default function BlanksPage() {
     return { total, outOfStock, lowStock };
   }, [blanks]);
 
-  // Filtro e ricerca
   const filteredBlanks = useMemo(() => {
     return blanks
       .map((blank) => ({
@@ -164,94 +150,97 @@ export default function BlanksPage() {
 
           {/* Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <Card className="border-blue-200 bg-blue-50">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-blue-900">
-                      Varianti Totali
-                    </p>
-                    <p className="text-3xl font-bold text-blue-600">
-                      {stats.total}
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white text-2xl">
-                    📦
-                  </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-blue-900">
+                    Varianti Totali
+                  </p>
+                  <p className="text-3xl font-bold text-blue-600">
+                    {stats.total}
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
+                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white text-2xl">
+                  📦
+                </div>
+              </div>
+            </div>
 
-            <Card className="border-yellow-200 bg-yellow-50">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-yellow-900">
-                      Stock Basso
-                    </p>
-                    <p className="text-3xl font-bold text-yellow-600">
-                      {stats.lowStock}
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 bg-yellow-600 rounded-full flex items-center justify-center text-white text-2xl">
-                    ⚠️
-                  </div>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-yellow-900">
+                    Stock Basso
+                  </p>
+                  <p className="text-3xl font-bold text-yellow-600">
+                    {stats.lowStock}
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
+                <div className="w-12 h-12 bg-yellow-600 rounded-full flex items-center justify-center text-white text-2xl">
+                  ⚠️
+                </div>
+              </div>
+            </div>
 
-            <Card className="border-red-200 bg-red-50">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-red-900">Esauriti</p>
-                    <p className="text-3xl font-bold text-red-600">
-                      {stats.outOfStock}
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center text-white text-2xl">
-                    🚫
-                  </div>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-red-900">Esauriti</p>
+                  <p className="text-3xl font-bold text-red-600">
+                    {stats.outOfStock}
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
+                <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center text-white text-2xl">
+                  🚫
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Filtri */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 relative">
-              <Input
+              <input
                 type="text"
                 placeholder="🔍 Cerca per categoria, colore o taglia..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value.toLowerCase())}
-                className="pl-10 h-12"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none"
               />
               <span className="absolute left-3 top-3.5 text-gray-400">🔍</span>
             </div>
 
             <div className="flex gap-2">
-              <Button
-                variant={filterStock === "all" ? "default" : "outline"}
+              <button
                 onClick={() => setFilterStock("all")}
-                className="h-12"
+                className={`px-6 py-3 rounded-xl font-medium transition-all ${
+                  filterStock === "all"
+                    ? "bg-blue-600 text-white shadow-lg"
+                    : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                }`}
               >
                 Tutti
-              </Button>
-              <Button
-                variant={filterStock === "low" ? "default" : "outline"}
+              </button>
+              <button
                 onClick={() => setFilterStock("low")}
-                className="h-12"
+                className={`px-6 py-3 rounded-xl font-medium transition-all ${
+                  filterStock === "low"
+                    ? "bg-blue-600 text-white shadow-lg"
+                    : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                }`}
               >
                 Stock Basso
-              </Button>
-              <Button
-                variant={filterStock === "out" ? "default" : "outline"}
+              </button>
+              <button
                 onClick={() => setFilterStock("out")}
-                className="h-12"
+                className={`px-6 py-3 rounded-xl font-medium transition-all ${
+                  filterStock === "out"
+                    ? "bg-blue-600 text-white shadow-lg"
+                    : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                }`}
               >
                 Esauriti
-              </Button>
+              </button>
             </div>
           </div>
         </div>
@@ -260,7 +249,7 @@ export default function BlanksPage() {
       {/* Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         {filteredBlanks.length === 0 ? (
-          <Card className="p-12 text-center">
+          <div className="bg-white rounded-xl shadow-lg p-12 text-center">
             <div className="text-6xl mb-4">🔍</div>
             <h3 className="text-xl font-semibold text-gray-700 mb-2">
               Nessun risultato
@@ -268,29 +257,31 @@ export default function BlanksPage() {
             <p className="text-gray-500">
               Prova a modificare i filtri di ricerca
             </p>
-          </Card>
+          </div>
         ) : (
           <div className="grid gap-6">
             {filteredBlanks.map((blank) => {
-              // Raggruppa per colore
-              const grouped: Record<string, Variant[]> = {};
+              const grouped = {};
               blank.inventory.forEach((v) => {
                 if (!grouped[v.colore]) grouped[v.colore] = [];
                 grouped[v.colore].push(v);
               });
 
               return (
-                <Card key={blank.blank_key} className="overflow-hidden">
-                  <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-                    <CardTitle className="text-2xl capitalize flex items-center gap-2">
+                <div
+                  key={blank.blank_key}
+                  className="bg-white rounded-2xl shadow-lg overflow-hidden"
+                >
+                  <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-5 text-white">
+                    <h2 className="text-2xl font-bold capitalize flex items-center gap-2">
                       👕 {blank.blank_key.replaceAll("_", " ")}
-                    </CardTitle>
-                    <p className="text-blue-100 text-sm">
+                    </h2>
+                    <p className="text-blue-100 text-sm mt-1">
                       {blank.inventory.length} varianti disponibili
                     </p>
-                  </CardHeader>
+                  </div>
 
-                  <CardContent className="p-6">
+                  <div className="p-6">
                     {Object.entries(grouped).map(([colore, variants]) => (
                       <div key={colore} className="mb-8 last:mb-0">
                         <div className="flex items-center gap-3 mb-4">
@@ -302,14 +293,16 @@ export default function BlanksPage() {
                           <h3 className="text-lg font-bold capitalize">
                             {colore}
                           </h3>
-                          <Badge variant="secondary">{variants.length}</Badge>
+                          <span className="bg-gray-200 text-gray-700 px-2 py-1 rounded text-xs font-semibold">
+                            {variants.length}
+                          </span>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                           {variants.map((v) => (
-                            <Card
+                            <div
                               key={v.id}
-                              className={`transition-all hover:shadow-lg ${
+                              className={`rounded-xl border-2 p-4 transition-all hover:shadow-lg ${
                                 v.stock === 0
                                   ? "border-red-300 bg-red-50"
                                   : v.stock <= 5
@@ -317,62 +310,58 @@ export default function BlanksPage() {
                                   : "border-green-300 bg-green-50"
                               }`}
                             >
-                              <CardContent className="p-4">
-                                <div className="flex items-center justify-between mb-3">
-                                  <span className="text-2xl font-bold">
-                                    {v.taglia}
-                                  </span>
-                                  <Badge
-                                    variant={
-                                      v.stock === 0
-                                        ? "destructive"
-                                        : v.stock <= 5
-                                        ? "secondary"
-                                        : "default"
-                                    }
-                                    className="text-sm font-bold"
-                                  >
-                                    {v.stock === 0 ? "OUT" : v.stock}
-                                  </Badge>
-                                </div>
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="text-2xl font-bold">
+                                  {v.taglia}
+                                </span>
+                                <span
+                                  className={`px-3 py-1 rounded-lg text-sm font-bold ${
+                                    v.stock === 0
+                                      ? "bg-red-600 text-white"
+                                      : v.stock <= 5
+                                      ? "bg-yellow-600 text-white"
+                                      : "bg-green-600 text-white"
+                                  }`}
+                                >
+                                  {v.stock === 0 ? "OUT" : v.stock}
+                                </span>
+                              </div>
 
-                                <Separator className="my-3" />
+                              <div className="h-px bg-gray-300 my-3"></div>
 
-                                <div className="space-y-2">
-                                  <Input
-                                    type="number"
-                                    placeholder="Nuovo stock..."
-                                    value={newStock[v.id] || ""}
-                                    onChange={(e) =>
-                                      setNewStock((prev) => ({
-                                        ...prev,
-                                        [v.id]: e.target.value,
-                                      }))
-                                    }
-                                    className="h-10"
-                                  />
-                                  <Button
-                                    onClick={() =>
-                                      updateStock(v.id, blank.blank_key)
-                                    }
-                                    className="w-full h-10"
-                                    size="sm"
-                                  >
-                                    Aggiorna
-                                  </Button>
-                                </div>
-                              </CardContent>
-                            </Card>
+                              <div className="space-y-2">
+                                <input
+                                  type="number"
+                                  placeholder="Nuovo stock..."
+                                  value={newStock[v.id] || ""}
+                                  onChange={(e) =>
+                                    setNewStock((prev) => ({
+                                      ...prev,
+                                      [v.id]: e.target.value,
+                                    }))
+                                  }
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none"
+                                />
+                                <button
+                                  onClick={() =>
+                                    updateStock(v.id, blank.blank_key)
+                                  }
+                                  className="w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-all"
+                                >
+                                  Aggiorna
+                                </button>
+                              </div>
+                            </div>
                           ))}
                         </div>
 
                         {Object.keys(grouped).length > 1 && (
-                          <Separator className="mt-8" />
+                          <div className="h-px bg-gray-300 mt-8"></div>
                         )}
                       </div>
                     ))}
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               );
             })}
           </div>

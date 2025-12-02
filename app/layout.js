@@ -22,14 +22,14 @@ function RootContent({ children }) {
     <div className="flex min-h-screen w-full bg-gray-50">
       {/* SIDEBAR */}
       {showSidebar && (
-        <aside className="fixed left-0 top-0 h-full w-64 shadow-md bg-white z-50">
+        <aside className="fixed left-0 top-0 h-full w-20 shadow-md bg-white z-50">
           <Sidebar />
         </aside>
       )}
 
       {/* CONTENT */}
-      <main className={`flex-1 transition-all ${showSidebar ? 'ml-64' : ''}`}>
-        <div className="max-w-7xl mx-auto p-8">
+      <main className={`flex-1 transition-all ${showSidebar ? 'ml-20' : ''}`}>
+        <div className="w-full">
           {children}
         </div>
       </main>
