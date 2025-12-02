@@ -1,3 +1,4 @@
+// app/api/shopify2/catalog/build-blanks-stock/route.ts
 import { NextResponse } from "next/server";
 import { shopify2 } from "@/lib/shopify2";
 import { adminDb } from "@/lib/firebaseAdminServer";
@@ -6,95 +7,61 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    // 1️⃣ Leggo la mappatura categorie → blanks
-    const snapshot = await adminDb.collection("blanks_mapping").get();
+    const snap = await adminDb.collection("blanks_mapping").get();
 
-    const activeBlanks: { blank_key: string; product_id: number }[] = [];
-
-    snapshot.forEach((doc) => {
+    const blanks = [];
+    snap.forEach((doc) => {
       const d = doc.data();
-      if (d.blank_assigned && d.product_id && d.blank_key) {
-        activeBlanks.push({
-          blank_key: d.blank_key,
-          product_id: d.product_id,
-        });
-      }
+      if (d.blank_assigned && d.product_id) blanks.push(d);
     });
 
-    if (activeBlanks.length === 0) {
-      return NextResponse.json({
-        ok: false,
-        message: "Nessun blank da elaborare",
-      });
-    }
+    const processed = [];
 
-    const results: any[] = [];
+    for (const b of blanks) {
+      const { blank_key, product_id } = b;
 
-    // 2️⃣ Per ogni blank → scarico varianti da Shopify
-    for (const blank of activeBlanks) {
-      const { blank_key, product_id } = blank;
+      // Scarica il prodotto con TUTTE le varianti
+      const productRes = await shopify2.getProduct(product_id);
 
-      // CORRETTO: niente slash iniziale, uso shopify2.api
-      const response = await shopify2.api(
-        `products/${product_id}/variants.json`
-      );
+      if (!productRes?.product?.variants) continue;
 
-      const variants = response?.variants;
-
-      if (!variants || variants.length === 0) {
-        console.log(`⚠️ Nessuna variante trovata per prodotto ${product_id}`);
-        continue;
-      }
-
-      // 3️⃣ Scrivo nel Firestore
-      const stockRef = adminDb
-        .collection("blanks_stock")
-        .doc(blank_key)
-        .collection("inventory");
+      const variants = productRes.product.variants;
 
       const batch = adminDb.batch();
+      const ref = adminDb.collection("blanks_stock").doc(blank_key);
 
       for (const v of variants) {
-        const taglia = (v.option1 || "NO_SIZE").toUpperCase().trim();
-        const colore = (v.option2 || "NO_COLOR").toLowerCase().trim();
+        const size = v.option1 || "NO_SIZE";
+        const color = v.option2 || "NO_COLOR";
 
-        const key = `${taglia}-${colore}`;
+        const docId = `${size}-${color}`.toLowerCase().replace(/\s+/g, "_");
 
-        const docRef = stockRef.doc(key);
-
-        batch.set(docRef, {
-          taglia,
-          colore,
-          stock: v.inventory_quantity ?? 0,
+        batch.set(ref.collection("variants").doc(docId), {
+          size,
+          color,
+          qty: v.inventory_quantity,
           variant_id: v.id,
-          inventory_item_id: v.inventory_item_id ?? null,
+          inventory_item_id: v.inventory_item_id,
           updated_at: new Date().toISOString(),
         });
       }
 
       await batch.commit();
 
-      results.push({
+      processed.push({
         blank_key,
-        product_id,
-        total_variants: variants.length,
+        variants: variants.length,
       });
-
-      console.log(
-        `✔️ BLANK ${blank_key} aggiornato — ${variants.length} varianti`
-      );
     }
 
     return NextResponse.json({
       ok: true,
-      message: "Stock blanks generato correttamente",
-      processed: results,
+      message: "Stock blanks generato su Firestore",
+      processed,
     });
+
   } catch (err: any) {
-    console.error("❌ Errore build-blanks-stock:", err);
-    return NextResponse.json(
-      { ok: false, error: err.message },
-      { status: 500 }
-    );
+    console.error("Errore build blanks stock:", err);
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
