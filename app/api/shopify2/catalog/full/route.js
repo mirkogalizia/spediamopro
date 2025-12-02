@@ -1,140 +1,70 @@
-// app/api/shopify2/catalog/full/route.js
 import { NextResponse } from "next/server";
 import { adminDB } from "@/lib/firebaseAdminServer";
 
-const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN_2;
-const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN_2;
-const API_VERSION = "2023-10";
-
-/**
- * Fetch paginated products from Shopify
- */
-async function fetchAllProducts() {
-  let products = [];
-  let pageInfo = null;
-
-  while (true) {
-    const url = new URL(
-      `https://${SHOPIFY_DOMAIN}/admin/api/${API_VERSION}/products.json`
-    );
-
-    url.searchParams.set("limit", "250");
-    if (pageInfo) {
-      url.searchParams.set("page_info", pageInfo);
-    }
-
-    const res = await fetch(url.toString(), {
-      headers: {
-        "X-Shopify-Access-Token": SHOPIFY_TOKEN,
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Errore Shopify: ${res.status} - ${err}`);
-    }
-
-    const data = await res.json();
-    products.push(...data.products);
-
-    // Check pagination
-    const link = res.headers.get("link");
-    if (!link || !link.includes('rel="next"')) break;
-
-    const match = link.match(/page_info=([^&>]+)/);
-    pageInfo = match ? match[1] : null;
-    if (!pageInfo) break;
-  }
-
-  return products;
-}
-
-/**
- * Clean & normalize product data
- */
-function normalizeProduct(p) {
-  return {
-    id: p.id,
-    title: p.title,
-    handle: p.handle,
-    status: p.status,
-    product_type: p.product_type ?? "Unknown",
-    vendor: p.vendor ?? "",
-    tags: p.tags ?? "",
-    created_at: p.created_at,
-    updated_at: p.updated_at,
-    body_html: p.body_html ?? "",
-    image: p.image?.src ?? "",
-    images: p.images?.map((img) => img.src) ?? [],
-    options: p.options ?? [],
-    variants: p.variants?.map((v) => ({
-      id: v.id,
-      sku: v.sku,
-      title: v.title,
-      option1: v.option1,
-      option2: v.option2,
-      option3: v.option3,
-      barcode: v.barcode,
-      price: v.price,
-      compare_at_price: v.compare_at_price,
-      inventory_item_id: v.inventory_item_id,
-      inventory_quantity: v.inventory_quantity,
-      weight: v.weight,
-      weight_unit: v.weight_unit,
-      created_at: v.created_at,
-      updated_at: v.updated_at,
-      image_id: v.image_id,
-    })),
-  };
-}
-
-/**
- * Save dataset to Firestore
- */
-async function saveToFirestore(productsNormalized) {
-  const ref = adminDB.collection("shopify_catalog").doc("all_products");
-  await ref.set(
-    {
-      updatedAt: new Date(),
-      count: productsNormalized.length,
-      products: productsNormalized,
-    },
-    { merge: true }
-  );
-}
+const SHOP = process.env.SHOPIFY_DOMAIN_2;
+const TOKEN = process.env.SHOPIFY_TOKEN_2;
 
 export async function GET() {
   try {
-    if (!SHOPIFY_DOMAIN || !SHOPIFY_TOKEN) {
+    if (!SHOP || !TOKEN) {
       return NextResponse.json(
-        { error: "Variabili Shopify mancanti" },
-        { status: 400 }
+        { error: "Missing Shopify credentials" },
+        { status: 500 }
       );
     }
 
-    console.log("📦 Fetching full Shopify catalog…");
+    let allProducts = [];
+    let pageInfo = null;
 
-    const products = await fetchAllProducts();
-    console.log(`➡️ Trovati ${products.length} prodotti`);
+    do {
+      const url = `https://${SHOP}/admin/api/2023-10/products.json?limit=250${
+        pageInfo ? `&page_info=${pageInfo}` : ""
+      }`;
 
-    const normalized = products.map(normalizeProduct);
+      const res = await fetch(url, {
+        headers: {
+          "X-Shopify-Access-Token": TOKEN,
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      });
 
-    await saveToFirestore(normalized);
+      if (!res.ok) {
+        throw new Error(`Shopify error: ${res.status}`);
+      }
 
+      const linkHeader = res.headers.get("link");
+      const data = await res.json();
+      allProducts = allProducts.concat(data.products);
+
+      // parser page_info Shopify
+      if (linkHeader && linkHeader.includes(`rel="next"`)) {
+        const match = linkHeader.match(/page_info=([^&>]+)/);
+        pageInfo = match ? match[1] : null;
+      } else {
+        pageInfo = null;
+      }
+    } while (pageInfo);
+
+    // 📌 SALVO OGNI PRODOTTO COME DOCUMENTO SEPARATO
+    const batch = adminDB.batch();
+    const colRef = adminDB.collection("shopify_products");
+
+    allProducts.forEach((p) => {
+      const docRef = colRef.doc(String(p.id));
+      batch.set(docRef, p, { merge: true });
+    });
+
+    await batch.commit();
+
+    return NextResponse.json({
+      status: "ok",
+      total_saved: allProducts.length,
+      message: "Tutti i prodotti salvati in documenti separati",
+    });
+  } catch (error) {
     return NextResponse.json(
-      {
-        status: "ok",
-        message: "Catalogo Shopify salvato in Firestore",
-        count: normalized.length,
-      },
-      { status: 200 }
-    );
-  } catch (e) {
-    console.error("❌ ERRORE:", e);
-    return NextResponse.json(
-      { error: e.message },
+      { error: error.message, stack: error.stack },
       { status: 500 }
     );
   }
