@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 
 const COLOR_MAP: Record<string, string> = {
   nero: "#000000",
@@ -8,6 +8,7 @@ const COLOR_MAP: Record<string, string> = {
   navy: "#001F3F",
   "dark grey": "#4A5568",
   "sport grey": "#A0AEC0",
+  grigio: "#718096",
   panna: "#F7FAFC",
   sand: "#D4C5B9",
   army: "#4A5043",
@@ -18,249 +19,190 @@ const COLOR_MAP: Record<string, string> = {
   verde: "#16A34A",
   giallo: "#EAB308",
   rosa: "#EC4899",
+  royal: "#2C5AA0",
+  viola: "#7C3AED",
 };
 
 const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL"];
 
-export default function BlanksStockPage() {
+export default function BlanksPage() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "low" | "out">("all");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [currentVariant, setCurrentVariant] = useState<any>(null);
+  const [newStock, setNewStock] = useState("");
 
-  // === Fetch ===
   useEffect(() => {
     async function load() {
-      try {
-        const r = await fetch("/api/shopify2/catalog/blanks-stock-view");
-        if (!r.ok) throw new Error("Errore nel caricamento");
-        const json = await r.json();
-        setData(json.blanks || []);
-      } catch (e: any) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
-      }
+      const res = await fetch("/api/shopify2/catalog/blanks-stock-view");
+      const json = await res.json();
+      setData(json.blanks || []);
+      setLoading(false);
     }
     load();
   }, []);
 
-  // === Stats ===
-  const stats = useMemo(() => {
-    let total = 0,
-      low = 0,
-      out = 0;
-    data.forEach((b) =>
-      b.inventory.forEach((v: any) => {
-        total++;
-        if (v.stock === 0) out++;
-        else if (v.stock <= 5) low++;
-      })
-    );
-    return { total, low, out };
-  }, [data]);
+  function openModal(v: any) {
+    setCurrentVariant(v);
+    setNewStock(String(v.stock));
+    setModalOpen(true);
+  }
 
-  // === Filters ===
-  const filtered = useMemo(() => {
-    return data
-      .map((blank) => ({
-        ...blank,
-        inventory: blank.inventory
-          .filter((v: any) => {
-            const s =
-              blank.blank_key.toLowerCase().includes(search.toLowerCase()) ||
-              v.colore.toLowerCase().includes(search.toLowerCase()) ||
-              v.taglia.toLowerCase().includes(search.toLowerCase());
+  async function updateStock() {
+    if (!currentVariant) return;
 
-            const f =
-              filter === "all" ||
-              (filter === "out" && v.stock === 0) ||
-              (filter === "low" && v.stock <= 5 && v.stock > 0);
+    const res = await fetch("/api/shopify2/catalog/update-blank-stock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        blank_key: currentVariant.blank_key,
+        variant_id: currentVariant.variant_id,
+        stock: Number(newStock),
+      }),
+    });
 
-            return s && f;
-          })
-          .sort((a: any, b: any) => {
-            const sa = SIZE_ORDER.indexOf(a.taglia.toUpperCase());
-            const sb = SIZE_ORDER.indexOf(b.taglia.toUpperCase());
-            if (sa !== sb) return sa - sb;
-            return a.colore.localeCompare(b.colore);
-          }),
-      }))
-      .filter((b) => b.inventory.length > 0);
-  }, [data, search, filter]);
+    const json = await res.json();
+    if (!json.ok) {
+      alert("Errore aggiornamento stock: " + json.error);
+      return;
+    }
 
-  // === UI ===
-  if (loading)
+    setModalOpen(false);
+    window.location.reload();
+  }
+
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen text-xl font-semibold text-gray-600">
-        Caricamento…
+      <div className="h-screen flex items-center justify-center text-lg text-gray-600">
+        Caricamento...
       </div>
     );
-
-  if (error)
-    return (
-      <div className="flex items-center justify-center h-screen text-red-600 font-semibold">
-        Errore: {error}
-      </div>
-    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eef2ff] via-[#f8fafc] to-[#e0f2fe] p-6">
-      {/* === HEADER === */}
-      <div className="max-w-6xl mx-auto mb-10">
-        <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#2b59ff] to-[#00c9a7]">
-          Stock Blanks
-        </h1>
-        <p className="text-gray-600 mt-1 font-medium">
-          Inventario base sincronizzato
-        </p>
+    <div className="w-full max-w-6xl mx-auto py-10">
+      <h1 className="text-4xl font-bold text-gray-900 mb-8">📦 Stock Blanks</h1>
 
-        {/* STATS */}
-        <div className="flex gap-4 mt-6">
-          <div className="bg-white border px-5 py-3 rounded-2xl shadow">
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <div className="text-xs text-gray-600">Varianti Totali</div>
-          </div>
-          <div className="bg-yellow-50 border border-yellow-200 px-5 py-3 rounded-2xl shadow">
-            <div className="text-2xl font-bold text-yellow-600">{stats.low}</div>
-            <div className="text-xs text-yellow-700">Stock Basso</div>
-          </div>
-          <div className="bg-red-50 border border-red-200 px-5 py-3 rounded-2xl shadow">
-            <div className="text-2xl font-bold text-red-600">{stats.out}</div>
-            <div className="text-xs text-red-700">Esauriti</div>
-          </div>
-        </div>
+      {data.map((blank) => {
+        const groupedByColor: Record<string, any[]> = {};
 
-        {/* SEARCH + FILTERS */}
-        <div className="mt-6 flex gap-3">
-          <input
-            type="text"
-            placeholder="🔍 Cerca colore, taglia o categoria…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 px-4 py-3 rounded-xl border shadow-sm bg-white outline-none focus:ring-2 focus:ring-blue-300"
-          />
+        blank.inventory.forEach((v: any) => {
+          if (!groupedByColor[v.colore]) groupedByColor[v.colore] = [];
+          groupedByColor[v.colore].push({
+            ...v,
+            blank_key: blank.blank_key,
+          });
+        });
 
-          <button
-            className={`px-4 py-3 rounded-xl font-semibold transition ${
-              filter === "all"
-                ? "bg-blue-500 text-white"
-                : "bg-white border text-gray-600"
-            }`}
-            onClick={() => setFilter("all")}
-          >
-            Tutti
-          </button>
-          <button
-            className={`px-4 py-3 rounded-xl font-semibold transition ${
-              filter === "low"
-                ? "bg-yellow-500 text-white"
-                : "bg-white border text-gray-600"
-            }`}
-            onClick={() => setFilter("low")}
-          >
-            Stock basso
-          </button>
-          <button
-            className={`px-4 py-3 rounded-xl font-semibold transition ${
-              filter === "out"
-                ? "bg-red-500 text-white"
-                : "bg-white border text-gray-600"
-            }`}
-            onClick={() => setFilter("out")}
-          >
-            Esauriti
-          </button>
-        </div>
-      </div>
+        Object.keys(groupedByColor).forEach((c) => {
+          groupedByColor[c].sort((a: any, b: any) => {
+            return (
+              SIZE_ORDER.indexOf(a.taglia.toUpperCase()) -
+              SIZE_ORDER.indexOf(b.taglia.toUpperCase())
+            );
+          });
+        });
 
-      {/* === GRID CARDS === */}
-      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-        {filtered.map((blank) => (
+        return (
           <div
             key={blank.blank_key}
-            className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden hover:shadow-2xl transition"
+            className="mb-10 bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden"
           >
-            {/* CARD HEADER */}
-            <div className="bg-gradient-to-r from-[#2b59ff] to-[#00c9a7] p-5">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                👕 {blank.blank_key.replaceAll("_", " ")}
+            <div className="px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+              <h2 className="text-2xl font-bold capitalize">
+                {blank.blank_key.replaceAll("_", " ")}
               </h2>
-              <p className="text-blue-100 text-sm mt-1">
+              <p className="text-blue-100 text-sm">
                 {blank.inventory.length} varianti
               </p>
             </div>
 
-            {/* TABLE */}
-            <div className="p-6 overflow-x-auto">
-              <table className="min-w-full border-separate border-spacing-y-2">
-                <thead>
-                  <tr>
-                    <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600">
-                      Colore
-                    </th>
-                    <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600">
-                      Taglia
-                    </th>
-                    <th className="px-4 py-2 text-center text-sm font-semibold text-gray-600">
-                      Stock
-                    </th>
-                  </tr>
-                </thead>
+            <div className="p-6 space-y-8">
+              {Object.entries(groupedByColor).map(([colore, variants]) => (
+                <div key={colore}>
+                  <div className="flex items-center mb-3">
+                    <div
+                      className="w-5 h-5 rounded-full mr-3 shadow"
+                      style={{
+                        backgroundColor: COLOR_MAP[colore] || "#CCC",
+                      }}
+                    ></div>
+                    <h3 className="text-xl font-semibold capitalize">
+                      {colore}
+                    </h3>
+                  </div>
 
-                <tbody>
-                  {blank.inventory.map((v: any) => (
-                    <tr
-                      key={v.id}
-                      className="bg-white rounded-xl shadow hover:scale-[1.01] transition"
-                    >
-                      {/* COLORE */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="w-4 h-4 rounded-full border"
-                            style={{
-                              backgroundColor:
-                                COLOR_MAP[v.colore.toLowerCase()] || "#ccc",
-                            }}
-                          />
-                          <span className="capitalize font-medium">
-                            {v.colore}
-                          </span>
-                        </div>
-                      </td>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+                    {variants.map((v: any) => (
+                      <div
+                        key={v.id}
+                        className="bg-gray-50 border rounded-xl p-4 text-center shadow-sm hover:shadow-md transition"
+                      >
+                        <div className="text-lg font-bold">{v.taglia}</div>
 
-                      {/* TAGLIA */}
-                      <td className="px-4 py-3">
-                        <span className="inline-block px-3 py-1 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 font-bold uppercase">
-                          {v.taglia}
-                        </span>
-                      </td>
-
-                      {/* STOCK */}
-                      <td className="px-4 py-3 text-center">
-                        <span
-                          className={`inline-block px-4 py-1 rounded-xl font-bold text-white ${
+                        <div
+                          className={`mt-2 px-3 py-1 text-sm font-bold rounded-lg ${
                             v.stock === 0
-                              ? "bg-red-500"
+                              ? "bg-red-500 text-white"
                               : v.stock <= 5
-                              ? "bg-yellow-500"
-                              : "bg-green-500"
+                              ? "bg-yellow-500 text-white"
+                              : "bg-green-500 text-white"
                           }`}
                         >
                           {v.stock}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        </div>
+
+                        <button
+                          onClick={() => openModal(v)}
+                          className="mt-3 text-xs text-blue-600 font-semibold underline"
+                        >
+                          Modifica
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-        ))}
-      </div>
+        );
+      })}
+
+      {/* MODAL */}
+      {modalOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-2xl shadow-xl w-80">
+            <h3 className="text-xl font-bold mb-4">Modifica Stock</h3>
+
+            <p className="text-sm text-gray-700 mb-3">
+              <span className="font-semibold">Taglia:</span> {currentVariant.taglia} <br />
+              <span className="font-semibold">Colore:</span> {currentVariant.colore}
+            </p>
+
+            <input
+              type="number"
+              className="w-full border rounded-lg px-3 py-2 mb-4"
+              value={newStock}
+              onChange={(e) => setNewStock(e.target.value)}
+            />
+
+            <button
+              onClick={updateStock}
+              className="w-full bg-blue-600 text-white py-2 rounded-xl font-bold mb-2"
+            >
+              Aggiorna
+            </button>
+
+            <button
+              onClick={() => setModalOpen(false)}
+              className="w-full bg-gray-200 py-2 rounded-xl font-semibold"
+            >
+              Annulla
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
