@@ -1,148 +1,137 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebaseAdminPRO";
-import { collection, doc, setDoc } from "firebase/firestore";
+import { db } from "@/lib/firebaseAdminServer";
+import { collection, doc, setDoc } from "firebase-admin/firestore";
 
-const SHOP2_DOMAIN = process.env.NEXT_PUBLIC_SHOPIFY_DOMAIN_2;
-const TOKEN2 = process.env.NEXT_PUBLIC_SHOPIFY_ADMIN_API_TOKEN_2;
+const SHOP = process.env.SHOPIFY_DOMAIN_2;
+const TOKEN = process.env.SHOPIFY_TOKEN_2;
+const API_VERSION = "2023-10";
 
-const BLANKS_MAP = {
+const CATEGORY_MAP = {
   "felpa cappuccio": "HOODIE_BASE",
   "felpa cappuccio essential": "HOODIE_ESSENTIAL",
-
   "felpa zip": "ZIP_BASE",
   "felpa zip essential": "ZIP_ESSENTIAL",
-
   "felpa girocollo": "CREWNECK",
   "t shirt": "TSHIRT",
-  "tshirt": "TSHIRT",
-  "t-shirt": "TSHIRT",
-
   "sweatpants": "PANTS",
 };
 
 function normalize(str = "") {
-  return str.toLowerCase().replace(/-/g, " ").replace(/_/g, " ").trim();
+  return str.trim().toLowerCase();
 }
 
-function detectBlankCategory(product) {
-  const type = normalize(product.product_type);
-  const title = normalize(product.title);
-  const tags = normalize(product.tags || "");
-
-  // Se contiene "blank" nel titolo o handle → blank
-  if (title.includes("blank") || (product.handle || "").includes("blank"))
-    return true;
-
-  // se il type è mappato, è blank
-  if (BLANKS_MAP[type]) return true;
-
-  // controllo nei tags
-  if (tags.includes("blank")) return true;
-
-  return false;
+function detectCategory(productType) {
+  const key = normalize(productType);
+  return CATEGORY_MAP[key] || null;
 }
 
-function assignCategory(product) {
-  const type = normalize(product.product_type);
-  const title = normalize(product.title);
+function extractMatrix(products) {
+  const matrix = {};
 
-  // match diretto sul type
-  if (BLANKS_MAP[type]) return BLANKS_MAP[type];
+  for (const p of products) {
+    const cat = detectCategory(p.product_type);
+    if (!cat) continue;
 
-  // fallback: guardo nel titolo
-  for (const key in BLANKS_MAP) {
-    if (title.includes(key)) return BLANKS_MAP[key];
+    if (!matrix[cat]) matrix[cat] = {};
+
+    for (const v of p.variants) {
+      const size = v.option1;
+      const color = v.option2;
+      const qty = v.inventory_quantity ?? 0;
+
+      if (!matrix[cat][color]) matrix[cat][color] = {};
+      matrix[cat][color][size] = qty;
+    }
   }
 
-  return "UNKNOWN";
+  return matrix;
+}
+
+function detectMissing(matrix) {
+  const missing = {};
+
+  for (const cat of Object.keys(matrix)) {
+    missing[cat] = {};
+
+    const colors = Object.keys(matrix[cat]);
+    const SIZES = ["XS", "S", "M", "L", "XL"];
+
+    for (const color of colors) {
+      const sizesAvailable = Object.keys(matrix[cat][color]);
+
+      const missingSizes = SIZES.filter(s => !sizesAvailable.includes(s));
+
+      if (missingSizes.length > 0) {
+        missing[cat][color] = missingSizes;
+      }
+    }
+  }
+
+  return missing;
+}
+
+async function fetchAllProducts() {
+  let pageInfo = null;
+  let products = [];
+
+  while (true) {
+    const url = `https://${SHOP}/admin/api/${API_VERSION}/products.json?limit=250` +
+      (pageInfo ? `&page_info=${pageInfo}` : "");
+
+    const res = await fetch(url, {
+      headers: {
+        "X-Shopify-Access-Token": TOKEN,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    });
+
+    if (!res.ok) throw new Error("Errore caricamento prodotti");
+
+    const data = await res.json();
+    products.push(...data.products);
+
+    const link = res.headers.get("link");
+    if (!link || !link.includes('rel="next"')) break;
+
+    const match = link.match(/page_info=([^&>]+)/);
+    pageInfo = match ? match[1] : null;
+  }
+
+  return products;
 }
 
 export async function GET() {
   try {
-    let url = `https://${SHOP2_DOMAIN}/admin/api/2024-10/products.json?limit=250`;
-    let allProducts = [];
+    // 1. Fetch prodotti
+    const products = await fetchAllProducts();
 
-    while (url) {
-      const res = await fetch(url, {
-        headers: {
-          "X-Shopify-Access-Token": TOKEN2,
-          "Content-Type": "application/json",
-        },
-      });
-
-      const data = await res.json();
-      if (!data.products) break;
-
-      allProducts = allProducts.concat(data.products);
-
-      // Gestione pagination
-      const linkHeader = res.headers.get("link");
-      if (linkHeader && linkHeader.includes('rel="next"')) {
-        const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-        url = match ? match[1] : null;
-      } else {
-        url = null;
-      }
+    // 2. Salvataggio RAW
+    const productsCollection = collection(db, "shopify_catalog_raw");
+    for (const p of products) {
+      await setDoc(doc(productsCollection, String(p.id)), p);
     }
 
-    const blanks = [];
-    const graphics = [];
+    // 3. Costruzione matrices
+    const blanksMatrix = extractMatrix(products);
 
-    for (const p of allProducts) {
-      const isBlank = detectBlankCategory(p);
+    // 4. Detect missing
+    const missing = detectMissing(blanksMatrix);
 
-      if (isBlank) {
-        const cat = assignCategory(p);
+    // 5. Save matrix
+    await setDoc(doc(db, "shopify_catalog", "blanks_matrix"), blanksMatrix);
 
-        blanks.push({
-          id: p.id,
-          title: p.title,
-          handle: p.handle,
-          category: cat,
-          product_type: p.product_type,
-          variants: p.variants.map(v => ({
-            id: v.id,
-            option1: v.option1,
-            option2: v.option2,
-            inventory_quantity: v.inventory_quantity,
-          })),
-        });
-
-      } else {
-        graphics.push({
-          id: p.id,
-          title: p.title,
-          handle: p.handle,
-          product_type: p.product_type,
-          variants: p.variants.map(v => ({
-            id: v.id,
-            option1: v.option1,
-            option2: v.option2,
-          })),
-        });
-      }
-    }
-
-    // Salvo su Firestore una versione COMPATTA
-    const ref = doc(collection(db, "shopify_catalog"), "scan_result");
-
-    await setDoc(ref, {
-      updatedAt: new Date().toISOString(),
-      blanks,
-      graphics,
-    });
+    // 6. Save missing
+    await setDoc(doc(db, "shopify_catalog", "blanks_missing"), missing);
 
     return NextResponse.json({
-      status: "ok",
-      total: allProducts.length,
-      blanks: blanks.length,
-      graphics: graphics.length,
+      ok: true,
+      products: products.length,
+      blanks_matrix: blanksMatrix,
+      missing,
     });
-
-  } catch (err) {
-    return NextResponse.json(
-      { status: "error", message: err.message },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error("SCAN ERROR", error);
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 }
