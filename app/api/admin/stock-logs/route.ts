@@ -9,12 +9,15 @@ export async function GET(req: Request) {
     const limit = parseInt(searchParams.get("limit") || "50");
     const showOnlyErrors = searchParams.get("errors") === "true";
 
+    // ✅ USA started_at invece di received_at (più affidabile)
     let query = adminDb
       .collection("orders_stock_log")
-      .orderBy("received_at", "desc")
+      .orderBy("started_at", "desc")
       .limit(limit);
 
     const logsSnap = await query.get();
+
+    console.log(`📋 Trovati ${logsSnap.size} log`);
 
     const logs: any[] = [];
     let totalItemsProcessed = 0;
@@ -23,6 +26,8 @@ export async function GET(req: Request) {
 
     logsSnap.forEach((doc) => {
       const data = doc.data();
+      
+      console.log(`Log ${doc.id}: status=${data.status}, order=${data.order_number}`);
       
       // Filtra solo errori se richiesto
       if (showOnlyErrors && (!data.items_failed || data.items_failed === 0)) {
@@ -81,6 +86,8 @@ export async function GET(req: Request) {
       });
     });
 
+    console.log(`✅ Ritorno ${logs.length} log al client`);
+
     return NextResponse.json({
       ok: true,
       logs,
@@ -94,7 +101,7 @@ export async function GET(req: Request) {
   } catch (err: any) {
     console.error("❌ Errore API stock-logs:", err);
     return NextResponse.json(
-      { ok: false, error: err.message },
+      { ok: false, error: err.message, stack: err.stack },
       { status: 500 }
     );
   }
