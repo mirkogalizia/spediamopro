@@ -1,10 +1,6 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
-import { Input } from "@/app/components/ui/input";
-import { Card } from "@/app/components/ui/card";
-import { Button } from "@/app/components/ui/button";
-import { Separator } from "@/app/components/ui/separator";
 
 const COLOR_MAP: Record<string, string> = {
   nero: "#000000",
@@ -15,36 +11,47 @@ const COLOR_MAP: Record<string, string> = {
   panna: "#F7FAFC",
   sand: "#D4C5B9",
   army: "#4A5043",
-  royal: "#2C5AA0",
   bordeaux: "#722F37",
-  verde: "#15803d",
-  blu: "#2563eb",
-  rosa: "#ec4899",
-  rosso: "#dc2626",
   "night blue": "#1A365D",
+  rosso: "#DC2626",
+  blu: "#2563EB",
+  verde: "#16A34A",
+  giallo: "#EAB308",
+  rosa: "#EC4899",
 };
 
 const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL"];
 
-export default function BlanksPage() {
+export default function BlanksStockPage() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [filterStock, setFilterStock] = useState<"all" | "low" | "out">("all");
+  const [error, setError] = useState<string | null>(null);
 
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all" | "low" | "out">("all");
+
+  // === Fetch ===
   useEffect(() => {
     async function load() {
-      const res = await fetch("/api/shopify2/catalog/blanks-stock-view");
-      const json = await res.json();
-      setData(json.blanks || []);
-      setLoading(false);
+      try {
+        const r = await fetch("/api/shopify2/catalog/blanks-stock-view");
+        if (!r.ok) throw new Error("Errore nel caricamento");
+        const json = await r.json();
+        setData(json.blanks || []);
+      } catch (e: any) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, []);
 
+  // === Stats ===
   const stats = useMemo(() => {
-    let total = 0, low = 0, out = 0;
-
+    let total = 0,
+      low = 0,
+      out = 0;
     data.forEach((b) =>
       b.inventory.forEach((v: any) => {
         total++;
@@ -52,216 +59,208 @@ export default function BlanksPage() {
         else if (v.stock <= 5) low++;
       })
     );
-
     return { total, low, out };
   }, [data]);
 
+  // === Filters ===
   const filtered = useMemo(() => {
     return data
-      .map((b) => ({
-        ...b,
-        inventory: b.inventory
+      .map((blank) => ({
+        ...blank,
+        inventory: blank.inventory
           .filter((v: any) => {
-            const match =
-              b.blank_key.includes(search.toLowerCase()) ||
-              v.colore.includes(search.toLowerCase()) ||
-              v.taglia.includes(search.toUpperCase());
+            const s =
+              blank.blank_key.toLowerCase().includes(search.toLowerCase()) ||
+              v.colore.toLowerCase().includes(search.toLowerCase()) ||
+              v.taglia.toLowerCase().includes(search.toLowerCase());
 
-            const stockMatch =
-              filterStock === "all" ||
-              (filterStock === "out" && v.stock === 0) ||
-              (filterStock === "low" && v.stock <= 5);
+            const f =
+              filter === "all" ||
+              (filter === "out" && v.stock === 0) ||
+              (filter === "low" && v.stock <= 5 && v.stock > 0);
 
-            return match && stockMatch;
+            return s && f;
           })
           .sort((a: any, b: any) => {
-            const sA = SIZE_ORDER.indexOf(a.taglia);
-            const sB = SIZE_ORDER.indexOf(b.taglia);
-            if (sA !== sB) return sA - sB;
+            const sa = SIZE_ORDER.indexOf(a.taglia.toUpperCase());
+            const sb = SIZE_ORDER.indexOf(b.taglia.toUpperCase());
+            if (sa !== sb) return sa - sb;
             return a.colore.localeCompare(b.colore);
           }),
       }))
       .filter((b) => b.inventory.length > 0);
-  }, [data, search, filterStock]);
+  }, [data, search, filter]);
 
+  // === UI ===
   if (loading)
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin h-12 w-12 border-4 border-gray-300 border-t-black rounded-full" />
+      <div className="flex items-center justify-center h-screen text-xl font-semibold text-gray-600">
+        Caricamento…
+      </div>
+    );
+
+  if (error)
+    return (
+      <div className="flex items-center justify-center h-screen text-red-600 font-semibold">
+        Errore: {error}
       </div>
     );
 
   return (
-    <div className="min-h-screen bg-[#f5f7fa]">
-      {/* HEADER */}
-      <div className="sticky top-0 bg-white/80 backdrop-blur-md border-b shadow-sm z-10">
-        <div className="max-w-7xl mx-auto px-6 py-5 flex flex-col gap-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Blanks Stock</h1>
-              <p className="text-gray-500">Inventario base sincronizzato</p>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-[#eef2ff] via-[#f8fafc] to-[#e0f2fe] p-6">
+      {/* === HEADER === */}
+      <div className="max-w-6xl mx-auto mb-10">
+        <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#2b59ff] to-[#00c9a7]">
+          Stock Blanks
+        </h1>
+        <p className="text-gray-600 mt-1 font-medium">
+          Inventario base sincronizzato
+        </p>
 
-            {/* Stats */}
-            <div className="flex gap-4">
-              <StatCard label="Varianti" value={stats.total} color="blue" />
-              <StatCard label="Stock basso" value={stats.low} color="yellow" />
-              <StatCard label="Esauriti" value={stats.out} color="red" />
-            </div>
+        {/* STATS */}
+        <div className="flex gap-4 mt-6">
+          <div className="bg-white border px-5 py-3 rounded-2xl shadow">
+            <div className="text-2xl font-bold">{stats.total}</div>
+            <div className="text-xs text-gray-600">Varianti Totali</div>
           </div>
-
-          {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-3 items-center">
-            <div className="flex-1">
-              <Input
-                placeholder="Cerca colore, taglia o categoria…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-12 text-lg"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <FilterButton
-                active={filterStock === "all"}
-                onClick={() => setFilterStock("all")}
-              >
-                Tutti
-              </FilterButton>
-              <FilterButton
-                active={filterStock === "low"}
-                onClick={() => setFilterStock("low")}
-              >
-                Stock basso
-              </FilterButton>
-              <FilterButton
-                active={filterStock === "out"}
-                onClick={() => setFilterStock("out")}
-              >
-                Esauriti
-              </FilterButton>
-            </div>
+          <div className="bg-yellow-50 border border-yellow-200 px-5 py-3 rounded-2xl shadow">
+            <div className="text-2xl font-bold text-yellow-600">{stats.low}</div>
+            <div className="text-xs text-yellow-700">Stock Basso</div>
           </div>
+          <div className="bg-red-50 border border-red-200 px-5 py-3 rounded-2xl shadow">
+            <div className="text-2xl font-bold text-red-600">{stats.out}</div>
+            <div className="text-xs text-red-700">Esauriti</div>
+          </div>
+        </div>
+
+        {/* SEARCH + FILTERS */}
+        <div className="mt-6 flex gap-3">
+          <input
+            type="text"
+            placeholder="🔍 Cerca colore, taglia o categoria…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 px-4 py-3 rounded-xl border shadow-sm bg-white outline-none focus:ring-2 focus:ring-blue-300"
+          />
+
+          <button
+            className={`px-4 py-3 rounded-xl font-semibold transition ${
+              filter === "all"
+                ? "bg-blue-500 text-white"
+                : "bg-white border text-gray-600"
+            }`}
+            onClick={() => setFilter("all")}
+          >
+            Tutti
+          </button>
+          <button
+            className={`px-4 py-3 rounded-xl font-semibold transition ${
+              filter === "low"
+                ? "bg-yellow-500 text-white"
+                : "bg-white border text-gray-600"
+            }`}
+            onClick={() => setFilter("low")}
+          >
+            Stock basso
+          </button>
+          <button
+            className={`px-4 py-3 rounded-xl font-semibold transition ${
+              filter === "out"
+                ? "bg-red-500 text-white"
+                : "bg-white border text-gray-600"
+            }`}
+            onClick={() => setFilter("out")}
+          >
+            Esauriti
+          </button>
         </div>
       </div>
 
-      {/* CONTENT */}
-      <div className="max-w-7xl mx-auto px-6 py-10">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {filtered.map((blank) => (
-            <Card
-              key={blank.blank_key}
-              className="p-0 overflow-hidden border shadow-md hover:shadow-lg transition-all"
-            >
-              {/* Card Header */}
-              <div className="bg-gradient-to-r from-[#202A44] to-[#171E2E] px-6 py-4">
-                <h2 className="text-xl font-semibold text-white capitalize flex items-center gap-2">
-                  {blank.blank_key.replaceAll("_", " ")}
-                </h2>
-                <p className="text-gray-300 text-sm">
-                  {blank.inventory.length} varianti
-                </p>
-              </div>
+      {/* === GRID CARDS === */}
+      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+        {filtered.map((blank) => (
+          <div
+            key={blank.blank_key}
+            className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden hover:shadow-2xl transition"
+          >
+            {/* CARD HEADER */}
+            <div className="bg-gradient-to-r from-[#2b59ff] to-[#00c9a7] p-5">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                👕 {blank.blank_key.replaceAll("_", " ")}
+              </h2>
+              <p className="text-blue-100 text-sm mt-1">
+                {blank.inventory.length} varianti
+              </p>
+            </div>
 
-              {/* Grid Variants */}
-              <div className="p-6">
-                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
+            {/* TABLE */}
+            <div className="p-6 overflow-x-auto">
+              <table className="min-w-full border-separate border-spacing-y-2">
+                <thead>
+                  <tr>
+                    <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600">
+                      Colore
+                    </th>
+                    <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600">
+                      Taglia
+                    </th>
+                    <th className="px-4 py-2 text-center text-sm font-semibold text-gray-600">
+                      Stock
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
                   {blank.inventory.map((v: any) => (
-                    <div
+                    <tr
                       key={v.id}
-                      className="p-4 rounded-xl border bg-white shadow-sm hover:shadow-md transition-all"
+                      className="bg-white rounded-xl shadow hover:scale-[1.01] transition"
                     >
-                      {/* color */}
-                      <div className="flex items-center gap-2 mb-2">
-                        <span
-                          className="w-4 h-4 rounded-full border"
-                          style={{
-                            backgroundColor: COLOR_MAP[v.colore] || "#ccc",
-                          }}
-                        />
-                        <span className="text-xs text-gray-700 capitalize">
-                          {v.colore}
+                      {/* COLORE */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-4 h-4 rounded-full border"
+                            style={{
+                              backgroundColor:
+                                COLOR_MAP[v.colore.toLowerCase()] || "#ccc",
+                            }}
+                          />
+                          <span className="capitalize font-medium">
+                            {v.colore}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* TAGLIA */}
+                      <td className="px-4 py-3">
+                        <span className="inline-block px-3 py-1 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 font-bold uppercase">
+                          {v.taglia}
                         </span>
-                      </div>
+                      </td>
 
-                      {/* taglia */}
-                      <div className="text-center font-semibold text-gray-900">
-                        {v.taglia}
-                      </div>
-
-                      {/* stock */}
-                      <div className="mt-2 text-center">
+                      {/* STOCK */}
+                      <td className="px-4 py-3 text-center">
                         <span
-                          className={`px-3 py-1 rounded-lg text-sm font-bold text-white ${
+                          className={`inline-block px-4 py-1 rounded-xl font-bold text-white ${
                             v.stock === 0
                               ? "bg-red-500"
                               : v.stock <= 5
                               ? "bg-yellow-500"
-                              : "bg-green-600"
+                              : "bg-green-500"
                           }`}
                         >
-                          {v.stock === 0 ? "OUT" : v.stock}
+                          {v.stock}
                         </span>
-                      </div>
-                    </div>
+                      </td>
+                    </tr>
                   ))}
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
-  );
-}
-
-/* -------------------- COMPONENTS -------------------- */
-
-function StatCard({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color: "blue" | "yellow" | "red";
-}) {
-  const colors: any = {
-    blue: "text-blue-600 bg-blue-50 border-blue-200",
-    yellow: "text-yellow-600 bg-yellow-50 border-yellow-200",
-    red: "text-red-600 bg-red-50 border-red-200",
-  };
-
-  return (
-    <div
-      className={`px-4 py-3 rounded-xl border shadow-sm text-center ${colors[color]}`}
-    >
-      <div className="text-2xl font-bold">{value}</div>
-      <div className="text-xs font-medium">{label}</div>
-    </div>
-  );
-}
-
-function FilterButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Button
-      onClick={onClick}
-      className={`h-12 px-5 rounded-xl font-medium ${
-        active
-          ? "bg-black text-white shadow-lg"
-          : "bg-white text-gray-700 border hover:bg-gray-100"
-      }`}
-      variant={"outline"}
-    >
-      {children}
-    </Button>
   );
 }
