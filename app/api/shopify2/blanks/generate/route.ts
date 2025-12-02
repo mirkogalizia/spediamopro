@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const db = firestoreAdmin;
+    const db = adminDb;
 
     // 1️⃣ Carica la mappatura BLANKS
     const mappingSnap = await db.collection("blanks_mapping").get();
@@ -18,37 +18,30 @@ export async function GET() {
       });
     }
 
-    const mappings: {
-      category: string;
-      blank_key: string | null;
-      product_id: number | null;
-      blank_assigned: boolean;
-    }[] = [];
-
-    mappingSnap.forEach((doc) => mappings.push(doc.data() as any));
+    const mappings = mappingSnap.docs.map((doc) => doc.data());
 
     // 2️⃣ Filtra solo quelli con BLANK assegnato
-    const assigned = mappings.filter((m) => m.blank_assigned && m.product_id);
+    const assigned = mappings.filter((m: any) => m.blank_assigned && m.product_id);
 
     const processed: any[] = [];
 
     // 3️⃣ Per ogni BLANK, scarica le varianti da Shopify
     for (const map of assigned) {
-      const { blank_key, product_id, category } = map;
+      const { blank_key, product_id } = map;
 
       if (!product_id || !blank_key) continue;
 
-      // Scarica prodotto da Shopify
-      const product = await shopify2.getProduct(product_id);
+      // 🟦 Scarica prodotto da Shopify
+      const productRes = await shopify2(`/products/${product_id}.json`);
 
-      if (!product || !product.variants) {
+      if (!productRes || !productRes.product || !productRes.product.variants) {
         console.log("❌ Nessun prodotto o varianti per", product_id);
         continue;
       }
 
-      const variants = product.variants;
+      const variants = productRes.product.variants;
 
-      // 4️⃣ Salva lo stock su Firestore
+      // 4️⃣ Salva lo stock nel Firestore
       const blankRef = db.collection("blanks_stock").doc(blank_key);
 
       const batch = db.batch();

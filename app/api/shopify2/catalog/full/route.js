@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminDB } from "@/lib/firebaseAdminServer";
+import { adminDb } from "@/lib/firebaseAdminServer";
 
 const SHOP = process.env.SHOPIFY_DOMAIN_2;
 const TOKEN = process.env.SHOPIFY_TOKEN_2;
