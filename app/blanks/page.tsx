@@ -1,164 +1,127 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
+import { Card, CardContent } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Button } from "../components/ui/button";
+import { Separator } from "../components/ui/separator";
 
-const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL"];
+interface Variant {
+  id: string;
+  taglia: string;
+  colore: string;
+  stock: number;
+}
 
-const COLOR_MAP: Record<string, string> = {
-  nero: "#000000",
-  bianco: "#FFFFFF",
-  navy: "#001F3F",
-  "dark grey": "#4A5568",
-  "sport grey": "#A0AEC0",
-  panna: "#F7FAFC",
-  sand: "#D4C5B9",
-  army: "#4A5043",
-  bordeaux: "#722F37",
-  "night blue": "#1A365D",
-  rosso: "#DC2626",
-  verde: "#16A34A",
-};
+interface BlankGroup {
+  blank_key: string;
+  inventory: Variant[];
+}
 
 export default function BlanksPage() {
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<BlankGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [newStock, setNewStock] = useState<{ [key: string]: number }>({});
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await fetch("/api/shopify2/catalog/blanks-stock-view");
-        const json = await res.json();
-        setData(json.blanks || []);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
-
-  const grouped = useMemo(() => {
-    return data.map((blank: any) => {
-      const colors: Record<string, any[]> = {};
-
-      blank.inventory.forEach((v: any) => {
-        if (!colors[v.colore]) colors[v.colore] = [];
-        colors[v.colore].push(v);
-      });
-
-      // ordina taglie
-      Object.keys(colors).forEach((c) => {
-        colors[c].sort((a, b) => {
-          const ia = SIZE_ORDER.indexOf(a.taglia.toUpperCase());
-          const ib = SIZE_ORDER.indexOf(b.taglia.toUpperCase());
-          return ia - ib;
-        });
-      });
-
-      return { blank_key: blank.blank_key, colors };
-    });
-  }, [data]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen text-xl">
-        Caricamento…
-      </div>
-    );
+  async function loadStock() {
+    setLoading(true);
+    const res = await fetch("/api/shopify2/catalog/blanks-stock-view");
+    const json = await res.json();
+    setData(json.blanks || []);
+    setLoading(false);
   }
 
+  async function updateStock(variantId: string, blankKey: string) {
+    const value = newStock[variantId];
+    if (value == null || value === "") return alert("Inserisci un valore!");
+
+    await fetch("/api/shopify2/catalog/sync-blanks-stock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        blank_key: blankKey,
+        variant_id: variantId,
+        new_stock: Number(value),
+      }),
+    });
+
+    await loadStock();
+  }
+
+  useEffect(() => {
+    loadStock();
+  }, []);
+
   return (
-    <div className="w-full">
-      <h1 className="text-4xl font-extrabold text-gray-900 mb-10 text-center">
+    <div className="w-full max-w-5xl mx-auto mt-8">
+      <h1 className="text-4xl font-bold text-center mb-8 flex items-center justify-center gap-2">
         📦 Stock Blanks
       </h1>
 
-      <div className="flex flex-col gap-10">
-        {grouped.map((group) => (
-          <div key={group.blank_key} className="bg-white shadow-xl rounded-3xl p-8 border border-gray-100">
-            {/* HEADER */}
-            <h2 className="text-3xl font-bold text-gray-800 mb-6 capitalize">
-              {group.blank_key.replaceAll("_", " ")}
-            </h2>
+      {loading && <p className="text-center text-xl">Caricamento...</p>}
 
-            {/* COLOR GROUPS */}
-            <div className="flex flex-col gap-8">
-              {Object.entries(group.colors).map(([color, variants]) => (
-                <div key={color} className="bg-gray-50 rounded-2xl p-6 shadow-inner">
-                  {/* COLOR TITLE */}
-                  <div className="flex items-center gap-3 mb-4">
-                    <span
-                      className="w-6 h-6 rounded-full border border-gray-300 shadow"
-                      style={{ backgroundColor: COLOR_MAP[color] || "#ccc" }}
-                    />
-                    <h3 className="text-2xl font-semibold capitalize">{color}</h3>
-                  </div>
+      {!loading &&
+        data.map((group) => {
+          // Raggruppo per colore
+          const colors: Record<string, Variant[]> = {};
 
-                  {/* TAGLIE GRID */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4">
-                    {variants.map((v) => (
-                      <div
-                        key={v.id}
-                        className={`rounded-2xl p-4 shadow-md border-2 transition-all bg-white hover:scale-[1.02] 
-                          ${v.stock === 0
-                            ? "border-red-300 bg-red-50"
-                            : v.stock <= 5
-                            ? "border-yellow-300 bg-yellow-50"
-                            : "border-green-300 bg-green-50/30"
-                          }`}
-                      >
-                        {/* TAGLIA */}
-                        <div className="text-xl font-bold text-gray-900 text-center mb-2">
-                          {v.taglia}
-                        </div>
+          group.inventory.forEach((v) => {
+            if (!colors[v.colore]) colors[v.colore] = [];
+            colors[v.colore].push(v);
+          });
 
-                        {/* STOCK */}
-                        <div className="flex justify-center mb-3">
-                          <span
-                            className={`px-4 py-1 text-lg font-bold rounded-xl
-                              ${v.stock === 0
-                                ? "bg-red-500 text-white"
-                                : v.stock <= 5
-                                ? "bg-yellow-500 text-white"
-                                : "bg-green-500 text-white"
+          return (
+            <Card key={group.blank_key} className="mb-10 shadow-md">
+              <CardContent className="p-6">
+                <h2 className="text-3xl font-semibold mb-4 capitalize">
+                  {group.blank_key.replace("-", " ")}
+                </h2>
+                <Separator className="my-4" />
+
+                {Object.entries(colors).map(([colore, variants]) => (
+                  <div key={colore} className="mb-8">
+                    <h3 className="text-xl font-semibold mb-3 capitalize flex items-center gap-2">
+                      🎨 {colore}
+                    </h3>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {variants.map((v) => (
+                        <Card key={v.id} className="p-4 border shadow-sm">
+                          <div className="flex justify-between">
+                            <div>
+                              <p className="text-lg font-semibold uppercase">{v.taglia}</p>
+                              <p className="text-gray-600 mt-1">Stock: {v.stock}</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex gap-3">
+                            <Input
+                              type="number"
+                              className="w-24"
+                              placeholder="Qty"
+                              onChange={(e) =>
+                                setNewStock((prev) => ({
+                                  ...prev,
+                                  [v.id]: e.target.value,
+                                }))
                               }
-                            `}
-                          >
-                            {v.stock}
-                          </span>
-                        </div>
-
-                        {/* INPUT PER AGGIORNARE STOCK */}
-                        <input
-                          type="number"
-                          placeholder="Aggiorna"
-                          className="w-full rounded-xl border border-gray-300 px-3 py-1 text-center 
-                            focus:ring-2 focus:ring-blue-300 focus:border-blue-500 transition-all bg-white"
-                          onChange={(e) => {
-                            const value = parseInt(e.target.value);
-                            if (!isNaN(value)) {
-                              v.newStock = value;
-                            }
-                          }}
-                        />
-
-                        {/* BUTTON (non ancora attivo) */}
-                        <button
-                          className="mt-3 w-full bg-blue-600 text-white font-bold py-1.5 rounded-xl shadow hover:bg-blue-700 transition-all"
-                          onClick={() => {
-                            alert(`TODO: aggiorna stock ${v.taglia} ${color}`);
-                          }}
-                        >
-                          Salva
-                        </button>
-                      </div>
-                    ))}
+                            />
+                            <Button
+                              onClick={() => updateStock(v.id, group.blank_key)}
+                              className="bg-blue-600 text-white"
+                            >
+                              Aggiorna
+                            </Button>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+                ))}
+              </CardContent>
+            </Card>
+          );
+        })}
     </div>
   );
 }
