@@ -8,7 +8,6 @@ import {
   CardHeader,
   Chip,
   TextField,
-  Grid,
   Typography,
   Paper,
   Stack,
@@ -20,6 +19,7 @@ import {
   ToggleButtonGroup,
   Tooltip,
 } from "@mui/material";
+import Grid from "@mui/material/Unstable_Grid2"; // ✅ Usa Grid2
 import {
   Inventory2,
   Warning,
@@ -169,8 +169,8 @@ export default function BlanksPage() {
           </Stack>
 
           {/* Stats Cards */}
-          <Grid container spacing={2} mb={3}>
-            <Grid item xs={12} sm={4}>
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid xs={12} sm={4}>
               <Paper elevation={2} sx={{ p: 2, bgcolor: "primary.50" }}>
                 <Stack direction="row" alignItems="center" spacing={2}>
                   <Avatar sx={{ bgcolor: "primary.main" }}>
@@ -188,7 +188,7 @@ export default function BlanksPage() {
               </Paper>
             </Grid>
 
-            <Grid item xs={12} sm={4}>
+            <Grid xs={12} sm={4}>
               <Paper elevation={2} sx={{ p: 2, bgcolor: "warning.50" }}>
                 <Stack direction="row" alignItems="center" spacing={2}>
                   <Avatar sx={{ bgcolor: "warning.main" }}>
@@ -206,7 +206,7 @@ export default function BlanksPage() {
               </Paper>
             </Grid>
 
-            <Grid item xs={12} sm={4}>
+            <Grid xs={12} sm={4}>
               <Paper elevation={2} sx={{ p: 2, bgcolor: "error.50" }}>
                 <Stack direction="row" alignItems="center" spacing={2}>
                   <Avatar sx={{ bgcolor: "error.main" }}>
@@ -267,7 +267,7 @@ export default function BlanksPage() {
         ) : (
           <Grid container spacing={3}>
             {filteredData.map((blank) => (
-              <Grid item xs={12} lg={6} key={blank.blank_key}>
+              <Grid xs={12} lg={6} key={blank.blank_key}>
                 <Card elevation={3}>
                   <CardHeader
                     avatar={
@@ -287,7 +287,7 @@ export default function BlanksPage() {
                   <CardContent>
                     <Grid container spacing={1.5}>
                       {blank.inventory.map((v: any) => (
-                        <Grid item xs={6} sm={4} md={3} key={v.id}>
+                        <Grid xs={6} sm={4} md={3} key={v.id}>
                           <Tooltip
                             title={`${v.colore} - ${v.taglia} | Stock: ${v.stock}`}
                             arrow
@@ -324,7 +324,7 @@ export default function BlanksPage() {
                                 alignItems="center"
                                 spacing={0.5}
                                 justifyContent="center"
-                                mb={1}
+                                sx={{ mb: 1 }}
                               >
                                 <Box
                                   sx={{
@@ -348,7 +348,7 @@ export default function BlanksPage() {
                               </Stack>
 
                               {/* Taglia */}
-                              <Typography variant="h6" fontWeight="bold" mb={1}>
+                              <Typography variant="h6" fontWeight="bold" sx={{ mb: 1 }}>
                                 {v.taglia}
                               </Typography>
 
