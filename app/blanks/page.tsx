@@ -1,13 +1,20 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 
-const COLOR_DOTS = {
+type Variant = {
+  id: string;
+  taglia: string;
+  colore: string;
+  stock: number;
+};
+
+type Blank = {
+  blank_key: string;
+  inventory: Variant[];
+};
+
+const COLOR_DOTS: Record<string, string> = {
   nero: "bg-black",
   bianco: "bg-white border-2 border-gray-300",
   navy: "bg-blue-900",
@@ -31,11 +38,11 @@ const COLOR_DOTS = {
 const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL"];
 
 export default function BlanksPage() {
-  const [blanks, setBlanks] = useState([]);
+  const [blanks, setBlanks] = useState<Blank[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newStock, setNewStock] = useState({});
+  const [newStock, setNewStock] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
-  const [filterStock, setFilterStock] = useState("all");
+  const [filterStock, setFilterStock] = useState<"all" | "low" | "out">("all");
 
   async function loadData() {
     setLoading(true);
@@ -51,7 +58,7 @@ export default function BlanksPage() {
     setLoading(false);
   }
 
-  async function updateStock(variantId, blankKey) {
+  async function updateStock(variantId: string, blankKey: string) {
     const value = Number(newStock[variantId]);
 
     if (!newStock[variantId] || isNaN(value)) {
@@ -261,7 +268,7 @@ export default function BlanksPage() {
         ) : (
           <div className="grid gap-6">
             {filteredBlanks.map((blank) => {
-              const grouped = {};
+              const grouped: Record<string, Variant[]> = {};
               blank.inventory.forEach((v) => {
                 if (!grouped[v.colore]) grouped[v.colore] = [];
                 grouped[v.colore].push(v);
@@ -370,3 +377,4 @@ export default function BlanksPage() {
     </div>
   );
 }
+
