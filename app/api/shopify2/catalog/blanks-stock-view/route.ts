@@ -5,45 +5,43 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const blanksCollection = await adminDb.collection("blanks_stock").get();
+    const blanksSnap = await adminDb.collection("blanks_stock").get();
 
-    const results: any[] = [];
+    const blanks: any[] = [];
 
-    for (const blankDoc of blanksCollection.docs) {
-      const blank_key = blankDoc.id;
+    for (const doc of blanksSnap.docs) {
+      const blank_key = doc.id;
 
-      const invSnap = await blankDoc.ref.collection("inventory").get();
+      // Legge la sottocollezione "inventory"
+      const invSnap = await adminDb
+        .collection("blanks_stock")
+        .doc(blank_key)
+        .collection("inventory")
+        .get();
 
       const inventory: any[] = [];
 
-      invSnap.forEach((doc) => {
-        const d = doc.data();
+      invSnap.forEach((v) => {
+        const d = v.data();
         inventory.push({
-          id: doc.id,
+          id: v.id,
           taglia: d.taglia,
           colore: d.colore,
           stock: d.stock,
-          variant_id: d.variant_id,
           updated_at: d.updated_at,
+          variant_id: d.variant_id,
         });
       });
 
-      results.push({
+      blanks.push({
         blank_key,
         inventory,
       });
     }
 
-    return NextResponse.json({
-      ok: true,
-      blanks: results,
-    });
-
+    return NextResponse.json({ ok: true, blanks });
   } catch (err: any) {
     console.error("❌ Errore blanks-stock-view:", err);
-    return NextResponse.json(
-      { ok: false, error: err.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
