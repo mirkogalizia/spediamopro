@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    console.log("▶️ TEST assign-blanks - 1 prodotto");
+    console.log("▶️ START assign-blanks-test - TUTTI I PRODOTTI");
 
     /* ------------------------------------------------------
        1️⃣ LOAD MAPPINGS
@@ -22,7 +22,7 @@ export async function GET() {
       }
     });
 
-    console.log("Mappings:", mapping);
+    console.log("✅ Mappings caricati:", Object.keys(mapping).length);
 
     /* ------------------------------------------------------
        2️⃣ LOAD BLANKS
@@ -45,118 +45,105 @@ export async function GET() {
       });
     }
 
-    console.log("Blanks keys:", Object.keys(blanksMap));
+    console.log("✅ Blanks caricati:", Object.keys(blanksMap).length);
 
     /* ------------------------------------------------------
-       3️⃣ LOAD 1 PRODUCT - T-SHIRT
+       3️⃣ LOAD ALL PRODUCTS
     ------------------------------------------------------ */
-    const productSnap = await adminDb
-      .collection("catalog_products")
-      .doc("15315039060351") // ID del prodotto T-shirt che mi hai mostrato
-      .get();
+    const productsSnap = await adminDb.collection("catalog_products").get();
+    const products = productsSnap.docs.map(d => d.data());
 
-    if (!productSnap.exists) {
-      return NextResponse.json({
-        ok: false,
-        error: "Prodotto test non trovato"
-      });
-    }
-
-    const p = productSnap.data();
-    console.log("Prodotto:", p?.title, "- Type:", p?.product_type);
+    console.log("✅ Prodotti caricati:", products.length);
 
     /* ------------------------------------------------------
-       4️⃣ PROCESS
+       4️⃣ PROCESS ALL
     ------------------------------------------------------ */
-    const category = (p?.product_type || "").trim().toLowerCase();
-    const blank_key = mapping[category];
+    let batch = adminDb.batch();
+    const batches: FirebaseFirestore.WriteBatch[] = [];
+    let counter = 0;
 
-    console.log("Category:", category, "→ Blank key:", blank_key);
+    let processedCount = 0;
+    let skippedCount = 0;
 
-    if (!blank_key) {
-      return NextResponse.json({
-        ok: false,
-        error: `No blank mapping per categoria: ${category}`
-      });
-    }
+    for (const p of products) {
+      const category = (p.product_type || "").trim().toLowerCase();
+      const blank_key = mapping[category];
 
-    const processed: any[] = [];
-    const skipped: any[] = [];
-
-    // Testa solo le prime 5 varianti
-    const testVariants = (p?.variants || []).slice(0, 5);
-
-    for (const v of testVariants) {
-      const size = (v.option1 || "").toUpperCase().trim();
-      const color = (v.option2 || "").toLowerCase().trim();
-
-      const blankVariantKey = `${size}-${color}`;
-      const blankVariant = blanksMap[blank_key]?.[blankVariantKey];
-
-      console.log(`Variante ${v.id}: ${size}-${color} → Blank trovato:`, !!blankVariant);
-
-      if (!blankVariant) {
-        skipped.push({
-          variant_id: v.id,
-          size,
-          color,
-          tried_key: blankVariantKey,
-          reason: "blank_variant_not_found"
-        });
+      if (!blank_key) {
+        skippedCount++;
         continue;
       }
 
-      processed.push({
-        variant_id: v.id,
-        size,
-        color,
-        blank_variant_id: blankVariant.variant_id,
-        will_write: true
-      });
+      if (!p.variants || !Array.isArray(p.variants)) {
+        skippedCount++;
+        continue;
+      }
+
+      for (const v of p.variants) {
+        const size = (v.option1 || "").toUpperCase().trim();
+        const color = (v.option2 || "").toLowerCase().trim();
+
+        if (!size || !color) {
+          skippedCount++;
+          continue;
+        }
+
+        const blankVariantKey = `${size}-${color}`;
+        const blankVariant = blanksMap[blank_key]?.[blankVariantKey];
+
+        if (!blankVariant) {
+          skippedCount++;
+          continue;
+        }
+
+        const ref = adminDb
+          .collection("graphics_blanks")
+          .doc(String(v.id));
+
+        batch.set(ref, {
+          product_id: p.id,
+          variant_id_grafica: v.id,
+          blank_key,
+          blank_variant_id: blankVariant.variant_id,
+          size,
+          color,
+          numero_grafica: v.numero_grafica || null,
+          updated_at: new Date().toISOString()
+        });
+
+        processedCount++;
+        counter++;
+
+        if (counter >= 450) {
+          batches.push(batch);
+          batch = adminDb.batch();
+          counter = 0;
+          console.log(`📦 Batch preparato (${batches.length})`);
+        }
+      }
     }
+
+    if (counter > 0) batches.push(batch);
+
+    console.log(`⏳ Commit di ${batches.length} batches...`);
 
     /* ------------------------------------------------------
-       5️⃣ WRITE TO FIRESTORE (solo prime 5)
+       5️⃣ COMMIT ALL BATCHES
     ------------------------------------------------------ */
-    const batch = adminDb.batch();
-
-    for (const proc of processed) {
-      const ref = adminDb
-        .collection("graphics_blanks")
-        .doc(String(proc.variant_id));
-
-      batch.set(ref, {
-        product_id: p?.id,
-        variant_id_grafica: proc.variant_id,
-        blank_key,
-        blank_variant_id: proc.blank_variant_id,
-        size: proc.size,
-        color: proc.color,
-        numero_grafica: null,
-        updated_at: new Date().toISOString(),
-        test: true
-      });
+    for (let i = 0; i < batches.length; i++) {
+      await batches[i].commit();
+      console.log(`✅ Batch ${i + 1}/${batches.length} committato`);
     }
 
-    await batch.commit();
-
-    console.log("✅ Scritto su Firestore");
+    console.log("✅ COMPLETATO!");
 
     return NextResponse.json({
       ok: true,
-      product: {
-        id: p?.id,
-        title: p?.title,
-        type: p?.product_type
-      },
-      category,
-      blank_key,
-      tested_variants: testVariants.length,
-      processed_count: processed.length,
-      skipped_count: skipped.length,
-      processed,
-      skipped,
-      message: "Controlla Firebase Console → graphics_blanks"
+      total_products: products.length,
+      processed_count: processedCount,
+      skipped_count: skippedCount,
+      batches_written: batches.length,
+      message: "✅ Tutti i prodotti processati! Controlla Firebase → graphics_blanks"
     });
 
   } catch (err: any) {
