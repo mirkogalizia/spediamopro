@@ -4,112 +4,53 @@ import { shopify2 } from "@/lib/shopify2";
 
 export const dynamic = "force-dynamic";
 
-/* ------------------------------------------------------
-   🚀 1️⃣ QUERY BULK PER PRENDERE TUTTI I DATI
------------------------------------------------------- */
-const BULK_QUERY = `
-{
-  products(first: 250) {
-    edges {
-      node {
-        id
-        productType
-        variants(first: 250) {
-          edges {
-            node {
-              id
-              title
-              selectedOptions {
-                name
-                value
-              }
-              metafields(namespace:"custom", keys:["numero_grafica"]) {
-                key
-                value
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-`;
+// Delay utility
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-async function runBulk() {
-  const res = await shopify2.graphql(`
-    mutation {
-      bulkOperationRunQuery(
-        query: """${BULK_QUERY}"""
-      ) {
-        bulkOperation {
-          id
-          status
-        }
-        userErrors { field message }
-      }
-    }
-  `);
-
-  if (res.userErrors?.length) {
-    throw new Error("Bulk run error: " + JSON.stringify(res.userErrors));
-  }
-
-  return res.bulkOperation.id;
-}
-
-async function waitBulkResult() {
-  while (true) {
-    const statusRes = await shopify2.graphql(`
-      {
-        currentBulkOperation {
-          id
-          status
-          url
-          errorCode
-        }
-      }
-    `);
-
-    const op = statusRes.currentBulkOperation;
-
-    if (!op || !op.status) throw new Error("Bulk op missing");
-
-    if (op.status === "COMPLETED") return op.url;
-    if (op.status === "FAILED") throw new Error("Bulk failed");
-
-    await new Promise(r => setTimeout(r, 1500));
+// Shopify safe wrapper
+async function safeShopify(path: string) {
+  try {
+    return await shopify2.api(path);
+  } catch (err) {
+    console.warn("❌ Shopify error on:", path);
+    return null; // NON lanciamo errori → non blocca tutto
   }
 }
 
-/* ------------------------------------------------------
-   🚀 2️⃣ MAIN
------------------------------------------------------- */
 export async function POST() {
   try {
-    console.log("▶️ START BULK + ASSIGN BLANKS");
+    console.log("▶️ START assign-blanks");
 
-    // STEP 1 → avvia bulk
-    const opId = await runBulk();
-    console.log("📦 Bulk operation ID:", opId);
-
-    // STEP 2 → aspetta il risultato
-    const url = await waitBulkResult();
-    console.log("📥 Bulk result URL ricevuto");
-
-    // STEP 3 → scarica JSONL
-    const raw = await (await fetch(url)).text();
-    const lines = raw.trim().split("\n").map(l => JSON.parse(l));
-
-    console.log(`📦 Prodotti caricati dal bulk: ${lines.length}`);
-
-    // STEP 4 → carica mapping e blanks
+    // 1) LOAD MAPPING
     const mappingSnap = await adminDb.collection("blanks_mapping").get();
-    const mapping = {};
-    mappingSnap.forEach(d => mapping[d.id] = d.data().blank_key);
 
+    const mapping: Record<string, string> = {};
+    mappingSnap.forEach((doc) => {
+      const d = doc.data();
+      if (d.blank_key) mapping[doc.id] = d.blank_key;
+    });
+
+    if (!Object.keys(mapping).length) {
+      return NextResponse.json({
+        ok: false,
+        error: "❌ Nessun mapping categoria → blank."
+      });
+    }
+
+    console.log("📦 MAPPING:", mapping);
+
+    // 2) LOAD PRODUCTS
+    const productsRes = await safeShopify("/products.json?limit=250");
+    if (!productsRes || !productsRes.products) {
+      throw new Error("❌ Shopify non ha restituito products");
+    }
+
+    const products = productsRes.products;
+    console.log(`📦 Prodotti caricati: ${products.length}`);
+
+    // 3) LOAD BLANK STOCK
     const blanksSnap = await adminDb.collection("blanks_stock").get();
-    const blanksMap = {};
+    const blanksMap: Record<string, Record<string, any>> = {};
 
     for (const blankDoc of blanksSnap.docs) {
       const blank_key = blankDoc.id;
@@ -121,14 +62,37 @@ export async function POST() {
         .collection("variants")
         .get();
 
-      variantsSnap.forEach(v => {
+      variantsSnap.forEach((v) => {
         blanksMap[blank_key][v.id] = v.data();
       });
     }
 
-    console.log("🧱 Blanks caricati:", Object.keys(blanksMap).length);
+    console.log(`📦 Blanks caricati: ${Object.keys(blanksMap).length}`);
 
-    // STEP 5 → processa tutto
+    // 4) CARICA METAFIELDS PER TUTTI I PRODOTTI
+    const allMetafields: Record<number, any> = {};
+
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+
+      const metaRes = await safeShopify(`/products/${p.id}/metafields.json`);
+      if (!metaRes || !metaRes.metafields) continue;
+
+      for (const m of metaRes.metafields) {
+        if (m.owner_resource === "variant" &&
+            m.namespace === "custom" &&
+            m.key === "numero_grafica") 
+        {
+          allMetafields[m.owner_id] = m.value;
+        }
+      }
+
+      await delay(300);
+    }
+
+    console.log(`🎨 Metafields caricati: ${Object.keys(allMetafields).length}`);
+
+    // 5) PROCESS PRODUCTS
     let batch = adminDb.batch();
     const batches = [];
     let counter = 0;
@@ -136,50 +100,61 @@ export async function POST() {
     const processed = [];
     const skipped = [];
 
-    for (const product of lines) {
-      const category = product.productType?.trim().toLowerCase() || "no_type";
+    for (const p of products) {
+      const category = (p.product_type || "").trim().toLowerCase();
       const blank_key = mapping[category];
 
       if (!blank_key) {
-        skipped.push({ product: product.id, reason: "no_blank_mapping" });
+        skipped.push({ product_id: p.id, reason: "NO_CATEGORY_MAPPING" });
         continue;
       }
 
-      for (const v of product.variants.edges) {
-        const variant = v.node;
+      if (!p.variants || !Array.isArray(p.variants)) {
+        skipped.push({ product_id: p.id, reason: "NO_VARIANTS" });
+        continue;
+      }
 
-        const size = variant.selectedOptions.find(o => o.name === "Taglia")?.value?.toUpperCase();
-        const color = variant.selectedOptions.find(o => o.name === "Colore")?.value?.toLowerCase();
+      for (const v of p.variants) {
+        if (!v) continue;
+
+        const size = (v.option1 || "").trim().toUpperCase();
+        const color = (v.option2 || "").trim().toLowerCase();
 
         if (!size || !color) {
-          skipped.push({ variant: variant.id, reason: "missing_size_or_color" });
+          skipped.push({ variant_id: v.id, reason: "BAD_VARIANT_OPTIONS" });
           continue;
         }
 
-        const key = `${size}-${color}`;
-        const blankVariant = blanksMap[blank_key]?.[key];
+        const blankKey = `${size}-${color}`;
+        const blankVariant = blanksMap[blank_key]?.[blankKey];
 
         if (!blankVariant) {
-          skipped.push({ variant: variant.id, reason: "blank_variant_not_found", tried: key });
+          skipped.push({
+            variant_id: v.id,
+            reason: "BLANK_VARIANT_NOT_FOUND",
+            tried: blankKey
+          });
           continue;
         }
 
-        const numero_grafica = variant.metafields?.[0]?.value || null;
+        const numero_grafica = allMetafields[v.id] || null;
 
-        const ref = adminDb.collection("graphics_blanks").doc(variant.id.replace("gid://shopify/ProductVariant/", ""));
+        const ref = adminDb
+          .collection("graphics_blanks")
+          .doc(String(v.id));
 
         batch.set(ref, {
-          product_id: product.id,
-          variant_id_grafica: variant.id,
+          product_id: p.id,
+          variant_id_grafica: v.id,
           blank_key,
           blank_variant_id: blankVariant.variant_id,
+          numero_grafica,
           size,
           color,
-          numero_grafica,
-          updated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         });
 
-        processed.push({ variant: variant.id, blank_key });
+        processed.push({ v: v.id, p: p.id });
 
         counter++;
         if (counter >= 480) {
@@ -192,21 +167,22 @@ export async function POST() {
 
     if (counter > 0) batches.push(batch);
 
-    // STEP 6 → commit batches
     for (const b of batches) await b.commit();
 
     console.log("✅ COMPLETATO");
 
     return NextResponse.json({
       ok: true,
-      processed_count: processed.length,
-      skipped_count: skipped.length,
-      processed: processed.slice(0, 30),
-      skipped: skipped.slice(0, 30),
+      processed: processed.length,
+      skipped: skipped.length,
+      skipped_items: skipped.slice(0, 30)
     });
 
-  } catch (error) {
-    console.error("❌ ERROR:", error);
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  } catch (err: any) {
+    console.error("❌ ERRORE assign-blanks:", err);
+    return NextResponse.json(
+      { ok: false, error: err.message },
+      { status: 500 }
+    );
   }
 }
