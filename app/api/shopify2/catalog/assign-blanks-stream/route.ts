@@ -57,14 +57,13 @@ export async function GET() {
         let processedCount = 0;
         let skippedCount = 0;
         let currentProduct = 0;
-        const skippedLog: any[] = []; // 🔥 LOG DEGLI SKIP
+        const skippedLog: any[] = [];
 
         for (const p of products) {
           currentProduct++;
           const category = (p.product_type || "").trim().toLowerCase();
           const blank_key = mapping[category];
 
-          // Invia progress ogni 5 prodotti
           if (currentProduct % 5 === 0 || currentProduct === totalProducts) {
             send({
               status: "processing",
@@ -94,11 +93,14 @@ export async function GET() {
               skippedCount++;
               skippedLog.push({
                 product_title: p.title,
+                product_id: p.id,
                 variant_id: v.id,
                 variant_title: v.title,
                 reason: "Missing size or color",
                 size,
-                color
+                color,
+                option1: v.option1,
+                option2: v.option2
               });
               continue;
             }
@@ -110,6 +112,7 @@ export async function GET() {
               skippedCount++;
               skippedLog.push({
                 product_title: p.title,
+                product_id: p.id,
                 product_type: p.product_type,
                 variant_id: v.id,
                 variant_title: v.title,
@@ -159,13 +162,13 @@ export async function GET() {
           });
         }
 
-        // 🔥 INVIA IL LOG DEGLI SKIP
+        // 🔥 INVIA TUTTI GLI SKIP (non più limitati a 50)
         send({
           status: "done",
           processed: processedCount,
           skipped: skippedCount,
           totalBatches: batches.length,
-          skipped_details: skippedLog.slice(0, 50), // primi 50 skip
+          skipped_details: skippedLog, // ← TUTTI gli skip
           message: "✅ Completato!"
         });
 
