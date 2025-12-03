@@ -4,56 +4,35 @@ import { shopify2 } from "@/lib/shopify2";
 
 export const dynamic = "force-dynamic";
 
-// Delay utility
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
-// Shopify safe wrapper
-async function safeShopify(path: string) {
+export async function GET() {
   try {
-    return await shopify2.api(path);
-  } catch (err) {
-    console.warn("❌ Shopify error on:", path);
-    return null; // NON lanciamo errori → non blocca tutto
-  }
-}
-
-export async function POST() {
-  try {
-    console.log("▶️ START assign-blanks");
-
-    // 1) LOAD MAPPING
+    // 1️⃣ LOAD BLANKS MAPPING
     const mappingSnap = await adminDb.collection("blanks_mapping").get();
-
     const mapping: Record<string, string> = {};
-    mappingSnap.forEach((doc) => {
-      const d = doc.data();
-      if (d.blank_key) mapping[doc.id] = d.blank_key;
+    mappingSnap.forEach((d) => {
+      const data = d.data();
+      if (data.blank_key) mapping[d.id] = data.blank_key;
     });
 
-    if (!Object.keys(mapping).length) {
+    if (Object.keys(mapping).length === 0) {
       return NextResponse.json({
         ok: false,
-        error: "❌ Nessun mapping categoria → blank."
+        error: "Nessun mapping categoria → blank."
       });
     }
 
-    console.log("📦 MAPPING:", mapping);
+    // 2️⃣ LOAD ALL PRODUCTS (1 single Shopify API)
+    const productsRes = await shopify2.listProducts(250);
+    const products = productsRes.products || [];
 
-    // 2) LOAD PRODUCTS
-    const productsRes = await safeShopify("/products.json?limit=250");
-    if (!productsRes || !productsRes.products) {
-      throw new Error("❌ Shopify non ha restituito products");
-    }
-
-    const products = productsRes.products;
-    console.log(`📦 Prodotti caricati: ${products.length}`);
-
-    // 3) LOAD BLANK STOCK
+    // 3️⃣ LOAD BLANK STOCK (1 Firestore query)
     const blanksSnap = await adminDb.collection("blanks_stock").get();
+
     const blanksMap: Record<string, Record<string, any>> = {};
 
     for (const blankDoc of blanksSnap.docs) {
       const blank_key = blankDoc.id;
+
       blanksMap[blank_key] = {};
 
       const variantsSnap = await adminDb
@@ -67,77 +46,45 @@ export async function POST() {
       });
     }
 
-    console.log(`📦 Blanks caricati: ${Object.keys(blanksMap).length}`);
-
-    // 4) CARICA METAFIELDS PER TUTTI I PRODOTTI
-    const allMetafields: Record<number, any> = {};
-
-    for (let i = 0; i < products.length; i++) {
-      const p = products[i];
-
-      const metaRes = await safeShopify(`/products/${p.id}/metafields.json`);
-      if (!metaRes || !metaRes.metafields) continue;
-
-      for (const m of metaRes.metafields) {
-        if (m.owner_resource === "variant" &&
-            m.namespace === "custom" &&
-            m.key === "numero_grafica") 
-        {
-          allMetafields[m.owner_id] = m.value;
-        }
-      }
-
-      await delay(300);
-    }
-
-    console.log(`🎨 Metafields caricati: ${Object.keys(allMetafields).length}`);
-
-    // 5) PROCESS PRODUCTS
+    // 4️⃣ PROCESS EVERYTHING IN MEMORY
+    const writes: FirebaseFirestore.WriteBatch[] = [];
     let batch = adminDb.batch();
-    const batches = [];
-    let counter = 0;
+    let batchCounter = 0;
 
     const processed = [];
-    const skipped = [];
 
     for (const p of products) {
-      const category = (p.product_type || "").trim().toLowerCase();
+      const category = p.product_type?.trim().toLowerCase() || "no_type";
+
       const blank_key = mapping[category];
+      if (!blank_key) continue;
 
-      if (!blank_key) {
-        skipped.push({ product_id: p.id, reason: "NO_CATEGORY_MAPPING" });
-        continue;
-      }
+      // 4b: metafields IN BULK (1 call per product)
+      let metafieldsMap: Record<number, any> = {};
+      try {
+        const metaRes = await shopify2.api(`/products/${p.id}/metafields.json`);
+        const list = metaRes.metafields || [];
 
-      if (!p.variants || !Array.isArray(p.variants)) {
-        skipped.push({ product_id: p.id, reason: "NO_VARIANTS" });
-        continue;
-      }
+        for (const m of list) {
+          if (m.owner_resource === "variant" &&
+              m.namespace === "custom" &&
+              m.key === "numero_grafica") 
+          {
+            metafieldsMap[m.owner_id] = m.value;
+          }
+        }
+      } catch {}
 
+      // 4c: PROCESS VARIANTS
       for (const v of p.variants) {
-        if (!v) continue;
+        const size = (v.option1 || "").toUpperCase().trim();
+        const color = (v.option2 || "").toLowerCase().trim();
+        const blankVariantKey = `${size}-${color}`;
 
-        const size = (v.option1 || "").trim().toUpperCase();
-        const color = (v.option2 || "").trim().toLowerCase();
+        const blankVariant = blanksMap[blank_key]?.[blankVariantKey];
+        if (!blankVariant) continue;
 
-        if (!size || !color) {
-          skipped.push({ variant_id: v.id, reason: "BAD_VARIANT_OPTIONS" });
-          continue;
-        }
-
-        const blankKey = `${size}-${color}`;
-        const blankVariant = blanksMap[blank_key]?.[blankKey];
-
-        if (!blankVariant) {
-          skipped.push({
-            variant_id: v.id,
-            reason: "BLANK_VARIANT_NOT_FOUND",
-            tried: blankKey
-          });
-          continue;
-        }
-
-        const numero_grafica = allMetafields[v.id] || null;
+        const numero_grafica = metafieldsMap[v.id] || null;
 
         const ref = adminDb
           .collection("graphics_blanks")
@@ -148,41 +95,41 @@ export async function POST() {
           variant_id_grafica: v.id,
           blank_key,
           blank_variant_id: blankVariant.variant_id,
-          numero_grafica,
           size,
           color,
-          updated_at: new Date().toISOString()
+          numero_grafica,
+          updated_at: new Date().toISOString(),
         });
 
-        processed.push({ v: v.id, p: p.id });
+        processed.push({
+          variant_id: v.id,
+          blank_key,
+          blank_variant: blankVariant.variant_id
+        });
 
-        counter++;
-        if (counter >= 480) {
-          batches.push(batch);
+        batchCounter++;
+        if (batchCounter >= 480) {
+          writes.push(batch);
           batch = adminDb.batch();
-          counter = 0;
+          batchCounter = 0;
         }
       }
     }
 
-    if (counter > 0) batches.push(batch);
+    if (batchCounter > 0) writes.push(batch);
 
-    for (const b of batches) await b.commit();
-
-    console.log("✅ COMPLETATO");
+    // 5️⃣ EXECUTE BATCHES (FAST)
+    for (const b of writes) {
+      await b.commit();
+    }
 
     return NextResponse.json({
       ok: true,
-      processed: processed.length,
-      skipped: skipped.length,
-      skipped_items: skipped.slice(0, 30)
+      processed_count: processed.length,
+      processed
     });
-
   } catch (err: any) {
-    console.error("❌ ERRORE assign-blanks:", err);
-    return NextResponse.json(
-      { ok: false, error: err.message },
-      { status: 500 }
-    );
+    console.error("❌ assign-blanks:", err);
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
