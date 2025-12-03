@@ -1,16 +1,20 @@
-// app/api/shopify2/catalog/assign-blanks-local/route.ts
+// app/api/shopify2/catalog/assign-blanks-batch/route.ts
 
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdminServer";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function POST(request: Request) {
   try {
-    console.log("▶️ START assign-blanks (LOCAL - solo Firebase)");
+    const body = await request.json().catch(() => ({}));
+    const startIndex = body.startIndex || 0;
+    const batchSize = 5; // 🔥 5 prodotti alla volta
+
+    console.log(`▶️ Batch ${Math.floor(startIndex / batchSize) + 1} - Starting at index ${startIndex}`);
 
     /* ------------------------------------------------------
-       1️⃣ LOAD CATEGORY → BLANK MAPPING
+       1️⃣ LOAD MAPPINGS
     ------------------------------------------------------ */
     const mappingSnap = await adminDb.collection("blanks_mapping").get();
     const mapping: Record<string, string> = {};
@@ -22,17 +26,8 @@ export async function GET() {
       }
     });
 
-    if (!Object.keys(mapping).length) {
-      return NextResponse.json({
-        ok: false,
-        error: "❌ Nessun mapping trovato"
-      });
-    }
-
-    console.log(`✅ Mappings caricati: ${Object.keys(mapping).length}`);
-
     /* ------------------------------------------------------
-       2️⃣ LOAD BLANKS STOCK
+       2️⃣ LOAD BLANKS
     ------------------------------------------------------ */
     const blanksSnap = await adminDb.collection("blanks_stock").get();
     const blanksMap: Record<string, Record<string, any>> = {};
@@ -52,57 +47,57 @@ export async function GET() {
       });
     }
 
-    console.log(`✅ Blanks caricati: ${Object.keys(blanksMap).length}`);
-
     /* ------------------------------------------------------
-       3️⃣ LOAD PRODUCTS FROM FIREBASE
+       3️⃣ LOAD PRODUCTS
     ------------------------------------------------------ */
     const productsSnap = await adminDb.collection("catalog_products").get();
-    const products = productsSnap.docs.map(d => d.data());
+    const allProducts = productsSnap.docs.map(d => d.data());
 
-    console.log(`✅ Prodotti caricati da Firebase: ${products.length}`);
+    const batchProducts = allProducts.slice(startIndex, startIndex + batchSize);
+    const totalProducts = allProducts.length;
+    const hasMore = (startIndex + batchSize) < totalProducts;
+
+    console.log(`Processing ${batchProducts.length} products (${startIndex + 1} to ${startIndex + batchProducts.length} of ${totalProducts})`);
+
+    if (batchProducts.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        done: true,
+        message: "✅ Tutti i prodotti processati!",
+        totalProducts
+      });
+    }
 
     /* ------------------------------------------------------
-       4️⃣ PROCESS & MATCH
+       4️⃣ PROCESS BATCH
     ------------------------------------------------------ */
     let batch = adminDb.batch();
     const batches: FirebaseFirestore.WriteBatch[] = [];
     let counter = 0;
 
-    const processed: any[] = [];
-    const skipped: any[] = [];
+    let processedCount = 0;
+    let skippedCount = 0;
 
-    for (const p of products) {
+    for (const p of batchProducts) {
       const category = (p.product_type || "").trim().toLowerCase();
       const blank_key = mapping[category];
 
       if (!blank_key) {
-        skipped.push({
-          product_id: p.id,
-          reason: "no_blank_mapping",
-          category
-        });
+        skippedCount++;
         continue;
       }
 
       if (!p.variants || !Array.isArray(p.variants)) {
-        skipped.push({
-          product_id: p.id,
-          reason: "no_variants"
-        });
+        skippedCount++;
         continue;
       }
 
       for (const v of p.variants) {
         const size = (v.option1 || "").toUpperCase().trim();
-        const color = (v.option2 || "").toLowerCase().trim(); // 🔥 Tutto minuscolo, come nei blank
+        const color = (v.option2 || "").toLowerCase().trim();
 
         if (!size || !color) {
-          skipped.push({
-            variant_id: v.id,
-            product_id: p.id,
-            reason: "missing_size_or_color"
-          });
+          skippedCount++;
           continue;
         }
 
@@ -110,17 +105,10 @@ export async function GET() {
         const blankVariant = blanksMap[blank_key]?.[blankVariantKey];
 
         if (!blankVariant) {
-          skipped.push({
-            variant_id: v.id,
-            product_id: p.id,
-            reason: "blank_variant_not_found",
-            tried_key: blankVariantKey,
-            blank_key
-          });
+          skippedCount++;
           continue;
         }
 
-        // 🎯 MATCH TROVATO!
         const ref = adminDb
           .collection("graphics_blanks")
           .doc(String(v.id));
@@ -136,14 +124,9 @@ export async function GET() {
           updated_at: new Date().toISOString()
         });
 
-        processed.push({
-          variant_id: v.id,
-          product_id: p.id,
-          blank_key,
-          blank_variant_id: blankVariant.variant_id
-        });
-
+        processedCount++;
         counter++;
+
         if (counter >= 480) {
           batches.push(batch);
           batch = adminDb.batch();
@@ -155,26 +138,33 @@ export async function GET() {
     if (counter > 0) batches.push(batch);
 
     /* ------------------------------------------------------
-       5️⃣ COMMIT BATCHES
+       5️⃣ COMMIT
     ------------------------------------------------------ */
-    console.log(`⏳ Commit di ${batches.length} batches...`);
-
     for (const b of batches) {
       await b.commit();
     }
 
-    console.log(`✅ Completato! Processed: ${processed.length}, Skipped: ${skipped.length}`);
+    console.log(`✅ Batch completed: ${processedCount} processed, ${skippedCount} skipped`);
 
+    /* ------------------------------------------------------
+       6️⃣ RETURN
+    ------------------------------------------------------ */
     return NextResponse.json({
       ok: true,
-      processed_count: processed.length,
-      skipped_count: skipped.length,
-      processed: processed.slice(0, 50),
-      skipped: skipped.slice(0, 30)
+      done: !hasMore,
+      currentBatch: Math.floor(startIndex / batchSize) + 1,
+      totalBatches: Math.ceil(totalProducts / batchSize),
+      processedInBatch: processedCount,
+      skippedInBatch: skippedCount,
+      nextStartIndex: hasMore ? startIndex + batchSize : null,
+      progress: `${Math.min(startIndex + batchSize, totalProducts)}/${totalProducts}`,
+      message: hasMore 
+        ? `Batch completato. Prossimo: ${startIndex + batchSize}` 
+        : "✅ Tutti i prodotti processati!"
     });
 
   } catch (err: any) {
-    console.error("❌ ERRORE assign-blanks:", err);
+    console.error("❌ ERRORE batch:", err);
     return NextResponse.json(
       { ok: false, error: err.message },
       { status: 500 }
