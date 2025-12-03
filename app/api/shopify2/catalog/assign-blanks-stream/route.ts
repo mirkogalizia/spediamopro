@@ -162,14 +162,23 @@ export async function GET() {
           });
         }
 
-        // 🔥 INVIA TUTTI GLI SKIP (non più limitati a 50)
+        // 🔥 SALVA IL LOG SU FIREBASE
+        if (skippedLog.length > 0) {
+          await adminDb.collection("assignment_logs").doc("last_run").set({
+            timestamp: new Date().toISOString(),
+            processed: processedCount,
+            skipped: skippedCount,
+            total_products: totalProducts,
+            skipped_details: skippedLog,
+          });
+        }
+
         send({
           status: "done",
           processed: processedCount,
           skipped: skippedCount,
           totalBatches: batches.length,
-          skipped_details: skippedLog, // ← TUTTI gli skip
-          message: "✅ Completato!"
+          message: "✅ Completato! Log salvato in Firebase → assignment_logs/last_run"
         });
 
         controller.close();
