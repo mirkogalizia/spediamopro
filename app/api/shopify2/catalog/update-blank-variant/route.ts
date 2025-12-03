@@ -1,9 +1,16 @@
+// app/api/shopify2/catalog/update-blank-variant/route.ts
+
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdminServer";
 import { shopify2 } from "@/lib/shopify2";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+
+// 🔥 Funzione per delay
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 export async function POST(req: Request) {
   try {
@@ -58,7 +65,6 @@ export async function POST(req: Request) {
     // 4️⃣ Trova TUTTE le grafiche associate a QUELLA variante
     const assocSnap = await adminDb
       .collection("graphics_blanks")
-      .where("blank_key", "==", blank_key)
       .where("blank_variant_id", "==", Number(variant_id))
       .get();
 
@@ -88,7 +94,7 @@ export async function POST(req: Request) {
     const updates: any[] = [];
     const errors: any[] = [];
 
-    // 6️⃣ Aggiorna ogni grafica su Shopify
+    // 6️⃣ Aggiorna ogni grafica su Shopify CON DELAY
     for (const doc of assocSnap.docs) {
       const assoc = doc.data();
       const graphicVariantId = Number(assoc.variant_id_grafica);
@@ -101,6 +107,9 @@ export async function POST(req: Request) {
         if (!inventoryItemId) {
           throw new Error("inventory_item_id non trovato");
         }
+
+        // 🔥 DELAY per evitare rate limit (300ms)
+        await sleep(300);
 
         // Aggiorna inventory su Shopify
         await shopify2.api(`/inventory_levels/set.json`, {
@@ -120,12 +129,53 @@ export async function POST(req: Request) {
 
         console.log(`✅ Grafica ${graphicVariantId} → stock ${finalStock}`);
 
+        // 🔥 DELAY dopo ogni aggiornamento (300ms)
+        await sleep(300);
+
       } catch (err: any) {
-        errors.push({
-          graphic_variant_id: graphicVariantId,
-          error: err.message,
-        });
-        console.error(`❌ Errore grafica ${graphicVariantId}:`, err.message);
+        // 🔥 Se errore 429, aspetta e riprova
+        if (err.message.includes("429")) {
+          console.log(`⏳ Rate limit, attendo 2 secondi...`);
+          await sleep(2000);
+          
+          try {
+            const variantRes = await shopify2.api(`/variants/${graphicVariantId}.json`);
+            const inventoryItemId = variantRes.variant?.inventory_item_id;
+            
+            if (inventoryItemId) {
+              await sleep(500);
+              await shopify2.api(`/inventory_levels/set.json`, {
+                method: "POST",
+                body: JSON.stringify({
+                  location_id: locationId,
+                  inventory_item_id: inventoryItemId,
+                  available: finalStock,
+                }),
+              });
+              
+              updates.push({
+                graphic_variant_id: graphicVariantId,
+                product_title: assoc.product_title || "N/A",
+                new_stock: finalStock,
+                retried: true,
+              });
+              
+              console.log(`✅ Grafica ${graphicVariantId} → stock ${finalStock} (retry)`);
+              continue;
+            }
+          } catch (retryErr: any) {
+            errors.push({
+              graphic_variant_id: graphicVariantId,
+              error: retryErr.message,
+            });
+          }
+        } else {
+          errors.push({
+            graphic_variant_id: graphicVariantId,
+            error: err.message,
+          });
+          console.error(`❌ Errore grafica ${graphicVariantId}:`, err.message);
+        }
       }
     }
 
@@ -150,3 +200,4 @@ export async function POST(req: Request) {
     );
   }
 }
+
