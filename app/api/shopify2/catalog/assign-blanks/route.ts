@@ -5,6 +5,11 @@ import { shopify2 } from "@/lib/shopify2";
 export const dynamic = "force-dynamic";
 
 /* ------------------------------------------------------
+   🔧 Utility per delay
+------------------------------------------------------ */
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/* ------------------------------------------------------
    🔧 Utility Shopify con retry anti-429
 ------------------------------------------------------ */
 async function shopifySafeRequest(path: string, method: "GET" | "POST" = "GET") {
@@ -19,16 +24,15 @@ async function shopifySafeRequest(path: string, method: "GET" | "POST" = "GET") 
       if (!is429) throw err;
 
       // Rate limit → aspetta e riprova
-      const wait = 300 + attempt * 400;
+      const wait = 1000 + attempt * 500;
       console.warn(`⚠️ Shopify 429, retry in ${wait}ms (${attempt + 1}/${MAX_RETRIES})`);
-      await new Promise(res => setTimeout(res, wait));
+      await delay(wait);
       attempt++;
     }
   }
 
   throw new Error(`Shopify API failed after ${MAX_RETRIES} retries: ${path}`);
 }
-
 
 /* ------------------------------------------------------
    🚀 MAIN LOGIC
@@ -55,11 +59,15 @@ export async function POST() {
       });
     }
 
+    console.log(`✅ Mappings caricati: ${Object.keys(mapping).length}`);
+
     /* ------------------------------------------------------
        2️⃣ LOAD ALL PRODUCTS (1 API CALL)
     ------------------------------------------------------ */
     const productsRes = await shopifySafeRequest("/products.json?limit=250");
     const products = productsRes.products || [];
+
+    console.log(`✅ Prodotti caricati: ${products.length}`);
 
     /* ------------------------------------------------------
        3️⃣ LOAD BLANKS STOCK (FIRESTORE)
@@ -82,25 +90,17 @@ export async function POST() {
       });
     }
 
+    console.log(`✅ Blanks caricati: ${Object.keys(blanksMap).length}`);
+
     /* ------------------------------------------------------
-       4️⃣ PROCESS PRODUCTS
+       4️⃣ CARICA TUTTI I METAFIELDS UNA VOLTA SOLA (CON DELAY)
     ------------------------------------------------------ */
-    let batch = adminDb.batch();
-    const batches: FirebaseFirestore.WriteBatch[] = [];
-    let counter = 0;
+    const allMetafieldsMap: Record<number, any> = {};
 
-    const processed: any[] = [];
+    console.log("⏳ Caricamento metafields in corso...");
 
-    for (const p of products) {
-      const category = p.product_type?.trim().toLowerCase() || "no_type";
-      const blank_key = mapping[category];
-
-      if (!blank_key) continue;
-
-      /* ------------------------------------------------------
-         4a️⃣ LOAD METAFIELDS (1 CALL / PRODUCT)
-      ------------------------------------------------------ */
-      let metafieldsMap: Record<number, any> = {};
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
 
       try {
         const metaRes = await shopifySafeRequest(`/products/${p.id}/metafields.json`);
@@ -112,28 +112,73 @@ export async function POST() {
             m.namespace === "custom" &&
             m.key === "numero_grafica"
           ) {
-            metafieldsMap[m.owner_id] = m.value;
+            allMetafieldsMap[m.owner_id] = m.value;
           }
         }
+
+        // 🔥 DELAY 550ms tra ogni chiamata per rispettare il limite di 2 req/sec
+        if (i < products.length - 1) {
+          await delay(550);
+        }
+
+        // Log progresso ogni 10 prodotti
+        if ((i + 1) % 10 === 0) {
+          console.log(`   📦 Metafields: ${i + 1}/${products.length}`);
+        }
+
       } catch (err) {
         console.warn(`⚠️ Metafields falliti per prodotto ${p.id}`);
       }
+    }
 
-      /* ------------------------------------------------------
-         4b️⃣ PROCESSA VARIANTI
-      ------------------------------------------------------ */
+    console.log(`✅ Metafields caricati per ${Object.keys(allMetafieldsMap).length} varianti`);
+
+    /* ------------------------------------------------------
+       5️⃣ PROCESS PRODUCTS & VARIANTS
+    ------------------------------------------------------ */
+    let batch = adminDb.batch();
+    const batches: FirebaseFirestore.WriteBatch[] = [];
+    let counter = 0;
+
+    const processed: any[] = [];
+    const skipped: any[] = [];
+
+    for (const p of products) {
+      const category = p.product_type?.trim().toLowerCase() || "no_type";
+      const blank_key = mapping[category];
+
+      if (!blank_key) {
+        skipped.push({ product_id: p.id, reason: "no_blank_mapping", category });
+        continue;
+      }
+
       for (const v of p.variants) {
         const size = (v.option1 || "").toUpperCase().trim();
         const color = (v.option2 || "").toLowerCase().trim();
+
+        if (!size || !color) {
+          skipped.push({ 
+            variant_id: v.id, 
+            product_id: p.id, 
+            reason: "missing_size_or_color" 
+          });
+          continue;
+        }
 
         const key = `${size}-${color}`;
         const blankVariant = blanksMap[blank_key]?.[key];
 
         if (!blankVariant) {
+          skipped.push({
+            variant_id: v.id,
+            product_id: p.id,
+            reason: "blank_variant_not_found",
+            tried_key: key,
+          });
           continue;
         }
 
-        const numero_grafica = metafieldsMap[v.id] || null;
+        const numero_grafica = allMetafieldsMap[v.id] || null;
 
         const ref = adminDb
           .collection("graphics_blanks")
@@ -169,17 +214,25 @@ export async function POST() {
     if (counter > 0) batches.push(batch);
 
     /* ------------------------------------------------------
-       5️⃣ COMMIT BATCHES
+       6️⃣ COMMIT BATCHES
     ------------------------------------------------------ */
+    console.log(`⏳ Commit di ${batches.length} batches...`);
+
     for (const b of batches) {
       await b.commit();
     }
 
+    console.log("✅ Assign-blanks completato");
+
     return NextResponse.json({
       ok: true,
       processed_count: processed.length,
-      processed,
+      skipped_count: skipped.length,
+      processed: processed.slice(0, 50), // primi 50 per non sovraccaricare la risposta
+      skipped: skipped.slice(0, 20), // primi 20 skipped
+      total_metafields_loaded: Object.keys(allMetafieldsMap).length,
     });
+
   } catch (err: any) {
     console.error("❌ ERRORE assign-blanks:", err);
     return NextResponse.json(
