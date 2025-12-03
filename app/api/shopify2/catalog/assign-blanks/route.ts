@@ -3,96 +3,134 @@ import { adminDb } from "@/lib/firebaseAdminServer";
 import { shopify2 } from "@/lib/shopify2";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
 
-// 🔥 funzione delay
-const wait = (ms: number) => new Promise(res => setTimeout(res, ms));
-
-// 🔥 funzione con retry automatico in caso di 429
-async function safeShopifyCall(url: string, options: any = {}, retry = 0) {
+export async function GET() {
   try {
-    return await shopify2.api(url, options);
-  } catch (err: any) {
-    if (err.status === 429 && retry < 5) {
-      console.warn(`⏳ Rate-limit. Retry #${retry + 1} in 800ms...`);
-      await wait(800);
-      return safeShopifyCall(url, options, retry + 1);
+    // 1️⃣ LOAD CATEGORY → BLANK MAPPING
+    const mappingSnap = await adminDb.collection("blanks_mapping").get();
+    const mapping: Record<string, string> = {};
+
+    mappingSnap.forEach((d) => {
+      const data = d.data();
+      if (data.blank_key) mapping[d.id] = data.blank_key;
+    });
+
+    if (Object.keys(mapping).length === 0) {
+      return NextResponse.json({ ok: false, error: "Nessun mapping categoria → blank." });
     }
-    throw err;
-  }
-}
 
-export async function POST() {
-  try {
-    console.log("🚀 Avvio associazione varianti → blanks");
+    // 2️⃣ LOAD ALL PRODUCTS (ONE CALL)
+    const productsRes = await shopify2.listProducts(250);
+    const products = productsRes.products || [];
 
-    const blanksSnap = await adminDb.collection("blanks_products").get();
-    const blanks = blanksSnap.docs.map((d) => d.data());
+    // 3️⃣ LOAD ALL BLANK STOCK (FIRESTORE)
+    const blanksSnap = await adminDb.collection("blanks_stock").get();
+    const blanksMap: Record<string, Record<string, any>> = {};
 
-    console.log(`🟦 Blanks trovati: ${blanks.length}`);
+    for (const blankDoc of blanksSnap.docs) {
+      const blank_key = blankDoc.id;
+      blanksMap[blank_key] = {};
 
-    const allProductsRes = await safeShopifyCall("/products.json?limit=250");
-    const products = allProductsRes.products || [];
+      const variantsSnap = await adminDb
+        .collection("blanks_stock")
+        .doc(blank_key)
+        .collection("variants")
+        .get();
 
-    console.log(`🟧 Prodotti Shopify caricati: ${products.length}`);
+      variantsSnap.forEach((v) => {
+        blanksMap[blank_key][v.id] = v.data();
+      });
+    }
 
-    const associations = [];
+    // 4️⃣ PROCESS ALL PRODUCTS
+    const writes: FirebaseFirestore.WriteBatch[] = [];
+    let batch = adminDb.batch();
+    let batchCounter = 0;
 
-    for (const product of products) {
-      for (const variant of product.variants) {
+    const processed = [];
 
-        // 💡 estrai taglia + colore
-        const size = variant.option1?.toLowerCase().trim();
-        const color = variant.option2?.toLowerCase().trim();
+    for (const p of products) {
+      const category = (p.product_type || "").trim().toLowerCase();
+      const blank_key = mapping[category];
 
-        if (!size || !color) {
-          console.log(`⚪ Skippato variante ${variant.id} (no size/color)`);
-          continue;
+      // 👉 Non saltare tutto il prodotto: se non ha blank, passa al prossimo
+      if (!blank_key) continue;
+
+      // 4B: GET ALL METAFIELDS OF THE PRODUCT (1 CALL)
+      let metafieldsMap: Record<number, any> = {};
+
+      try {
+        const metaRes = await shopify2.api(`/products/${p.id}/metafields.json`);
+        const list = metaRes.metafields || [];
+
+        for (const m of list) {
+          if (
+            m.owner_resource === "variant" &&
+            m.namespace === "custom" &&
+            m.key === "numero_grafica"
+          ) {
+            metaffieldsMap[m.owner_id] = m.value;
+          }
         }
+      } catch (err) {
+        // Se fallisce, NON blocca il flusso
+      }
 
-        // trova il blank corrispondente
-        const blank = blanks.find(
-          (b) =>
-            b.size?.toLowerCase() === size &&
-            b.color?.toLowerCase() === color &&
-            b.type?.toLowerCase() === product.product_type?.toLowerCase()
-        );
+      // 4C: PROCESS EACH VARIANT → MATCH ONLY EXISTING BLANKS
+      for (const v of p.variants) {
+        const rawSize = (v.option1 || "").trim().toUpperCase();
+        const rawColor = (v.option2 || "").trim().toLowerCase();
 
-        if (!blank) {
-          console.log(`🔸 Nessun blank trovato per variante ${variant.id}`);
-          continue;
-        }
+        if (!rawSize || !rawColor) continue;
 
-        console.log(`🔹 Associo ${variant.id} → ${blank.variant_id}`);
+        const blankVariantKey = `${rawSize}-${rawColor}`;
+        const blankVariant = blanksMap[blank_key]?.[blankVariantKey];
 
-        // 🔥 delay per NON prendere 429
-        await wait(450);
+        // 👉 Se il blank specifico non esiste, NON saltare il prodotto → passa alla prossima variante
+        if (!blankVariant) continue;
 
-        // scrivo su Firestore
-        associations.push({
-          product_id: product.id,
-          variant_id_grafica: variant.id,
-          blank_key: blank.key,
-          blank_variant_id: blank.variant_id,
+        const numero_grafica = metafieldsMap[v.id] || null;
+
+        const ref = adminDb.collection("graphics_blanks").doc(String(v.id));
+
+        batch.set(ref, {
+          product_id: p.id,
+          variant_id_grafica: v.id,
+          blank_key,
+          blank_variant_id: blankVariant.variant_id,
+          size: rawSize,
+          color: rawColor,
+          numero_grafica,
+          updated_at: new Date().toISOString(),
         });
 
-        await adminDb
-          .collection("graphics_blanks")
-          .doc(`${variant.id}`)
-          .set(associations[associations.length - 1]);
+        processed.push({
+          variant_id: v.id,
+          blank_key,
+          blank_variant: blankVariant.variant_id,
+        });
 
+        batchCounter++;
+        if (batchCounter >= 450) {
+          writes.push(batch);
+          batch = adminDb.batch();
+          batchCounter = 0;
+        }
       }
     }
 
-    console.log(`✅ Associazioni completate: ${associations.length}`);
+    // 5️⃣ EXECUTE ALL BATCH WRITES
+    if (batchCounter > 0) writes.push(batch);
+    for (const b of writes) await b.commit();
 
     return NextResponse.json({
       ok: true,
-      associations_count: associations.length,
+      processed_count: processed.length,
+      processed
     });
 
   } catch (err: any) {
-    console.error("❌ ERRORE assign-blanks:", err);
+    console.error("❌ assign-blanks:", err);
     return NextResponse.json(
       { ok: false, error: err.message },
       { status: 500 }
