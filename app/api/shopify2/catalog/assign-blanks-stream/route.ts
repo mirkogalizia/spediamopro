@@ -75,16 +75,34 @@ export async function GET() {
             });
           }
 
+          // 🔥 LOG: Categoria non mappata
           if (!blank_key) {
             skippedCount++;
+            skippedLog.push({
+              product_title: p.title,
+              product_id: p.id,
+              product_type: p.product_type,
+              reason: "No blank mapping for category",
+              category: category,
+              detail: `Category "${category}" not found in blanks_mapping`
+            });
             continue;
           }
 
+          // 🔥 LOG: Prodotto senza varianti
           if (!p.variants || !Array.isArray(p.variants)) {
             skippedCount++;
+            skippedLog.push({
+              product_title: p.title,
+              product_id: p.id,
+              product_type: p.product_type,
+              reason: "No variants",
+              detail: "Product has no variants array"
+            });
             continue;
           }
 
+          // 🔥 LOG: Varianti senza taglia o colore
           for (const v of p.variants) {
             const size = (v.option1 || "").toUpperCase().trim();
             const color = (v.option2 || "").toLowerCase().trim();
@@ -100,7 +118,8 @@ export async function GET() {
                 size,
                 color,
                 option1: v.option1,
-                option2: v.option2
+                option2: v.option2,
+                detail: !size ? "Size is missing" : "Color is missing"
               });
               continue;
             }
@@ -108,6 +127,7 @@ export async function GET() {
             const blankVariantKey = `${size}-${color}`;
             const blankVariant = blanksMap[blank_key]?.[blankVariantKey];
 
+            // 🔥 LOG: Blank variant non trovato
             if (!blankVariant) {
               skippedCount++;
               skippedLog.push({
@@ -120,7 +140,8 @@ export async function GET() {
                 blank_key,
                 looking_for: blankVariantKey,
                 size,
-                color
+                color,
+                detail: `Blank "${blankVariantKey}" not found in ${blank_key} stock`
               });
               continue;
             }
@@ -162,7 +183,7 @@ export async function GET() {
           });
         }
 
-        // 🔥 SALVA IL LOG SU FIREBASE
+        // 🔥 SALVA IL LOG COMPLETO SU FIREBASE
         if (skippedLog.length > 0) {
           await adminDb.collection("assignment_logs").doc("last_run").set({
             timestamp: new Date().toISOString(),
@@ -178,7 +199,7 @@ export async function GET() {
           processed: processedCount,
           skipped: skippedCount,
           totalBatches: batches.length,
-          message: "✅ Completato! Log salvato in Firebase → assignment_logs/last_run"
+          message: "✅ Completato! Log completo salvato in Firebase → assignment_logs/last_run"
         });
 
         controller.close();
