@@ -57,6 +57,7 @@ export async function GET() {
         let processedCount = 0;
         let skippedCount = 0;
         let currentProduct = 0;
+        const skippedLog: any[] = []; // 🔥 LOG DEGLI SKIP
 
         for (const p of products) {
           currentProduct++;
@@ -91,6 +92,14 @@ export async function GET() {
 
             if (!size || !color) {
               skippedCount++;
+              skippedLog.push({
+                product_title: p.title,
+                variant_id: v.id,
+                variant_title: v.title,
+                reason: "Missing size or color",
+                size,
+                color
+              });
               continue;
             }
 
@@ -99,6 +108,17 @@ export async function GET() {
 
             if (!blankVariant) {
               skippedCount++;
+              skippedLog.push({
+                product_title: p.title,
+                product_type: p.product_type,
+                variant_id: v.id,
+                variant_title: v.title,
+                reason: "Blank variant not found",
+                blank_key,
+                looking_for: blankVariantKey,
+                size,
+                color
+              });
               continue;
             }
 
@@ -139,11 +159,13 @@ export async function GET() {
           });
         }
 
+        // 🔥 INVIA IL LOG DEGLI SKIP
         send({
           status: "done",
           processed: processedCount,
           skipped: skippedCount,
           totalBatches: batches.length,
+          skipped_details: skippedLog.slice(0, 50), // primi 50 skip
           message: "✅ Completato!"
         });
 
