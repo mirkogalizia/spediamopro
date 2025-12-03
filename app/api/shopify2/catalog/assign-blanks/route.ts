@@ -6,6 +6,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    console.log("▶️ START assign-blanks (DEBUG VERSION)");
+
     // 1️⃣ LOAD BLANKS MAPPING
     const mappingSnap = await adminDb.collection("blanks_mapping").get();
     const mapping: Record<string, string> = {};
@@ -21,18 +23,17 @@ export async function GET() {
       });
     }
 
-    // 2️⃣ LOAD ALL PRODUCTS (1 single Shopify API)
+    // 2️⃣ LOAD ALL PRODUCTS (single API)
     const productsRes = await shopify2.listProducts(250);
     const products = productsRes.products || [];
 
-    // 3️⃣ LOAD BLANK STOCK (1 Firestore query)
+    // 3️⃣ LOAD BLANK STOCK
     const blanksSnap = await adminDb.collection("blanks_stock").get();
 
     const blanksMap: Record<string, Record<string, any>> = {};
 
     for (const blankDoc of blanksSnap.docs) {
       const blank_key = blankDoc.id;
-
       blanksMap[blank_key] = {};
 
       const variantsSnap = await adminDb
@@ -46,49 +47,98 @@ export async function GET() {
       });
     }
 
-    // 4️⃣ PROCESS EVERYTHING IN MEMORY
+    // UTILITY: normalize type
+    const normalizeType = (t: string = "") =>
+      t
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .replace(/felpa\s*cappuccio/g, "felpa cappuccio")
+        .replace(/hoodie/g, "felpa cappuccio")
+        .replace(/t-?shirt/g, "t shirt")
+        .replace(/t\s*shirt/g, "t shirt")
+        .replace(/tee/g, "t shirt");
+
+    // 4️⃣ PROCESSING & DEBUG
     const writes: FirebaseFirestore.WriteBatch[] = [];
     let batch = adminDb.batch();
     let batchCounter = 0;
 
     const processed = [];
+    const skipped = [];
 
     for (const p of products) {
-      const category = p.product_type?.trim().toLowerCase() || "no_type";
+      const rawType = p.product_type || "";
+      const type = normalizeType(rawType);
+      const blank_key = mapping[type];
 
-      const blank_key = mapping[category];
-      if (!blank_key) continue;
+      if (!blank_key) {
+        skipped.push({
+          product_id: p.id,
+          reason: "NO_MAPPING",
+          rawType,
+          normalizedType: type,
+        });
+        continue;
+      }
 
-      // 4b: metafields IN BULK (1 call per product)
+      // Load metafields (OLD LOGIC THAT WORKED)
       let metafieldsMap: Record<number, any> = {};
       try {
         const metaRes = await shopify2.api(`/products/${p.id}/metafields.json`);
         const list = metaRes.metafields || [];
 
         for (const m of list) {
-          if (m.owner_resource === "variant" &&
-              m.namespace === "custom" &&
-              m.key === "numero_grafica") 
-          {
+          if (
+            m.owner_resource === "variant" &&
+            m.namespace === "custom" &&
+            m.key === "numero_grafica"
+          ) {
             metafieldsMap[m.owner_id] = m.value;
           }
         }
-      } catch {}
+      } catch (err) {
+        skipped.push({
+          product_id: p.id,
+          reason: "META_API_FAIL",
+          error: `${err}`,
+        });
+      }
 
-      // 4c: PROCESS VARIANTS
+      // Process variants
       for (const v of p.variants) {
         const size = (v.option1 || "").toUpperCase().trim();
         const color = (v.option2 || "").toLowerCase().trim();
-        const blankVariantKey = `${size}-${color}`;
 
+        if (!size || !color) {
+          skipped.push({
+            product_id: p.id,
+            variant_id: v.id,
+            reason: "MISSING_SIZE_OR_COLOR",
+            size,
+            color,
+          });
+          continue;
+        }
+
+        const blankVariantKey = `${size}-${color}`;
         const blankVariant = blanksMap[blank_key]?.[blankVariantKey];
-        if (!blankVariant) continue;
+
+        if (!blankVariant) {
+          skipped.push({
+            product_id: p.id,
+            variant_id: v.id,
+            reason: "BLANK_VARIANT_NOT_FOUND",
+            blank_key,
+            expected_key: blankVariantKey,
+            available_keys: Object.keys(blanksMap[blank_key] || {}),
+          });
+          continue;
+        }
 
         const numero_grafica = metafieldsMap[v.id] || null;
 
-        const ref = adminDb
-          .collection("graphics_blanks")
-          .doc(String(v.id));
+        const ref = adminDb.collection("graphics_blanks").doc(String(v.id));
 
         batch.set(ref, {
           product_id: p.id,
@@ -102,9 +152,10 @@ export async function GET() {
         });
 
         processed.push({
+          product_id: p.id,
           variant_id: v.id,
           blank_key,
-          blank_variant: blankVariant.variant_id
+          blank_variant_id: blankVariant.variant_id,
         });
 
         batchCounter++;
@@ -118,7 +169,6 @@ export async function GET() {
 
     if (batchCounter > 0) writes.push(batch);
 
-    // 5️⃣ EXECUTE BATCHES (FAST)
     for (const b of writes) {
       await b.commit();
     }
@@ -126,10 +176,16 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       processed_count: processed.length,
-      processed
+      skipped_count: skipped.length,
+      processed,
+      skipped,
     });
+
   } catch (err: any) {
     console.error("❌ assign-blanks:", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: err.message },
+      { status: 500 }
+    );
   }
 }
