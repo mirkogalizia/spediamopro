@@ -13,6 +13,8 @@ export async function POST(req: Request) {
       return await downloadShopifyOrders();
     } else if (phase === "analyze") {
       return await analyzeData();
+    } else if (phase === "count") {
+      return await countExistingOrders();
     }
 
     return NextResponse.json({ ok: false, error: "Invalid phase" });
@@ -21,42 +23,91 @@ export async function POST(req: Request) {
   }
 }
 
+// CONTA quanti ordini hai già
+async function countExistingOrders() {
+  const count = await adminDb.collection("ml_sales_data").count().get();
+  
+  return NextResponse.json({
+    ok: true,
+    existing_records: count.data().count,
+  });
+}
+
 async function downloadShopifyOrders() {
-  console.log("🔄 Starting Shopify orders download...");
+  console.log("🔄 Starting FULL Shopify orders download...");
+
+  // Step 1: Controlla quanti ordini ci sono su Shopify
+  const countRes = await shopify2.api("/orders/count.json?status=any");
+  const totalOrdersOnShopify = countRes.count;
+  
+  console.log(`📊 Total orders on Shopify: ${totalOrdersOnShopify}`);
 
   let allOrders: any[] = [];
   let hasMore = true;
-  let sinceId = 0;
+  
+  // Inizia dalla data più recente e va indietro
+  let maxDate: string | null = null;
+  let iteration = 0;
+  const MAX_ITERATIONS = 200; // Safety limit (200 * 250 = 50,000 ordini max)
 
-  // Download tutti gli ordini (massimo 250 per request)
-  while (hasMore && allOrders.length < 10000) {
-    const url = `/orders.json?status=any&limit=250&since_id=${sinceId}&fields=id,order_number,line_items,created_at,total_price,financial_status,fulfillment_status,customer,shipping_address`;
+  while (hasMore && iteration < MAX_ITERATIONS) {
+    iteration++;
+    
+    // Costruisci URL con filtro data
+    let url = `/orders.json?status=any&limit=250&order=created_at+desc&fields=id,order_number,line_items,created_at,total_price,financial_status,fulfillment_status,customer,shipping_address`;
+    
+    if (maxDate) {
+      url += `&created_at_max=${maxDate}`;
+    }
+
+    console.log(`🔄 Batch ${iteration}: fetching...`);
 
     const res = await shopify2.api(url);
     const orders = res.orders || [];
 
     if (orders.length === 0) {
+      console.log("✅ No more orders to fetch");
       hasMore = false;
       break;
     }
 
     allOrders = allOrders.concat(orders);
-    sinceId = orders[orders.length - 1].id;
+    
+    // Imposta maxDate per prossima iterazione (ultimo ordine di questo batch)
+    const oldestOrder = orders[orders.length - 1];
+    maxDate = oldestOrder.created_at;
 
-    console.log(`📦 Downloaded ${allOrders.length} orders...`);
+    console.log(`📦 Batch ${iteration}: +${orders.length} orders (Total: ${allOrders.length}/${totalOrdersOnShopify})`);
+    console.log(`   Oldest in batch: ${maxDate}`);
+
+    // Se abbiamo scaricato meno di 250, significa che siamo alla fine
+    if (orders.length < 250) {
+      console.log("✅ Last batch (partial)");
+      hasMore = false;
+    }
 
     // Rate limit protection
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  console.log(`✅ Total orders: ${allOrders.length}`);
+  console.log(`✅ Download complete: ${allOrders.length} orders`);
+
+  if (allOrders.length < totalOrdersOnShopify) {
+    console.warn(`⚠️ Warning: Downloaded ${allOrders.length} but Shopify has ${totalOrdersOnShopify}`);
+  }
+
+  // Deduplica (nel caso ci siano duplicati)
+  const uniqueOrders = Array.from(
+    new Map(allOrders.map(order => [order.id, order])).values()
+  );
+
+  console.log(`🔍 After dedup: ${uniqueOrders.length} unique orders`);
 
   // Salva su Firebase
   const batches: any[][] = [];
   let currentBatch: any[] = [];
 
-  for (const order of allOrders) {
-    // Processa line items
+  for (const order of uniqueOrders) {
     for (const item of order.line_items) {
       const saleRecord = {
         // Order info
@@ -67,8 +118,8 @@ async function downloadShopifyOrders() {
         
         // Time features
         year: new Date(order.created_at).getFullYear(),
-        month: new Date(order.created_at).getMonth(), // 0-11
-        day_of_week: new Date(order.created_at).getDay(), // 0-6
+        month: new Date(order.created_at).getMonth(),
+        day_of_week: new Date(order.created_at).getDay(),
         week_of_year: getWeekOfYear(new Date(order.created_at)),
         
         // Product info
@@ -110,37 +161,46 @@ async function downloadShopifyOrders() {
     batches.push(currentBatch);
   }
 
-  // Scrivi in Firebase
   console.log(`💾 Writing ${batches.length} batches to Firebase...`);
 
   for (let i = 0; i < batches.length; i++) {
     const batch = adminDb.batch();
 
     for (const record of batches[i]) {
-      const ref = adminDb.collection("ml_sales_data").doc();
-      batch.set(ref, record);
+      // Usa compound key per evitare duplicati
+      const docId = `${record.order_id}_${record.variant_id}_${record.created_at}`;
+      const ref = adminDb.collection("ml_sales_data").doc(docId);
+      batch.set(ref, record, { merge: true });
     }
 
     await batch.commit();
     console.log(`✅ Batch ${i + 1}/${batches.length} saved`);
   }
 
-  // Calcola statistiche
-  const totalSales = batches.flat().reduce((sum, r) => sum + r.quantity, 0);
-  const totalRevenue = batches.flat().reduce((sum, r) => sum + r.revenue, 0);
-  const uniqueProducts = new Set(batches.flat().map((r) => r.variant_id)).size;
+  // Statistiche finali
+  const allRecords = batches.flat();
+  const totalSales = allRecords.reduce((sum, r) => sum + r.quantity, 0);
+  const totalRevenue = allRecords.reduce((sum, r) => sum + r.revenue, 0);
+  const uniqueProducts = new Set(allRecords.map((r) => r.variant_id)).size;
+
+  // Date range
+  const dates = uniqueOrders.map(o => new Date(o.created_at).getTime()).sort((a, b) => a - b);
+  const firstDate = new Date(dates[0]).toISOString();
+  const lastDate = new Date(dates[dates.length - 1]).toISOString();
 
   return NextResponse.json({
     ok: true,
-    total_orders: allOrders.length,
-    total_line_items: batches.flat().length,
+    total_orders_shopify: totalOrdersOnShopify,
+    total_orders_downloaded: uniqueOrders.length,
+    total_line_items: allRecords.length,
     total_units_sold: totalSales,
     total_revenue: totalRevenue.toFixed(2),
     unique_products: uniqueProducts,
     date_range: {
-      from: allOrders[allOrders.length - 1]?.created_at,
-      to: allOrders[0]?.created_at,
+      from: firstDate,
+      to: lastDate,
     },
+    coverage_percentage: ((uniqueOrders.length / totalOrdersOnShopify) * 100).toFixed(1),
   });
 }
 
@@ -152,9 +212,7 @@ function getWeekOfYear(date: Date): number {
 }
 
 async function analyzeData() {
-  // Aggregazioni base per vedere i dati
   const salesSnap = await adminDb.collection("ml_sales_data").limit(10).get();
-
   const samples = salesSnap.docs.map((doc) => doc.data());
 
   return NextResponse.json({
