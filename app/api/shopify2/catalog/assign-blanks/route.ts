@@ -5,110 +5,97 @@ import { shopify2 } from "@/lib/shopify2";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-export async function GET() {
+// 🔥 funzione delay
+const wait = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+// 🔥 funzione con retry automatico in caso di 429
+async function safeShopifyCall(url: string, options: any = {}, retry = 0) {
   try {
-    // 1️⃣ Mapping categoria → blank_key
-    const mappingSnap = await adminDb.collection("blanks_mapping").get();
-    const mapping: Record<string, string> = {};
-
-    mappingSnap.forEach((doc) => {
-      const d = doc.data();
-      if (d.blank_key) mapping[d.category] = d.blank_key;
-    });
-
-    if (Object.keys(mapping).length === 0) {
-      return NextResponse.json({
-        ok: false,
-        error: "Nessun mapping categoria → blank trovato",
-      });
+    return await shopify2.api(url, options);
+  } catch (err: any) {
+    if (err.status === 429 && retry < 5) {
+      console.warn(`⏳ Rate-limit. Retry #${retry + 1} in 800ms...`);
+      await wait(800);
+      return safeShopifyCall(url, options, retry + 1);
     }
+    throw err;
+  }
+}
 
-    // 2️⃣ Tutti i prodotti Shopify
-    const { products } = await shopify2.listProducts(250);
+export async function POST() {
+  try {
+    console.log("🚀 Avvio associazione varianti → blanks");
 
-    const mapped: any[] = [];
-    const skippedVariants: any[] = [];
-    const errors: any[] = [];
+    const blanksSnap = await adminDb.collection("blanks_products").get();
+    const blanks = blanksSnap.docs.map((d) => d.data());
 
-    for (const p of products) {
-      const category = p.product_type?.trim().toLowerCase() || "no_type";
-      const blank_key = mapping[category];
+    console.log(`🟦 Blanks trovati: ${blanks.length}`);
 
-      if (!blank_key) continue; // non mappato per design
+    const allProductsRes = await safeShopifyCall("/products.json?limit=250");
+    const products = allProductsRes.products || [];
 
-      for (const v of p.variants) {
-        const size = (v.option1 || "").toUpperCase().trim();
-        const color = (v.option2 || "").toLowerCase().trim();
-        const blankVariantKey = `${size}-${color}`;
+    console.log(`🟧 Prodotti Shopify caricati: ${products.length}`);
 
-        // 3️⃣ Verifica se esiste BLANK corrispondente
-        const blankSnap = await adminDb
-          .collection("blanks_stock")
-          .doc(blank_key)
-          .collection("variants")
-          .doc(blankVariantKey)
-          .get();
+    const associations = [];
 
-        if (!blankSnap.exists) {
-          skippedVariants.push({
-            product_id: p.id,
-            variant_id: v.id,
-            blank_key,
-            reason: `Blank variant missing: ${blankVariantKey}`,
-          });
-          continue; // ❗ skip SOLO QUESTA variante
+    for (const product of products) {
+      for (const variant of product.variants) {
+
+        // 💡 estrai taglia + colore
+        const size = variant.option1?.toLowerCase().trim();
+        const color = variant.option2?.toLowerCase().trim();
+
+        if (!size || !color) {
+          console.log(`⚪ Skippato variante ${variant.id} (no size/color)`);
+          continue;
         }
 
-        const blankData = blankSnap.data();
+        // trova il blank corrispondente
+        const blank = blanks.find(
+          (b) =>
+            b.size?.toLowerCase() === size &&
+            b.color?.toLowerCase() === color &&
+            b.type?.toLowerCase() === product.product_type?.toLowerCase()
+        );
 
-        // 4️⃣ Recupera numero_grafica dal metafield
-        let numero_grafica = null;
-        try {
-          const metafields = await shopify2.api(
-            `/products/${p.id}/variants/${v.id}/metafields.json`
-          );
-          numero_grafica =
-            metafields?.metafields?.find(
-              (m: any) =>
-                m.namespace === "custom" && m.key === "numero_grafica"
-            )?.value || null;
-        } catch (err) {
-          // niente di critico
+        if (!blank) {
+          console.log(`🔸 Nessun blank trovato per variante ${variant.id}`);
+          continue;
         }
 
-        // 5️⃣ Salva nel mapping
+        console.log(`🔹 Associo ${variant.id} → ${blank.variant_id}`);
+
+        // 🔥 delay per NON prendere 429
+        await wait(450);
+
+        // scrivo su Firestore
+        associations.push({
+          product_id: product.id,
+          variant_id_grafica: variant.id,
+          blank_key: blank.key,
+          blank_variant_id: blank.variant_id,
+        });
+
         await adminDb
           .collection("graphics_blanks")
-          .doc(String(v.id))
-          .set({
-            product_id: p.id,
-            variant_id_grafica: v.id,
-            size,
-            color,
-            blank_key,
-            blank_variant_id: blankData.variant_id,
-            numero_grafica,
-            updated_at: new Date().toISOString(),
-          });
+          .doc(`${variant.id}`)
+          .set(associations[associations.length - 1]);
 
-        mapped.push({
-          product_id: p.id,
-          variant_id: v.id,
-          blank_key,
-          blank_variant: blankData.variant_id,
-        });
       }
     }
 
+    console.log(`✅ Associazioni completate: ${associations.length}`);
+
     return NextResponse.json({
       ok: true,
-      mapped_count: mapped.length,
-      skipped_count: skippedVariants.length,
-      mapped: mapped.slice(0, 30),
-      skipped: skippedVariants.slice(0, 30),
+      associations_count: associations.length,
     });
+
   } catch (err: any) {
-    console.error("❌ assign-blanks error:", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    console.error("❌ ERRORE assign-blanks:", err);
+    return NextResponse.json(
+      { ok: false, error: err.message },
+      { status: 500 }
+    );
   }
 }
