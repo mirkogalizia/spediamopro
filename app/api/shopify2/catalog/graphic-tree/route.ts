@@ -110,7 +110,7 @@ export async function GET() {
     
     for (const productId of productIdsArray) {
       try {
-        const res = await shopify2.getProduct(productId);
+        const res = await shopify2.api(`/products/${1}.json`);
         if (res?.product?.image?.src) {
           productsImages[productId] = res.product.image.src;
         }

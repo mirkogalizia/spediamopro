@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     // Scarica tutti i prodotti
-    const res = await shopify2.listProducts(250);
+    const res = await shopify2.api("/products.json?limit=250");
 
     const products = res.products || [];
 

@@ -38,7 +38,7 @@ export async function GET() {
       console.log(`📦 Scarico varianti per: ${blank_key} (ID: ${product_id})`);
 
       // Shopify call
-      const res = await shopify2.getProduct(product_id);
+      const res = await shopify2.api(`/products/${1}.json`);
       if (!res?.product?.variants) {
         console.log(`❌ Nessuna variante trovata per ${product_id}`);
         continue;
