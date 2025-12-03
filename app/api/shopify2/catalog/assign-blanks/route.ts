@@ -69,7 +69,7 @@ export async function GET() {
             m.namespace === "custom" &&
             m.key === "numero_grafica"
           ) {
-            metaffieldsMap[m.owner_id] = m.value;
+            metafieldsMap[m.owner_id] = m.value;
           }
         }
       } catch (err) {
