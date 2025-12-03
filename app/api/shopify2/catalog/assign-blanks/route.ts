@@ -5,75 +5,111 @@ import { shopify2 } from "@/lib/shopify2";
 export const dynamic = "force-dynamic";
 
 /* ------------------------------------------------------
-   🔧 Utility per delay
+   🚀 1️⃣ QUERY BULK PER PRENDERE TUTTI I DATI
 ------------------------------------------------------ */
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-/* ------------------------------------------------------
-   🔧 Utility Shopify con retry anti-429
------------------------------------------------------- */
-async function shopifySafeRequest(path: string, method: "GET" | "POST" = "GET") {
-  const MAX_RETRIES = 6;
-  let attempt = 0;
-
-  while (attempt < MAX_RETRIES) {
-    try {
-      return await shopify2.api(path, method);
-    } catch (err: any) {
-      const is429 = err?.status === 429;
-      if (!is429) throw err;
-
-      // Rate limit → aspetta e riprova
-      const wait = 1000 + attempt * 500;
-      console.warn(`⚠️ Shopify 429, retry in ${wait}ms (${attempt + 1}/${MAX_RETRIES})`);
-      await delay(wait);
-      attempt++;
+const BULK_QUERY = `
+{
+  products(first: 250) {
+    edges {
+      node {
+        id
+        productType
+        variants(first: 250) {
+          edges {
+            node {
+              id
+              title
+              selectedOptions {
+                name
+                value
+              }
+              metafields(namespace:"custom", keys:["numero_grafica"]) {
+                key
+                value
+              }
+            }
+          }
+        }
+      }
     }
   }
+}
+`;
 
-  throw new Error(`Shopify API failed after ${MAX_RETRIES} retries: ${path}`);
+async function runBulk() {
+  const res = await shopify2.graphql(`
+    mutation {
+      bulkOperationRunQuery(
+        query: """${BULK_QUERY}"""
+      ) {
+        bulkOperation {
+          id
+          status
+        }
+        userErrors { field message }
+      }
+    }
+  `);
+
+  if (res.userErrors?.length) {
+    throw new Error("Bulk run error: " + JSON.stringify(res.userErrors));
+  }
+
+  return res.bulkOperation.id;
+}
+
+async function waitBulkResult() {
+  while (true) {
+    const statusRes = await shopify2.graphql(`
+      {
+        currentBulkOperation {
+          id
+          status
+          url
+          errorCode
+        }
+      }
+    `);
+
+    const op = statusRes.currentBulkOperation;
+
+    if (!op || !op.status) throw new Error("Bulk op missing");
+
+    if (op.status === "COMPLETED") return op.url;
+    if (op.status === "FAILED") throw new Error("Bulk failed");
+
+    await new Promise(r => setTimeout(r, 1500));
+  }
 }
 
 /* ------------------------------------------------------
-   🚀 MAIN LOGIC
+   🚀 2️⃣ MAIN
 ------------------------------------------------------ */
 export async function POST() {
   try {
-    console.log("▶️ START assign-blanks");
+    console.log("▶️ START BULK + ASSIGN BLANKS");
 
-    /* ------------------------------------------------------
-       1️⃣ LOAD CATEGORY → BLANK KEY MAPPING
-    ------------------------------------------------------ */
+    // STEP 1 → avvia bulk
+    const opId = await runBulk();
+    console.log("📦 Bulk operation ID:", opId);
+
+    // STEP 2 → aspetta il risultato
+    const url = await waitBulkResult();
+    console.log("📥 Bulk result URL ricevuto");
+
+    // STEP 3 → scarica JSONL
+    const raw = await (await fetch(url)).text();
+    const lines = raw.trim().split("\n").map(l => JSON.parse(l));
+
+    console.log(`📦 Prodotti caricati dal bulk: ${lines.length}`);
+
+    // STEP 4 → carica mapping e blanks
     const mappingSnap = await adminDb.collection("blanks_mapping").get();
+    const mapping = {};
+    mappingSnap.forEach(d => mapping[d.id] = d.data().blank_key);
 
-    const mapping: Record<string, string> = {};
-    mappingSnap.forEach((doc) => {
-      const d = doc.data();
-      if (d.blank_key) mapping[doc.id] = d.blank_key;
-    });
-
-    if (!Object.keys(mapping).length) {
-      return NextResponse.json({
-        ok: false,
-        error: "❌ Nessun mapping categoria → blank trovato in Firestore.",
-      });
-    }
-
-    console.log(`✅ Mappings caricati: ${Object.keys(mapping).length}`);
-
-    /* ------------------------------------------------------
-       2️⃣ LOAD ALL PRODUCTS (1 API CALL)
-    ------------------------------------------------------ */
-    const productsRes = await shopifySafeRequest("/products.json?limit=250");
-    const products = productsRes.products || [];
-
-    console.log(`✅ Prodotti caricati: ${products.length}`);
-
-    /* ------------------------------------------------------
-       3️⃣ LOAD BLANKS STOCK (FIRESTORE)
-    ------------------------------------------------------ */
     const blanksSnap = await adminDb.collection("blanks_stock").get();
-    const blanksMap: Record<string, Record<string, any>> = {};
+    const blanksMap = {};
 
     for (const blankDoc of blanksSnap.docs) {
       const blank_key = blankDoc.id;
@@ -85,83 +121,38 @@ export async function POST() {
         .collection("variants")
         .get();
 
-      variantsSnap.forEach((v) => {
+      variantsSnap.forEach(v => {
         blanksMap[blank_key][v.id] = v.data();
       });
     }
 
-    console.log(`✅ Blanks caricati: ${Object.keys(blanksMap).length}`);
+    console.log("🧱 Blanks caricati:", Object.keys(blanksMap).length);
 
-    /* ------------------------------------------------------
-       4️⃣ CARICA TUTTI I METAFIELDS UNA VOLTA SOLA (CON DELAY)
-    ------------------------------------------------------ */
-    const allMetafieldsMap: Record<number, any> = {};
-
-    console.log("⏳ Caricamento metafields in corso...");
-
-    for (let i = 0; i < products.length; i++) {
-      const p = products[i];
-
-      try {
-        const metaRes = await shopifySafeRequest(`/products/${p.id}/metafields.json`);
-        const metaList = metaRes.metafields || [];
-
-        for (const m of metaList) {
-          if (
-            m.owner_resource === "variant" &&
-            m.namespace === "custom" &&
-            m.key === "numero_grafica"
-          ) {
-            allMetafieldsMap[m.owner_id] = m.value;
-          }
-        }
-
-        // 🔥 DELAY 550ms tra ogni chiamata per rispettare il limite di 2 req/sec
-        if (i < products.length - 1) {
-          await delay(550);
-        }
-
-        // Log progresso ogni 10 prodotti
-        if ((i + 1) % 10 === 0) {
-          console.log(`   📦 Metafields: ${i + 1}/${products.length}`);
-        }
-
-      } catch (err) {
-        console.warn(`⚠️ Metafields falliti per prodotto ${p.id}`);
-      }
-    }
-
-    console.log(`✅ Metafields caricati per ${Object.keys(allMetafieldsMap).length} varianti`);
-
-    /* ------------------------------------------------------
-       5️⃣ PROCESS PRODUCTS & VARIANTS
-    ------------------------------------------------------ */
+    // STEP 5 → processa tutto
     let batch = adminDb.batch();
-    const batches: FirebaseFirestore.WriteBatch[] = [];
+    const batches = [];
     let counter = 0;
 
-    const processed: any[] = [];
-    const skipped: any[] = [];
+    const processed = [];
+    const skipped = [];
 
-    for (const p of products) {
-      const category = p.product_type?.trim().toLowerCase() || "no_type";
+    for (const product of lines) {
+      const category = product.productType?.trim().toLowerCase() || "no_type";
       const blank_key = mapping[category];
 
       if (!blank_key) {
-        skipped.push({ product_id: p.id, reason: "no_blank_mapping", category });
+        skipped.push({ product: product.id, reason: "no_blank_mapping" });
         continue;
       }
 
-      for (const v of p.variants) {
-        const size = (v.option1 || "").toUpperCase().trim();
-        const color = (v.option2 || "").toLowerCase().trim();
+      for (const v of product.variants.edges) {
+        const variant = v.node;
+
+        const size = variant.selectedOptions.find(o => o.name === "Taglia")?.value?.toUpperCase();
+        const color = variant.selectedOptions.find(o => o.name === "Colore")?.value?.toLowerCase();
 
         if (!size || !color) {
-          skipped.push({ 
-            variant_id: v.id, 
-            product_id: p.id, 
-            reason: "missing_size_or_color" 
-          });
+          skipped.push({ variant: variant.id, reason: "missing_size_or_color" });
           continue;
         }
 
@@ -169,24 +160,17 @@ export async function POST() {
         const blankVariant = blanksMap[blank_key]?.[key];
 
         if (!blankVariant) {
-          skipped.push({
-            variant_id: v.id,
-            product_id: p.id,
-            reason: "blank_variant_not_found",
-            tried_key: key,
-          });
+          skipped.push({ variant: variant.id, reason: "blank_variant_not_found", tried: key });
           continue;
         }
 
-        const numero_grafica = allMetafieldsMap[v.id] || null;
+        const numero_grafica = variant.metafields?.[0]?.value || null;
 
-        const ref = adminDb
-          .collection("graphics_blanks")
-          .doc(String(v.id));
+        const ref = adminDb.collection("graphics_blanks").doc(variant.id.replace("gid://shopify/ProductVariant/", ""));
 
         batch.set(ref, {
-          product_id: p.id,
-          variant_id_grafica: v.id,
+          product_id: product.id,
+          variant_id_grafica: variant.id,
           blank_key,
           blank_variant_id: blankVariant.variant_id,
           size,
@@ -195,12 +179,7 @@ export async function POST() {
           updated_at: new Date().toISOString(),
         });
 
-        processed.push({
-          variant_id: v.id,
-          product_id: p.id,
-          blank_key,
-          blank_variant_id: blankVariant.variant_id,
-        });
+        processed.push({ variant: variant.id, blank_key });
 
         counter++;
         if (counter >= 480) {
@@ -213,31 +192,21 @@ export async function POST() {
 
     if (counter > 0) batches.push(batch);
 
-    /* ------------------------------------------------------
-       6️⃣ COMMIT BATCHES
-    ------------------------------------------------------ */
-    console.log(`⏳ Commit di ${batches.length} batches...`);
+    // STEP 6 → commit batches
+    for (const b of batches) await b.commit();
 
-    for (const b of batches) {
-      await b.commit();
-    }
-
-    console.log("✅ Assign-blanks completato");
+    console.log("✅ COMPLETATO");
 
     return NextResponse.json({
       ok: true,
       processed_count: processed.length,
       skipped_count: skipped.length,
-      processed: processed.slice(0, 50), // primi 50 per non sovraccaricare la risposta
-      skipped: skipped.slice(0, 20), // primi 20 skipped
-      total_metafields_loaded: Object.keys(allMetafieldsMap).length,
+      processed: processed.slice(0, 30),
+      skipped: skipped.slice(0, 30),
     });
 
-  } catch (err: any) {
-    console.error("❌ ERRORE assign-blanks:", err);
-    return NextResponse.json(
-      { ok: false, error: err.message },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error("❌ ERROR:", error);
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 }
