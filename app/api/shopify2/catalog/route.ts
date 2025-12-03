@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 const SHOPIFY_STORE = process.env.SHOPIFY_DOMAIN_2!;
 const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN_2!;
 const API_VERSION = "2023-10";
