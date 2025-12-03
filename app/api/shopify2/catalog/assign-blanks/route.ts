@@ -1,188 +1,159 @@
+// app/api/shopify2/catalog/assign-blanks/route.ts
+
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdminServer";
 import { shopify2 } from "@/lib/shopify2";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  try {
-    console.log("▶️ START assign-blanks (DEBUG VERSION)");
+// 💡 GraphQL query completa
+const QUERY = `
+  query fetchProducts($cursor: String) {
+    products(first: 250, after: $cursor) {
+      pageInfo { hasNextPage endCursor }
+      edges {
+        node {
+          id
+          productType
+          title
+          variants(first: 100) {
+            edges {
+              node {
+                id
+                title
+                selectedOptions { name value }
+                metafields(namespace: "custom", keys: ["numero_grafica"]) {
+                  key
+                  value
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
 
-    // 1️⃣ LOAD BLANKS MAPPING
+export async function GET() {
+  console.log("▶️ START assign-blanks BULK");
+
+  try {
+    // 1) Load category → blank mapping
     const mappingSnap = await adminDb.collection("blanks_mapping").get();
     const mapping: Record<string, string> = {};
     mappingSnap.forEach((d) => {
-      const data = d.data();
-      if (data.blank_key) mapping[d.id] = data.blank_key;
+      const key = d.id.toLowerCase().trim();
+      mapping[key] = d.data().blank_key;
     });
 
-    if (Object.keys(mapping).length === 0) {
-      return NextResponse.json({
-        ok: false,
-        error: "Nessun mapping categoria → blank."
-      });
-    }
+    if (!Object.keys(mapping).length)
+      return NextResponse.json({ ok: false, error: "No blanks mapping" });
 
-    // 2️⃣ LOAD ALL PRODUCTS (single API)
-    const productsRes = await shopify2.listProducts(250);
-    const products = productsRes.products || [];
-
-    // 3️⃣ LOAD BLANK STOCK
+    // 2) Load blanks stock
     const blanksSnap = await adminDb.collection("blanks_stock").get();
+    const blanks: Record<string, Record<string, any>> = {};
 
-    const blanksMap: Record<string, Record<string, any>> = {};
+    for (const doc of blanksSnap.docs) {
+      const key = doc.id;
+      blanks[key] = {};
 
-    for (const blankDoc of blanksSnap.docs) {
-      const blank_key = blankDoc.id;
-      blanksMap[blank_key] = {};
-
-      const variantsSnap = await adminDb
-        .collection("blanks_stock")
-        .doc(blank_key)
-        .collection("variants")
-        .get();
-
-      variantsSnap.forEach((v) => {
-        blanksMap[blank_key][v.id] = v.data();
+      const vSnap = await doc.ref.collection("variants").get();
+      vSnap.forEach((v) => {
+        blanks[key][v.id] = v.data();
       });
     }
 
-    // UTILITY: normalize type
-    const normalizeType = (t: string = "") =>
-      t
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, " ")
-        .replace(/felpa\s*cappuccio/g, "felpa cappuccio")
-        .replace(/hoodie/g, "felpa cappuccio")
-        .replace(/t-?shirt/g, "t shirt")
-        .replace(/t\s*shirt/g, "t shirt")
-        .replace(/tee/g, "t shirt");
+    // 3) Fetch ALL products in bulk (no rate limit)
+    let cursor: string | null = null;
+    const allProducts: any[] = [];
 
-    // 4️⃣ PROCESSING & DEBUG
-    const writes: FirebaseFirestore.WriteBatch[] = [];
+    do {
+      const res = await shopify2.graphql(QUERY, { cursor });
+
+      const edges = res.data.products.edges;
+      edges.forEach((e: any) => allProducts.push(e.node));
+
+      cursor = res.data.products.pageInfo.hasNextPage
+        ? res.data.products.pageInfo.endCursor
+        : null;
+    } while (cursor);
+
+    console.log("📦 Total products loaded:", allProducts.length);
+
+    // 4) Process & write to Firestore
     let batch = adminDb.batch();
-    let batchCounter = 0;
+    const batches: any[] = [];
+    let count = 0;
 
-    const processed = [];
-    const skipped = [];
-
-    for (const p of products) {
-      const rawType = p.product_type || "";
-      const type = normalizeType(rawType);
+    for (const p of allProducts) {
+      const type = (p.productType || "").trim().toLowerCase();
       const blank_key = mapping[type];
+      if (!blank_key) continue;
 
-      if (!blank_key) {
-        skipped.push({
-          product_id: p.id,
-          reason: "NO_MAPPING",
-          rawType,
-          normalizedType: type,
-        });
-        continue;
-      }
+      for (const ve of p.variants.edges) {
+        const v = ve.node;
 
-      // Load metafields (OLD LOGIC THAT WORKED)
-      let metafieldsMap: Record<number, any> = {};
-      try {
-        const metaRes = await shopify2.api(`/products/${p.id}/metafields.json`);
-        const list = metaRes.metafields || [];
+        // Extract size/color
+        const sizeOpt = v.selectedOptions.find((o: any) =>
+          ["taglia", "size"].includes(o.name.toLowerCase())
+        );
+        const colorOpt = v.selectedOptions.find((o: any) =>
+          ["colore", "color"].includes(o.name.toLowerCase())
+        );
 
-        for (const m of list) {
-          if (
-            m.owner_resource === "variant" &&
-            m.namespace === "custom" &&
-            m.key === "numero_grafica"
-          ) {
-            metafieldsMap[m.owner_id] = m.value;
-          }
-        }
-      } catch (err) {
-        skipped.push({
-          product_id: p.id,
-          reason: "META_API_FAIL",
-          error: `${err}`,
-        });
-      }
+        if (!sizeOpt || !colorOpt) continue;
 
-      // Process variants
-      for (const v of p.variants) {
-        const size = (v.option1 || "").toUpperCase().trim();
-        const color = (v.option2 || "").toLowerCase().trim();
+        const size = sizeOpt.value.toUpperCase();
+        const color = colorOpt.value.toLowerCase();
 
-        if (!size || !color) {
-          skipped.push({
-            product_id: p.id,
-            variant_id: v.id,
-            reason: "MISSING_SIZE_OR_COLOR",
-            size,
-            color,
-          });
-          continue;
-        }
+        const blankVarKey = `${size}-${color}`;
+        const blankVariant = blanks[blank_key]?.[blankVarKey];
+        if (!blankVariant) continue;
 
-        const blankVariantKey = `${size}-${color}`;
-        const blankVariant = blanksMap[blank_key]?.[blankVariantKey];
+        const numero_grafica =
+          v.metafields?.[0]?.value || null;
 
-        if (!blankVariant) {
-          skipped.push({
-            product_id: p.id,
-            variant_id: v.id,
-            reason: "BLANK_VARIANT_NOT_FOUND",
-            blank_key,
-            expected_key: blankVariantKey,
-            available_keys: Object.keys(blanksMap[blank_key] || {}),
-          });
-          continue;
-        }
+        const variantId = v.id.replace("gid://shopify/ProductVariant/", "");
+        const productId = p.id.replace("gid://shopify/Product/", "");
 
-        const numero_grafica = metafieldsMap[v.id] || null;
-
-        const ref = adminDb.collection("graphics_blanks").doc(String(v.id));
+        const ref = adminDb
+          .collection("graphics_blanks")
+          .doc(variantId);
 
         batch.set(ref, {
-          product_id: p.id,
-          variant_id_grafica: v.id,
+          product_id: productId,
+          product_type: type,
+          variant_id_grafica: variantId,
           blank_key,
           blank_variant_id: blankVariant.variant_id,
           size,
           color,
           numero_grafica,
-          updated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         });
 
-        processed.push({
-          product_id: p.id,
-          variant_id: v.id,
-          blank_key,
-          blank_variant_id: blankVariant.variant_id,
-        });
+        count++;
 
-        batchCounter++;
-        if (batchCounter >= 480) {
-          writes.push(batch);
+        if (count % 400 === 0) {
+          batches.push(batch);
           batch = adminDb.batch();
-          batchCounter = 0;
         }
       }
     }
 
-    if (batchCounter > 0) writes.push(batch);
+    batches.push(batch);
 
-    for (const b of writes) {
-      await b.commit();
-    }
+    for (const b of batches) await b.commit();
+
+    console.log("✅ Assigned:", count);
 
     return NextResponse.json({
       ok: true,
-      processed_count: processed.length,
-      skipped_count: skipped.length,
-      processed,
-      skipped,
+      assigned: count
     });
-
   } catch (err: any) {
-    console.error("❌ assign-blanks:", err);
+    console.error("❌ assign-blanks ERROR", err);
     return NextResponse.json(
       { ok: false, error: err.message },
       { status: 500 }
