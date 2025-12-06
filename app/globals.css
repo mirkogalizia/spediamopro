@@ -46,3 +46,9 @@ html, body {
 *:where(:not(:active):not(:focus)) {
   transition-timing-function: ease-in-out;
 }
+
+/* app/globals.css - aggiungi alla fine */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
