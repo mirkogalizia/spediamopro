@@ -15,7 +15,7 @@ export function OrdersCard() {
       <div className="flex items-center justify-center mb-6">
         <div className="relative w-32 h-32">
           <svg className="w-full h-full transform -rotate-90">
-            ircle
+            <circle
               cx="64"
               cy="64"
               r="56"
@@ -23,7 +23,7 @@ export function OrdersCard() {
               strokeWidth="12"
               fill="none"
             />
-            ircle
+            <circle
               cx="64"
               cy="64"
               r="56"
