@@ -1,4 +1,4 @@
-// components/dashboard/StatsCard.tsx
+// app/components/dashboard/StatsCard.tsx (già ce l'hai, ma assicurati sia compatta)
 'use client';
 
 import { motion } from 'framer-motion';
@@ -20,24 +20,26 @@ const colorClasses = {
 export function StatsCard({ icon, label, value, unit, color }: StatsCardProps) {
   return (
     <motion.div
-      whileHover={{ scale: 1.03, y: -5 }}
+      whileHover={{ scale: 1.03, y: -3 }}
       className={`
         ${colorClasses[color]}
-        backdrop-blur-xl rounded-3xl p-5 shadow-2xl
-        border border-white/50
+        backdrop-blur-xl rounded-3xl p-5 shadow-xl
+        border border-white/50 h-[120px] flex flex-col justify-between
       `}
     >
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-11 h-11 bg-slate-700 rounded-2xl flex items-center justify-center text-2xl shadow-lg">
+      <div className="flex items-center gap-2">
+        <div className="w-9 h-9 bg-slate-700 rounded-xl flex items-center justify-center text-xl shadow-lg">
           {icon}
         </div>
       </div>
-      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
-        {label}
-      </p>
-      <div className="flex items-baseline gap-1">
-        <span className="text-4xl font-bold text-slate-900">{value}</span>
-        {unit && <span className="text-sm font-medium text-slate-600">{unit}</span>}
+      <div>
+        <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+          {label}
+        </p>
+        <div className="flex items-baseline gap-1">
+          <span className="text-3xl font-bold text-slate-900">{value}</span>
+          {unit && <span className="text-sm font-medium text-slate-600">{unit}</span>}
+        </div>
       </div>
     </motion.div>
   );
