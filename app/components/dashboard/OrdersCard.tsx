@@ -1,4 +1,4 @@
-// components/dashboard/OrdersCard.tsx
+// app/components/dashboard/OrdersCard.tsx
 'use client';
 
 import { motion } from 'framer-motion';
@@ -56,3 +56,4 @@ export function OrdersCard() {
     </div>
   );
 }
+
