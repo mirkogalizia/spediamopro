@@ -1,9 +1,11 @@
+/* app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
 
+/* ⬇️ MANTIENI QUESTO ⬇️ */
 html, body {
   font-family: 'Montserrat', sans-serif;
   background: #f5f5f7;
@@ -12,4 +14,35 @@ html, body {
   overflow-x: hidden;
   margin: 0;
   padding: 0;
+}
+
+/* ⬇️ AGGIUNGI SOTTO QUESTE NUOVE REGOLE ⬇️ */
+
+/* Scrollbar personalizzata stile Sogaso */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1; /* slate-300 */
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8; /* slate-400 */
+}
+
+/* Transizioni smooth per tutti gli elementi */
+* {
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+}
+
+/* Evita transizioni su animazioni */
+*:where(:not(:active):not(:focus)) {
+  transition-timing-function: ease-in-out;
 }

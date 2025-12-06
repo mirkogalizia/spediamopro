@@ -1,0 +1,108 @@
+data: {"status":"loading","message":"Caricamento mappings..."}
+
+data: {"status":"loading","message":"✅ 5 mappings caricati"}
+
+data: {"status":"loading","message":"✅ 5 blanks caricati"}
+
+data: {"status":"loading","message":"✅ 201 prodotti caricati","total":201}
+
+data: {"status":"processing","current":5,"total":201,"progress":2,"processed":40,"skipped":0}
+
+data: {"status":"processing","current":10,"total":201,"progress":5,"processed":90,"skipped":0}
+
+data: {"status":"processing","current":15,"total":201,"progress":7,"processed":200,"skipped":0}
+
+data: {"status":"processing","current":20,"total":201,"progress":10,"processed":385,"skipped":0}
+
+data: {"status":"processing","current":25,"total":201,"progress":12,"processed":560,"skipped":0}
+
+data: {"status":"processing","current":30,"total":201,"progress":15,"processed":725,"skipped":0}
+
+data: {"status":"processing","current":35,"total":201,"progress":17,"processed":775,"skipped":0}
+
+data: {"status":"processing","current":40,"total":201,"progress":20,"processed":915,"skipped":0}
+
+data: {"status":"processing","current":45,"total":201,"progress":22,"processed":995,"skipped":0}
+
+data: {"status":"processing","current":50,"total":201,"progress":25,"processed":1095,"skipped":0}
+
+data: {"status":"processing","current":55,"total":201,"progress":27,"processed":1145,"skipped":0}
+
+data: {"status":"processing","current":60,"total":201,"progress":30,"processed":1230,"skipped":0}
+
+data: {"status":"processing","current":65,"total":201,"progress":32,"processed":1285,"skipped":0}
+
+data: {"status":"processing","current":70,"total":201,"progress":35,"processed":1360,"skipped":0}
+
+data: {"status":"processing","current":75,"total":201,"progress":37,"processed":1465,"skipped":0}
+
+data: {"status":"processing","current":80,"total":201,"progress":40,"processed":1565,"skipped":0}
+
+data: {"status":"processing","current":85,"total":201,"progress":42,"processed":1605,"skipped":0}
+
+data: {"status":"processing","current":90,"total":201,"progress":45,"processed":1675,"skipped":0}
+
+data: {"status":"processing","current":95,"total":201,"progress":47,"processed":1720,"skipped":0}
+
+data: {"status":"processing","current":100,"total":201,"progress":50,"processed":1860,"skipped":0}
+
+data: {"status":"processing","current":105,"total":201,"progress":52,"processed":1960,"skipped":0}
+
+data: {"status":"processing","current":110,"total":201,"progress":55,"processed":2045,"skipped":0}
+
+data: {"status":"processing","current":115,"total":201,"progress":57,"processed":2170,"skipped":0}
+
+data: {"status":"processing","current":120,"total":201,"progress":60,"processed":2305,"skipped":0}
+
+data: {"status":"processing","current":125,"total":201,"progress":62,"processed":2355,"skipped":0}
+
+data: {"status":"processing","current":130,"total":201,"progress":65,"processed":2435,"skipped":0}
+
+data: {"status":"processing","current":135,"total":201,"progress":67,"processed":2540,"skipped":0}
+
+data: {"status":"processing","current":140,"total":201,"progress":70,"processed":2625,"skipped":2}
+
+data: {"status":"processing","current":145,"total":201,"progress":72,"processed":2730,"skipped":4}
+
+data: {"status":"processing","current":150,"total":201,"progress":75,"processed":2760,"skipped":6}
+
+data: {"status":"processing","current":155,"total":201,"progress":77,"processed":2810,"skipped":6}
+
+data: {"status":"processing","current":160,"total":201,"progress":80,"processed":2862,"skipped":6}
+
+data: {"status":"processing","current":165,"total":201,"progress":82,"processed":2916,"skipped":6}
+
+data: {"status":"processing","current":170,"total":201,"progress":85,"processed":2974,"skipped":6}
+
+data: {"status":"processing","current":175,"total":201,"progress":87,"processed":2986,"skipped":16}
+
+data: {"status":"processing","current":180,"total":201,"progress":90,"processed":3044,"skipped":16}
+
+data: {"status":"processing","current":185,"total":201,"progress":92,"processed":3080,"skipped":21}
+
+data: {"status":"processing","current":190,"total":201,"progress":95,"processed":3080,"skipped":26}
+
+data: {"status":"processing","current":195,"total":201,"progress":97,"processed":3080,"skipped":31}
+
+data: {"status":"processing","current":200,"total":201,"progress":100,"processed":3080,"skipped":36}
+
+data: {"status":"processing","current":201,"total":201,"progress":100,"processed":3080,"skipped":37}
+
+data: {"status":"committing","message":"Scrittura 7 batches su Firestore..."}
+
+data: {"status":"committing","batch":1,"totalBatches":7,"progress":14}
+
+data: {"status":"committing","batch":2,"totalBatches":7,"progress":29}
+
+data: {"status":"committing","batch":3,"totalBatches":7,"progress":43}
+
+data: {"status":"committing","batch":4,"totalBatches":7,"progress":57}
+
+data: {"status":"committing","batch":5,"totalBatches":7,"progress":71}
+
+data: {"status":"committing","batch":6,"totalBatches":7,"progress":86}
+
+data: {"status":"committing","batch":7,"totalBatches":7,"progress":100}
+
+data: {"status":"done","processed":3080,"skipped":38,"totalBatches":7,"skipped_details":[{"product_title":"Felpa Hoodie Notre PREMIUM ESSENTIAL DARK CHOCOLATE 330grsm 100% cotone","product_id":15315086737791,"variant_id":56148508737919,"variant_title":"S","reason":"Missing size or color","size":"S","color":"","option1":"S","option2":null},{"product_title":"Felpa Hoodie Notre PREMIUM ESSENTIAL DARK CHOCOLATE 330grsm 100% cotone","product_id":15315086737791,"variant_id":56148508770687,"variant_title":"M","reason":"Missing size or color","size":"M","color":"","option1":"M","option2":null},{"product_title":"Felpa Hoodie Notre PREMIUM ESSENTIAL DARK CHOCOLATE 330grsm 100% cotone","product_id":15315086737791,"variant_id":56148508803455,"variant_title":"L","reason":"Missing size or color","size":"L","color":"","option1":"L","option2":null},{"product_title":"Felpa Hoodie Notre PREMIUM ESSENTIAL DARK CHOCOLATE 330grsm 100% cotone","product_id":15315086737791,"variant_id":56148508836223,"variant_title":"XL","reason":"Missing size or color","size":"XL","color":"","option1":"XL","option2":null},{"product_title":"Felpa Hoodie Notre PREMIUM ESSENTIAL BLACK 330grsm 100% cotone","product_id":15315086836095,"variant_id":56148508901759,"variant_title":"S","reason":"Missing size or color","size":"S","color":"","option1":"S","option2":null},{"product_title":"Felpa Hoodie Notre PREMIUM ESSENTIAL BLACK 330grsm 100% cotone","product_id":15315086836095,"variant_id":56148508934527,"variant_title":"M","reason":"Missing size or color","size":"M","color":"","option1":"M","option2":null},{"product_title":"Felpa Hoodie Notre PREMIUM ESSENTIAL BLACK 330grsm 100% cotone","product_id":15315086836095,"variant_id":56148508967295,"variant_title":"L","reason":"Missing size or color","size":"L","color":"","option1":"L","option2":null},{"product_title":"Felpa Hoodie Notre PREMIUM ESSENTIAL BLACK 330grsm 100% cotone","product_id":15315086836095,"variant_id":56148509000063,"variant_title":"XL","reason":"Missing size or color","size":"XL","color":"","option1":"XL","option2":null},{"product_title":"Felpa Hoodie Notre PREMIUM ESSENTIAL NAVY 330grsm 100% cotone","product_id":15315087851903,"variant_id":56148513194367,"variant_title":"S","reason":"Missing size or color","size":"S","color":"","option1":"S","option2":null},{"product_title":"Felpa Hoodie Notre PREMIUM ESSENTIAL NAVY 330grsm 100% cotone","product_id":15315087851903,"variant_id":56148513227135,"variant_title":"M","reason":"Missing size or color","size":"M","color":"","option1":"M","option2":null},{"product_title":"Felpa Hoodie Notre PREMIUM ESSENTIAL NAVY 330grsm 100% cotone","product_id":15315087851903,"variant_id":56148513259903,"variant_title":"L","reason":"Missing size or color","size":"L","color":"","option1":"L","option2":null},{"product_title":"Felpa Hoodie Notre PREMIUM ESSENTIAL NAVY 330grsm 100% cotone","product_id":15315087851903,"variant_id":56148513292671,"variant_title":"XL","reason":"Missing size or color","size":"XL","color":"","option1":"XL","option2":null}],"message":"✅ Completato!"}
+
