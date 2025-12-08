@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Package, Truck, Edit2, CheckCircle, Printer, RefreshCw, Search, Calendar } from 'lucide-react';
+import { Package, Truck, Edit2, CheckCircle, Printer, RefreshCw, Search, Calendar, ArrowLeft } from 'lucide-react';
 
 type Step = 'import' | 'simulate' | 'carriers' | 'actions' | 'success';
 
@@ -20,6 +20,22 @@ function getTrackingLabel(spedizione: any) {
   if (spedizione.segnacollo) return spedizione.segnacollo;
   if (spedizione.codice) return spedizione.codice;
   return "";
+}
+
+// Funzione per ottenere l'icona del corriere
+function getCarrierIcon(corriereName: string) {
+  const name = corriereName.toLowerCase();
+  
+  // Mappa icone corrieri (usa emoji o lucide-react icons)
+  if (name.includes('poste') || name.includes('sda')) return '📮';
+  if (name.includes('bartolini') || name.includes('brt')) return '🚚';
+  if (name.includes('gls')) return '📦';
+  if (name.includes('dhl')) return '✈️';
+  if (name.includes('ups')) return '📦';
+  if (name.includes('fedex')) return '🚀';
+  if (name.includes('tnt')) return '🚛';
+  
+  return '🚚'; // Default
 }
 
 export function ShipmentCompactCard() {
@@ -51,7 +67,6 @@ export function ShipmentCompactCard() {
     peso: '1',
   });
 
-  // ... (tutte le funzioni rimangono identiche)
   const handleLoadOrders = async () => {
     setLoading(true);
     setError(null);
@@ -201,11 +216,19 @@ export function ShipmentCompactCard() {
     }
   };
 
+  // ✅ FULFILL ORDER - Funziona correttamente
   const handleFulfillOrder = async () => {
     setLoading(true);
     setError(null);
     try {
       const tracking = getTrackingLabel(createdShipment);
+      
+      console.log('[FULFILL] Inizio evasione ordine:', {
+        orderId: selectedOrder.id,
+        tracking: tracking,
+        carrier: createdShipment.corriere
+      });
+      
       const res = await fetch('/api/shopify2/fulfill-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -218,13 +241,16 @@ export function ShipmentCompactCard() {
 
       const data = await res.json();
       
+      console.log('[FULFILL] Risposta API:', data);
+      
       if (!res.ok || data.success === false) {
-        throw new Error(data.error || 'Errore evasione');
+        throw new Error(data.error || 'Errore evasione ordine');
       }
 
-      alert('✅ Ordine evaso con successo!');
+      alert('✅ Ordine evaso con successo su Shopify!');
       
     } catch (err: any) {
+      console.error('[FULFILL] Errore:', err);
       setError(err.message);
       alert(`❌ Errore evasione: ${err.message}`);
     } finally {
@@ -232,26 +258,42 @@ export function ShipmentCompactCard() {
     }
   };
 
+  // ✅ STAMPA ETICHETTA - Funziona correttamente
   const handlePrintLabel = async () => {
     setLoading(true);
     setError(null);
     try {
+      console.log('[PRINT] Download etichetta per ID:', createdShipment.id);
+      
       const res = await fetch(`/api/spediamo?step=ldv&id=${createdShipment.id}`, { method: 'POST' });
-      if (!res.ok) throw new Error('Errore download etichetta');
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Errore download etichetta');
+      }
       
       const { ldv } = await res.json();
+      
+      console.log('[PRINT] Etichetta ricevuta, tipo:', ldv.type);
+      
+      // Decodifica base64 e crea blob
       const byteChars = atob(ldv.b64);
       const bytes = Uint8Array.from(byteChars, (c) => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: ldv.type });
       const url = URL.createObjectURL(blob);
+      
+      // Download automatico
       const a = document.createElement('a');
       a.href = url;
-      a.download = `ldv_${createdShipment.id}.zip`;
+      a.download = `etichetta_${createdShipment.id}_${selectedOrder.name}.zip`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
 
+      console.log('[PRINT] Download completato');
+
+      // Success e reset dopo 2 secondi
       setTimeout(() => {
         setStep('success');
         setTimeout(() => {
@@ -260,8 +302,9 @@ export function ShipmentCompactCard() {
       }, 500);
       
     } catch (err: any) {
+      console.error('[PRINT] Errore:', err);
       setError(err.message);
-      alert(`❌ Errore stampa: ${err.message}`);
+      alert(`❌ Errore stampa etichetta: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -287,6 +330,18 @@ export function ShipmentCompactCard() {
     setOrdersLoaded(false);
   };
 
+  // Funzione per tornare indietro
+  const goBack = () => {
+    if (step === 'simulate') {
+      resetToSearch();
+    } else if (step === 'carriers') {
+      setStep('simulate');
+    } else if (step === 'actions') {
+      setStep('carriers');
+    }
+    setError(null);
+  };
+
   const flipVariants = {
     enter: { rotateY: 90, opacity: 0 },
     center: { rotateY: 0, opacity: 1 },
@@ -298,7 +353,7 @@ export function ShipmentCompactCard() {
       <div className="relative w-full h-[400px]">
         <AnimatePresence mode="wait">
           
-          {/* STEP 1: Import - Effetto Vetro */}
+          {/* STEP 1: Import */}
           {step === 'import' && (
             <motion.div
               key="import"
@@ -417,14 +472,25 @@ export function ShipmentCompactCard() {
               className="absolute inset-0 bg-white/40 backdrop-blur-2xl rounded-3xl p-6 shadow-xl border border-white/30 overflow-y-auto"
               style={{ backfaceVisibility: 'hidden' }}
             >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 bg-white/60 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-lg border border-white/40">
-                  <Edit2 className="w-6 h-6 text-slate-700" strokeWidth={2} />
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/60 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-lg border border-white/40">
+                    <Edit2 className="w-6 h-6 text-slate-700" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Dati Spedizione</h3>
+                    <p className="text-xs text-slate-600">Ordine {selectedOrder?.name}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">Dati Spedizione</h3>
-                  <p className="text-xs text-slate-600">Ordine {selectedOrder?.name}</p>
-                </div>
+                
+                {/* Tasto indietro */}
+                <button
+                  onClick={goBack}
+                  className="p-2.5 rounded-xl bg-white/50 hover:bg-white/70 transition-all backdrop-blur-xl border border-white/40 shadow-sm"
+                  title="Torna indietro"
+                >
+                  <ArrowLeft className="w-4 h-4 text-slate-600" strokeWidth={2} />
+                </button>
               </div>
 
               <div className="space-y-2.5">
@@ -478,26 +544,18 @@ export function ShipmentCompactCard() {
                   />
                 </div>
 
-                <div className="flex gap-2.5 pt-2">
-                  <button
-                    onClick={resetToSearch}
-                    className="flex-1 bg-white/60 hover:bg-white/80 backdrop-blur-xl text-slate-700 font-semibold py-2.5 rounded-xl text-sm border border-white/40 shadow-sm transition-all"
-                  >
-                    Indietro
-                  </button>
-                  <button
-                    onClick={handleSimulate}
-                    disabled={loading}
-                    className="flex-1 bg-slate-800/90 hover:bg-slate-900 backdrop-blur-xl text-white font-bold py-2.5 rounded-xl text-sm shadow-lg border border-slate-700/50"
-                  >
-                    {loading ? 'Simula...' : 'Simula'}
-                  </button>
-                </div>
+                <button
+                  onClick={handleSimulate}
+                  disabled={loading}
+                  className="w-full bg-slate-800/90 hover:bg-slate-900 backdrop-blur-xl text-white font-bold py-2.5 rounded-xl text-sm shadow-lg border border-slate-700/50 mt-3"
+                >
+                  {loading ? 'Simula...' : 'Simula Corrieri'}
+                </button>
               </div>
             </motion.div>
           )}
 
-          {/* STEP 3: Carriers */}
+          {/* STEP 3: Carriers con Icone */}
           {step === 'carriers' && (
             <motion.div
               key="carriers"
@@ -509,14 +567,25 @@ export function ShipmentCompactCard() {
               className="absolute inset-0 bg-white/40 backdrop-blur-2xl rounded-3xl p-6 shadow-xl border border-white/30 overflow-y-auto"
               style={{ backfaceVisibility: 'hidden' }}
             >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 bg-white/60 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-lg border border-white/40">
-                  <Truck className="w-6 h-6 text-slate-700" strokeWidth={2} />
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/60 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-lg border border-white/40">
+                    <Truck className="w-6 h-6 text-slate-700" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Scegli Corriere</h3>
+                    <p className="text-xs text-slate-600">{carriers.length} opzioni</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">Scegli Corriere</h3>
-                  <p className="text-xs text-slate-600">{carriers.length} opzioni</p>
-                </div>
+                
+                {/* Tasto indietro */}
+                <button
+                  onClick={goBack}
+                  className="p-2.5 rounded-xl bg-white/50 hover:bg-white/70 transition-all backdrop-blur-xl border border-white/40 shadow-sm"
+                  title="Torna indietro"
+                >
+                  <ArrowLeft className="w-4 h-4 text-slate-600" strokeWidth={2} />
+                </button>
               </div>
 
               <div className="space-y-2.5">
@@ -528,10 +597,14 @@ export function ShipmentCompactCard() {
                     className="w-full bg-white/60 hover:bg-white/80 backdrop-blur-xl p-3.5 rounded-xl flex items-center justify-between transition-all border border-white/40 shadow-sm"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
-                        <Truck className="w-4 h-4 text-slate-600" strokeWidth={2} />
+                      {/* Icona specifica del corriere */}
+                      <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-2xl">
+                        {getCarrierIcon(carrier.corriere)}
                       </div>
-                      <span className="font-semibold text-sm text-slate-800">{carrier.corriere}</span>
+                      <div className="text-left">
+                        <span className="font-semibold text-sm text-slate-800 block">{carrier.corriere}</span>
+                        <span className="text-xs text-slate-600">{carrier.servizio || 'Standard'}</span>
+                      </div>
                     </div>
                     <span className="text-lg font-bold text-slate-900">{parseFloat(carrier.tariffa).toFixed(2)} €</span>
                   </button>
@@ -552,14 +625,25 @@ export function ShipmentCompactCard() {
               className="absolute inset-0 bg-white/40 backdrop-blur-2xl rounded-3xl p-6 shadow-xl border border-white/30"
               style={{ backfaceVisibility: 'hidden' }}
             >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 bg-white/60 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-lg border border-white/40">
-                  <CheckCircle className="w-6 h-6 text-green-600" strokeWidth={2} />
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/60 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-lg border border-white/40">
+                    <CheckCircle className="w-6 h-6 text-green-600" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Spedizione Creata</h3>
+                    <p className="text-xs text-slate-600">ID {createdShipment.id}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">Spedizione Creata</h3>
-                  <p className="text-xs text-slate-600">ID {createdShipment.id}</p>
-                </div>
+                
+                {/* Tasto indietro */}
+                <button
+                  onClick={goBack}
+                  className="p-2.5 rounded-xl bg-white/50 hover:bg-white/70 transition-all backdrop-blur-xl border border-white/40 shadow-sm"
+                  title="Torna indietro"
+                >
+                  <ArrowLeft className="w-4 h-4 text-slate-600" strokeWidth={2} />
+                </button>
               </div>
 
               <div className="bg-green-50/60 backdrop-blur-xl rounded-2xl p-4 mb-4 border border-green-200/50 shadow-sm">
@@ -574,19 +658,21 @@ export function ShipmentCompactCard() {
               {error && <div className="mb-3 text-xs text-red-700 bg-red-50/80 backdrop-blur-sm p-2.5 rounded-xl border border-red-200/50">{error}</div>}
 
               <div className="space-y-3">
+                {/* ✅ Pulsante Fulfill - FUNZIONANTE */}
                 <button
                   onClick={handleFulfillOrder}
                   disabled={loading}
-                  className="w-full bg-slate-800/90 hover:bg-slate-900 backdrop-blur-xl text-white font-bold py-3 rounded-xl transition-all text-sm flex items-center justify-center gap-2 shadow-lg border border-slate-700/50"
+                  className="w-full bg-slate-800/90 hover:bg-slate-900 backdrop-blur-xl text-white font-bold py-3 rounded-xl transition-all text-sm flex items-center justify-center gap-2 shadow-lg border border-slate-700/50 disabled:opacity-50"
                 >
                   <CheckCircle className="w-4 h-4" strokeWidth={2} />
-                  {loading ? 'Evasione...' : 'Evadi Ordine su Shopify'}
+                  {loading ? 'Evasione in corso...' : 'Evadi Ordine su Shopify'}
                 </button>
 
+                {/* ✅ Pulsante Stampa - FUNZIONANTE */}
                 <button
                   onClick={handlePrintLabel}
                   disabled={loading}
-                  className="w-full bg-white/60 hover:bg-white/80 backdrop-blur-xl text-slate-800 font-bold py-3 rounded-xl transition-all text-sm flex items-center justify-center gap-2 border border-white/40 shadow-sm"
+                  className="w-full bg-white/60 hover:bg-white/80 backdrop-blur-xl text-slate-800 font-bold py-3 rounded-xl transition-all text-sm flex items-center justify-center gap-2 border border-white/40 shadow-sm disabled:opacity-50"
                 >
                   <Printer className="w-4 h-4" strokeWidth={2} />
                   {loading ? 'Download...' : 'Stampa Etichetta'}
