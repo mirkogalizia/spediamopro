@@ -31,8 +31,8 @@ export default function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-6"
         >
-          <div className="bg-white/90 backdrop-blur-md rounded-full px-6 py-3 shadow-xl inline-block">
-            <h1 className="text-2xl font-bold text-slate-800">
+          <div className="bg-white/60 backdrop-blur-2xl rounded-full px-6 py-3 shadow-xl inline-block border border-white/40">
+            <h1 className="text-2xl font-bold text-slate-900">
               Dashboard Spediamo Pro
             </h1>
           </div>
@@ -40,14 +40,13 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-12 gap-4 lg:gap-6">
           
-          {/* Colonna Sinistra - KPI veloci (60s) */}
+          {/* Colonna Sinistra - KPI */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.1 }}
             className="col-span-12 lg:col-span-3 space-y-4"
           >
-            {/* Evasi oggi - refresh 60s */}
             <KPICardWithRefresh
               title="Evasi Oggi"
               icon={CheckCircle}
@@ -57,7 +56,6 @@ export default function DashboardPage() {
               refreshInterval={60000}
             />
             
-            {/* Incasso oggi - refresh 60s */}
             <KPICardWithRefresh
               title="Incasso Oggi"
               icon={Euro}
@@ -79,21 +77,20 @@ export default function DashboardPage() {
             <ShipmentCompactCard />
           </motion.div>
 
-          {/* Destra - Ordini inevasi TOTALI (refresh 120s) */}
+          {/* Destra - Ordini inevasi */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.3 }}
             className="col-span-12 lg:col-span-4"
           >
-            {/* ⏱️ REFRESH OGNI 120 SECONDI (solo questa card) */}
             <KPICardWithRefresh
               title="Totale Ordini Inevasi"
               icon={AlertTriangle}
               color="red"
               apiEndpoint="/api/kpi/store2"
               valueKey="ordersUnfulfilled"
-              refreshInterval={120000} // ← 120 secondi = 2 minuti
+              refreshInterval={120000}
             />
           </motion.div>
 
@@ -102,4 +99,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
