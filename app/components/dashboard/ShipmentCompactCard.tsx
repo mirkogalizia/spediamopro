@@ -143,59 +143,76 @@ export function ShipmentCompactCard() {
     setError(null);
     try {
       const resC = await fetch(`/api/spediamo2?step=create&id=${carrierId}&shopifyOrderId=${selectedOrder.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ consigneePickupPointId: null })
-      });
-      
-      if (!resC.ok) throw new Error('Errore creazione spedizione');
-      const { spedizione } = await resC.json();
-      
-      const resU = await fetch(`/api/spediamo?step=update&id=${spedizione.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nome: form.nome,
-          telefono: form.telefono,
-          email: form.email,
-          indirizzo: form.indirizzo,
-          indirizzo2: form.indirizzo2,
-          capDestinatario: form.capDestinatario,
-          cittaDestinatario: form.cittaDestinatario,
-          provinciaDestinatario: form.provinciaDestinatario,
-          noteDestinatario: '',
-          consigneePickupPointId: null,
-        })
-      });
-      
-      if (!resU.ok) throw new Error('Errore aggiornamento indirizzo');
-      const dataUpd = await resU.json();
-      
-      const resP = await fetch(`/api/spediamo?step=pay&id=${spedizione.id}`, { method: 'POST' });
-      let dataP;
-      try { dataP = await resP.json(); } catch { dataP = {}; }
-      
-      const resDetails = await fetch(`/api/spediamo?step=details&id=${spedizione.id}`, { method: 'POST' });
-      let details = {};
-      if (resDetails.ok) { details = await resDetails.json(); }
-      
-      const finalShipment = { 
-        ...dataUpd.spedizione, 
-        ...details.spedizione,
-        shopifyOrder: selectedOrder,
-        canPay: dataP.can_pay,
-        payReason: dataP.message || dataP.error || ''
-      };
-      
-      setCreatedShipment(finalShipment);
-      setStep('actions');
-      
-    } catch (err) {
-      setError(err.message || 'Errore creazione');
-    } finally {
-      setLoading(false);
+        method: 'POST'// Crea e paga
+const handleCreateAndPay = async (carrierId: number) => {
+  setLoading(true);
+  setError(null);
+  try {
+    const resC = await fetch(`/api/spediamo2?step=create&id=${carrierId}&shopifyOrderId=${selectedOrder.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ consigneePickupPointId: null })
+    });
+    
+    if (!resC.ok) throw new Error('Errore creazione spedizione');
+    const createData: any = await resC.json();
+    const spedizione = createData.spedizione;
+    
+    const resU = await fetch(`/api/spediamo?step=update&id=${spedizione.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nome: form.nome,
+        telefono: form.telefono,
+        email: form.email,
+        indirizzo: form.indirizzo,
+        indirizzo2: form.indirizzo2,
+        capDestinatario: form.capDestinatario,
+        cittaDestinatario: form.cittaDestinatario,
+        provinciaDestinatario: form.provinciaDestinatario,
+        noteDestinatario: '',
+        consigneePickupPointId: null,
+      })
+    });
+    
+    if (!resU.ok) throw new Error('Errore aggiornamento indirizzo');
+    const dataUpd: any = await resU.json();
+    
+    const resP = await fetch(`/api/spediamo?step=pay&id=${spedizione.id}`, { method: 'POST' });
+    let dataP: any = {};
+    try { 
+      dataP = await resP.json(); 
+    } catch (e) { 
+      dataP = {}; 
     }
-  };
+    
+    const resDetails = await fetch(`/api/spediamo?step=details&id=${spedizione.id}`, { method: 'POST' });
+    let detailsData: any = { spedizione: {} };
+    if (resDetails.ok) { 
+      try {
+        detailsData = await resDetails.json(); 
+      } catch (e) {
+        detailsData = { spedizione: {} };
+      }
+    }
+    
+    const finalShipment = { 
+      ...dataUpd.spedizione, 
+      ...detailsData.spedizione,
+      shopifyOrder: selectedOrder,
+      canPay: dataP.can_pay,
+      payReason: dataP.message || dataP.error || ''
+    };
+    
+    setCreatedShipment(finalShipment);
+    setStep('actions');
+    
+  } catch (err: any) {
+    setError(err.message || 'Errore creazione');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Fulfill order
   const handleFulfillOrder = async () => {
