@@ -3,15 +3,15 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Package, Truck, ArrowRight, Edit2, CheckCircle, Printer, RefreshCw } from 'lucide-react';
+import { Package, Truck, Edit2, CheckCircle, Printer, RefreshCw } from 'lucide-react';
 
 type Step = 'import' | 'simulate' | 'carriers' | 'actions' | 'success';
 
-function removeAccents(str) {
+function removeAccents(str: string) {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-function getTrackingLabel(spedizione) {
+function getTrackingLabel(spedizione: any) {
   if (Array.isArray(spedizione.colli) && spedizione.colli.length > 0 && spedizione.colli[0].segnacollo) {
     return spedizione.colli[0].segnacollo;
   }
@@ -26,14 +26,14 @@ export function ShipmentCompactCard() {
   const [step, setStep] = useState<Step>('import');
   const [dateFrom, setDateFrom] = useState('2025-01-01');
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split('T')[0]);
-  const [orders, setOrders] = useState([]);
-  const [ordersLoaded, setOrdersLoaded] = useState(false); // ← Nuovo flag
+  const [orders, setOrders] = useState<any[]>([]);
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
   const [orderQuery, setOrderQuery] = useState('');
-  const [selectedOrder, setSelectedOrder] = useState(null);
-  const [carriers, setCarriers] = useState([]);
-  const [createdShipment, setCreatedShipment] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [carriers, setCarriers] = useState<any[]>([]);
+  const [createdShipment, setCreatedShipment] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   
   const [form, setForm] = useState({
     nome: '',
@@ -60,7 +60,7 @@ export function ShipmentCompactCard() {
       if (res.ok) {
         const data = await res.json();
         setOrders(data.orders || []);
-        setOrdersLoaded(true); // ← Segna come caricati
+        setOrdersLoaded(true);
       } else {
         setError('Errore caricamento ordini');
       }
@@ -138,81 +138,79 @@ export function ShipmentCompactCard() {
   };
 
   // Crea e paga
-  const handleCreateAndPay = async (carrierId) => {
+  const handleCreateAndPay = async (carrierId: number) => {
     setLoading(true);
     setError(null);
     try {
+      // 1. Crea spedizione
       const resC = await fetch(`/api/spediamo2?step=create&id=${carrierId}&shopifyOrderId=${selectedOrder.id}`, {
-        method: 'POST'// Crea e paga
-const handleCreateAndPay = async (carrierId: number) => {
-  setLoading(true);
-  setError(null);
-  try {
-    const resC = await fetch(`/api/spediamo2?step=create&id=${carrierId}&shopifyOrderId=${selectedOrder.id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ consigneePickupPointId: null })
-    });
-    
-    if (!resC.ok) throw new Error('Errore creazione spedizione');
-    const createData: any = await resC.json();
-    const spedizione = createData.spedizione;
-    
-    const resU = await fetch(`/api/spediamo?step=update&id=${spedizione.id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nome: form.nome,
-        telefono: form.telefono,
-        email: form.email,
-        indirizzo: form.indirizzo,
-        indirizzo2: form.indirizzo2,
-        capDestinatario: form.capDestinatario,
-        cittaDestinatario: form.cittaDestinatario,
-        provinciaDestinatario: form.provinciaDestinatario,
-        noteDestinatario: '',
-        consigneePickupPointId: null,
-      })
-    });
-    
-    if (!resU.ok) throw new Error('Errore aggiornamento indirizzo');
-    const dataUpd: any = await resU.json();
-    
-    const resP = await fetch(`/api/spediamo?step=pay&id=${spedizione.id}`, { method: 'POST' });
-    let dataP: any = {};
-    try { 
-      dataP = await resP.json(); 
-    } catch (e) { 
-      dataP = {}; 
-    }
-    
-    const resDetails = await fetch(`/api/spediamo?step=details&id=${spedizione.id}`, { method: 'POST' });
-    let detailsData: any = { spedizione: {} };
-    if (resDetails.ok) { 
-      try {
-        detailsData = await resDetails.json(); 
-      } catch (e) {
-        detailsData = { spedizione: {} };
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consigneePickupPointId: null })
+      });
+      
+      if (!resC.ok) throw new Error('Errore creazione spedizione');
+      const createData: any = await resC.json();
+      const spedizione = createData.spedizione;
+      
+      // 2. Update indirizzo
+      const resU = await fetch(`/api/spediamo?step=update&id=${spedizione.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome: form.nome,
+          telefono: form.telefono,
+          email: form.email,
+          indirizzo: form.indirizzo,
+          indirizzo2: form.indirizzo2,
+          capDestinatario: form.capDestinatario,
+          cittaDestinatario: form.cittaDestinatario,
+          provinciaDestinatario: form.provinciaDestinatario,
+          noteDestinatario: '',
+          consigneePickupPointId: null,
+        })
+      });
+      
+      if (!resU.ok) throw new Error('Errore aggiornamento indirizzo');
+      const dataUpd: any = await resU.json();
+      
+      // 3. Paga
+      const resP = await fetch(`/api/spediamo?step=pay&id=${spedizione.id}`, { method: 'POST' });
+      let dataP: any = {};
+      try { 
+        dataP = await resP.json(); 
+      } catch (e) { 
+        dataP = {}; 
       }
+      
+      // 4. Get details con tracking
+      const resDetails = await fetch(`/api/spediamo?step=details&id=${spedizione.id}`, { method: 'POST' });
+      let detailsData: any = { spedizione: {} };
+      if (resDetails.ok) { 
+        try {
+          detailsData = await resDetails.json(); 
+        } catch (e) {
+          detailsData = { spedizione: {} };
+        }
+      }
+      
+      const finalShipment = { 
+        ...dataUpd.spedizione, 
+        ...detailsData.spedizione,
+        shopifyOrder: selectedOrder,
+        canPay: dataP.can_pay,
+        payReason: dataP.message || dataP.error || ''
+      };
+      
+      setCreatedShipment(finalShipment);
+      setStep('actions');
+      
+    } catch (err: any) {
+      setError(err.message || 'Errore creazione');
+    } finally {
+      setLoading(false);
     }
-    
-    const finalShipment = { 
-      ...dataUpd.spedizione, 
-      ...detailsData.spedizione,
-      shopifyOrder: selectedOrder,
-      canPay: dataP.can_pay,
-      payReason: dataP.message || dataP.error || ''
-    };
-    
-    setCreatedShipment(finalShipment);
-    setStep('actions');
-    
-  } catch (err: any) {
-    setError(err.message || 'Errore creazione');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   // Fulfill order
   const handleFulfillOrder = async () => {
@@ -238,7 +236,7 @@ const handleCreateAndPay = async (carrierId: number) => {
 
       alert('✅ Ordine evaso con successo!');
       
-    } catch (err) {
+    } catch (err: any) {
       setError(err.message);
       alert(`❌ Errore evasione: ${err.message}`);
     } finally {
@@ -270,11 +268,11 @@ const handleCreateAndPay = async (carrierId: number) => {
       setTimeout(() => {
         setStep('success');
         setTimeout(() => {
-          resetToSearch(); // ← Reset ma mantiene ordini
+          resetToSearch();
         }, 2000);
       }, 500);
       
-    } catch (err) {
+    } catch (err: any) {
       setError(err.message);
       alert(`❌ Errore stampa: ${err.message}`);
     } finally {
@@ -282,7 +280,7 @@ const handleCreateAndPay = async (carrierId: number) => {
     }
   };
 
-  // Reset parziale (mantiene ordini caricati)
+  // Reset parziale (mantiene ordini)
   const resetToSearch = () => {
     setStep('import');
     setSelectedOrder(null);
@@ -290,10 +288,9 @@ const handleCreateAndPay = async (carrierId: number) => {
     setCarriers([]);
     setCreatedShipment(null);
     setError(null);
-    // NON resettiamo orders e ordersLoaded!
   };
 
-  // Reset completo (ricarica tutto)
+  // Reset completo
   const resetComplete = () => {
     setStep('import');
     setSelectedOrder(null);
@@ -343,7 +340,6 @@ const handleCreateAndPay = async (carrierId: number) => {
                   </div>
                 </div>
                 
-                {/* Pulsante ricarica */}
                 {ordersLoaded && (
                   <button
                     onClick={resetComplete}
@@ -358,7 +354,6 @@ const handleCreateAndPay = async (carrierId: number) => {
               {error && <div className="mb-3 text-xs text-red-600 bg-red-50 p-2 rounded-lg">{error}</div>}
 
               <div className="space-y-3">
-                {/* Mostra date e carica SOLO se ordini non ancora caricati */}
                 {!ordersLoaded && (
                   <>
                     <div className="grid grid-cols-2 gap-2">
@@ -392,7 +387,6 @@ const handleCreateAndPay = async (carrierId: number) => {
                   </>
                 )}
 
-                {/* Mostra ricerca se ordini già caricati */}
                 {ordersLoaded && (
                   <div className="space-y-2">
                     <input
@@ -417,7 +411,7 @@ const handleCreateAndPay = async (carrierId: number) => {
             </motion.div>
           )}
 
-          {/* STEP 2: Simulate (uguale a prima) */}
+          {/* STEP 2: Simulate */}
           {step === 'simulate' && (
             <motion.div
               key="simulate"
@@ -509,8 +503,127 @@ const handleCreateAndPay = async (carrierId: number) => {
             </motion.div>
           )}
 
-          {/* STEP 3, 4, 5: Carriers, Actions, Success (come prima) */}
-          {/* ... resto del codice uguale ... */}
+          {/* STEP 3: Carriers */}
+          {step === 'carriers' && (
+            <motion.div
+              key="carriers"
+              variants={flipVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.5 }}
+              className="absolute inset-0 bg-white/90 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-white/50 overflow-y-auto"
+              style={{ backfaceVisibility: 'hidden' }}
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center">
+                  <Truck className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Scegli Corriere</h3>
+                  <p className="text-xs text-slate-600">{carriers.length} opzioni</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {carriers.slice(0, 5).map((carrier) => (
+                  <button
+                    key={carrier.id}
+                    onClick={() => handleCreateAndPay(carrier.id)}
+                    disabled={loading}
+                    className="w-full bg-slate-50 hover:bg-slate-100 p-3 rounded-xl flex items-center justify-between transition-all"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Truck className="w-4 h-4 text-slate-600" />
+                      <span className="font-semibold text-sm">{carrier.corriere}</span>
+                    </div>
+                    <span className="text-lg font-bold text-slate-900">{parseFloat(carrier.tariffa).toFixed(2)} €</span>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {/* STEP 4: Actions */}
+          {step === 'actions' && createdShipment && (
+            <motion.div
+              key="actions"
+              variants={flipVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.5 }}
+              className="absolute inset-0 bg-white/90 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-white/50"
+              style={{ backfaceVisibility: 'hidden' }}
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Spedizione Creata</h3>
+                  <p className="text-xs text-slate-600">ID {createdShipment.id}</p>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-4 mb-4 border border-green-200">
+                <p className="text-sm font-semibold text-green-900 mb-1">
+                  ✅ Spedizione pagata e pronta!
+                </p>
+                <p className="text-xs text-green-700">
+                  Tracking: <span className="font-mono font-bold">{getTrackingLabel(createdShipment) || 'In attesa...'}</span>
+                </p>
+              </div>
+
+              {error && <div className="mb-3 text-xs text-red-600 bg-red-50 p-2 rounded-lg">{error}</div>}
+
+              <div className="space-y-3">
+                <button
+                  onClick={handleFulfillOrder}
+                  disabled={loading}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all text-sm flex items-center justify-center gap-2"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  {loading ? 'Evasione...' : 'Evadi Ordine su Shopify'}
+                </button>
+
+                <button
+                  onClick={handlePrintLabel}
+                  disabled={loading}
+                  className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition-all text-sm flex items-center justify-center gap-2"
+                >
+                  <Printer className="w-4 h-4" />
+                  {loading ? 'Download...' : 'Stampa Etichetta'}
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* STEP 5: Success */}
+          {step === 'success' && (
+            <motion.div
+              key="success"
+              variants={flipVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.5 }}
+              className="absolute inset-0 bg-gradient-to-br from-green-500 to-emerald-600 rounded-3xl shadow-2xl flex items-center justify-center"
+              style={{ backfaceVisibility: 'hidden' }}
+            >
+              <div className="text-center text-white">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="text-5xl mb-3"
+                >
+                  ✅
+                </motion.div>
+                <h3 className="text-2xl font-bold mb-1">Completato!</h3>
+                <p className="text-sm text-green-100">Ritorno al menu...</p>
+              </div>
+            </motion.div>
+          )}
           
         </AnimatePresence>
       </div>
