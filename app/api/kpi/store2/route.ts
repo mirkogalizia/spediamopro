@@ -1,113 +1,109 @@
-// app/api/kpi/store2/route.ts
-import { NextResponse } from 'next/server';
+// app/api/kpi/store2/route.ts (AGGIORNA ESISTENTE)
+import { NextRequest, NextResponse } from 'next/server';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+const SHOPIFY_SHOP = process.env.SHOPIFY_SHOP_DOMAIN;
+const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 
-// Funzione per fetch con paginazione
-async function fetchAllUnfulfilledOrders(shopifyDomain: string, shopifyToken: string) {
-  const headers = {
-    'X-Shopify-Access-Token': shopifyToken,
-    'Content-Type': 'application/json'
-  };
+async function getOrdersInRange(startDate: string, endDate: string) {
+  const url = `https://${SHOPIFY_SHOP}/admin/api/2024-01/orders.json?status=any&created_at_min=${startDate}&created_at_max=${endDate}&limit=250`;
   
-  let allOrders: any[] = [];
-  let url = `https://${shopifyDomain}/admin/api/2024-01/orders.json?fulfillment_status=unfulfilled&limit=250`;
-  
-  while (url) {
-    const res = await fetch(url, { headers });
-    const data = await res.json();
-    
-    allOrders = [...allOrders, ...(data.orders || [])];
-    
-    console.log(`[KPI] Fetched ${data.orders?.length || 0} orders, total so far: ${allOrders.length}`);
-    
-    // Controlla header Link per prossima pagina
-    const linkHeader = res.headers.get('Link');
-    url = null; // Reset
-    
-    if (linkHeader) {
-      const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-      if (nextMatch) {
-        url = nextMatch[1];
-      }
-    }
-  }
-  
-  console.log(`[KPI] Total unfulfilled orders: ${allOrders.length}`);
-  return allOrders;
+  const response = await fetch(url, {
+    headers: {
+      'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN!,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) throw new Error(`Shopify API error: ${response.status}`);
+  const data = await response.json();
+  return data.orders || [];
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const todayStart = `${today}T00:00:00Z`;
-    
-    const shopifyDomain = process.env.SHOPIFY_DOMAIN_2;
-    const shopifyToken = process.env.SHOPIFY_TOKEN_2;
-    
-    if (!shopifyDomain || !shopifyToken) {
-      throw new Error('Shopify credentials missing');
-    }
-    
-    const headers = {
-      'X-Shopify-Access-Token': shopifyToken,
-      'Content-Type': 'application/json'
-    };
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const todayEnd = new Date().toISOString();
 
-    // 1️⃣ TUTTI gli ordini UNFULFILLED (con paginazione automatica)
-    const ordersUnfulfilled = await fetchAllUnfulfilledOrders(shopifyDomain, shopifyToken);
+    // Ultimi 7 giorni per calcolare la media
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
 
-    // 2️⃣ Ordini CREATI OGGI (per incasso)
-    const todayOrdersRes = await fetch(
-      `https://${shopifyDomain}/admin/api/2024-01/orders.json?status=any&created_at_min=${todayStart}&limit=250`,
-      { headers }
-    );
-    const todayOrdersData = await todayOrdersRes.json();
-    const todayOrders = todayOrdersData.orders || [];
+    const orders = await getOrdersInRange(weekAgo.toISOString(), todayEnd);
 
-    // 3️⃣ INCASSO DI OGGI
-    const revenueToday = todayOrders.reduce((sum, order) => {
-      return sum + parseFloat(order.total_price || 0);
-    }, 0);
-
-    // 4️⃣ Ordini EVASI OGGI
-    const fulfilledTodayRes = await fetch(
-      `https://${shopifyDomain}/admin/api/2024-01/orders.json?status=any&fulfillment_status=fulfilled&updated_at_min=${todayStart}&limit=250`,
-      { headers }
-    );
-    const fulfilledTodayData = await fulfilledTodayRes.json();
-    const allFulfilledOrders = fulfilledTodayData.orders || [];
-    
-    const ordersFulfilledToday = allFulfilledOrders.filter(order => {
-      if (!order.fulfillments || order.fulfillments.length === 0) return false;
-      return order.fulfillments.some(fulfillment => {
-        const fulfillmentDate = new Date(fulfillment.created_at).toISOString().split('T')[0];
-        return fulfillmentDate === today;
-      });
+    // Ordini di oggi
+    const todayOrders = orders.filter(order => {
+      const createdAt = new Date(order.created_at);
+      return createdAt >= new Date(todayStart);
     });
 
-    console.log(`[KPI] Final stats - Unfulfilled: ${ordersUnfulfilled.length}, Revenue: €${revenueToday.toFixed(2)}, Fulfilled today: ${ordersFulfilledToday.length}`);
+    const ordersFulfilledToday = todayOrders.filter(
+      order => order.fulfillment_status === 'fulfilled'
+    ).length;
+
+    const revenueToday = todayOrders
+      .filter(order => 
+        order.fulfillment_status === 'fulfilled' && 
+        order.financial_status === 'paid'
+      )
+      .reduce((sum, order) => sum + parseFloat(order.total_price || '0'), 0);
+
+    // Calcola media ultimi 6 giorni (escluso oggi)
+    const last6Days: number[] = [];
+    for (let i = 1; i <= 6; i++) {
+      const dayStart = new Date(now);
+      dayStart.setDate(dayStart.getDate() - i);
+      dayStart.setHours(0, 0, 0, 0);
+      
+      const dayEnd = new Date(dayStart);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const dayOrders = orders.filter(order => {
+        const createdAt = new Date(order.created_at);
+        return createdAt >= dayStart && createdAt <= dayEnd;
+      });
+
+      const dayFulfilled = dayOrders.filter(
+        order => order.fulfillment_status === 'fulfilled'
+      ).length;
+
+      last6Days.push(dayFulfilled);
+    }
+
+    const avgPrevious = last6Days.reduce((a, b) => a + b, 0) / last6Days.length;
+
+    // Calcola trend
+    const trendChange = avgPrevious > 0
+      ? ((ordersFulfilledToday - avgPrevious) / avgPrevious) * 100
+      : ordersFulfilledToday > 0 ? 100 : 0;
+
+    const trendDirection = ordersFulfilledToday >= avgPrevious ? 'up' : 'down';
+
+    // Ordini totali inevasi
+    const allOrders = await getOrdersInRange(
+      new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+      todayEnd
+    );
+    
+    const ordersUnfulfilled = allOrders.filter(
+      order => order.fulfillment_status !== 'fulfilled'
+    ).length;
 
     return NextResponse.json({
-      success: true,
-      ordersUnfulfilled: ordersUnfulfilled.length,
-      revenueToday: revenueToday.toFixed(2),
-      ordersFulfilledToday: ordersFulfilledToday.length,
-      currency: todayOrders[0]?.currency || 'EUR'
+      ordersFulfilledToday,
+      revenueToday: parseFloat(revenueToday.toFixed(2)),
+      ordersUnfulfilled,
+      trend: {
+        change: parseFloat(trendChange.toFixed(1)),
+        direction: trendDirection,
+        average: parseFloat(avgPrevious.toFixed(1))
+      }
     });
-    
-  } catch (error) {
-    console.error('[KPI] Errore:', error);
+
+  } catch (error: any) {
+    console.error('Error fetching KPIs:', error);
     return NextResponse.json(
-      { 
-        success: false,
-        ordersUnfulfilled: 0,
-        revenueToday: '0.00',
-        ordersFulfilledToday: 0,
-        error: error.message
-      },
+      { error: error.message || 'Errore caricamento KPI' },
       { status: 500 }
     );
   }
