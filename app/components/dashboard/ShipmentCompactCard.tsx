@@ -22,11 +22,9 @@ function getTrackingLabel(spedizione: any) {
   return "";
 }
 
-// Funzione per ottenere l'icona del corriere
 function getCarrierIcon(corriereName: string) {
   const name = corriereName.toLowerCase();
   
-  // Mappa icone corrieri (usa emoji o lucide-react icons)
   if (name.includes('poste') || name.includes('sda')) return '📮';
   if (name.includes('bartolini') || name.includes('brt')) return '🚚';
   if (name.includes('gls')) return '📦';
@@ -35,7 +33,7 @@ function getCarrierIcon(corriereName: string) {
   if (name.includes('fedex')) return '🚀';
   if (name.includes('tnt')) return '🚛';
   
-  return '🚚'; // Default
+  return '🚚';
 }
 
 export function ShipmentCompactCard() {
@@ -216,7 +214,6 @@ export function ShipmentCompactCard() {
     }
   };
 
-  // ✅ FULFILL ORDER - Funziona correttamente
   const handleFulfillOrder = async () => {
     setLoading(true);
     setError(null);
@@ -258,7 +255,6 @@ export function ShipmentCompactCard() {
     }
   };
 
-  // ✅ STAMPA ETICHETTA - Funziona correttamente
   const handlePrintLabel = async () => {
     setLoading(true);
     setError(null);
@@ -276,13 +272,11 @@ export function ShipmentCompactCard() {
       
       console.log('[PRINT] Etichetta ricevuta, tipo:', ldv.type);
       
-      // Decodifica base64 e crea blob
       const byteChars = atob(ldv.b64);
       const bytes = Uint8Array.from(byteChars, (c) => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: ldv.type });
       const url = URL.createObjectURL(blob);
       
-      // Download automatico
       const a = document.createElement('a');
       a.href = url;
       a.download = `etichetta_${createdShipment.id}_${selectedOrder.name}.zip`;
@@ -293,7 +287,6 @@ export function ShipmentCompactCard() {
 
       console.log('[PRINT] Download completato');
 
-      // Success e reset dopo 2 secondi
       setTimeout(() => {
         setStep('success');
         setTimeout(() => {
@@ -330,7 +323,6 @@ export function ShipmentCompactCard() {
     setOrdersLoaded(false);
   };
 
-  // Funzione per tornare indietro
   const goBack = () => {
     if (step === 'simulate') {
       resetToSearch();
@@ -460,7 +452,7 @@ export function ShipmentCompactCard() {
             </motion.div>
           )}
 
-          {/* STEP 2: Simulate */}
+          {/* STEP 2: Simulate - CON INDIRIZZO 2 VISIBILE */}
           {step === 'simulate' && (
             <motion.div
               key="simulate"
@@ -483,7 +475,6 @@ export function ShipmentCompactCard() {
                   </div>
                 </div>
                 
-                {/* Tasto indietro */}
                 <button
                   onClick={goBack}
                   className="p-2.5 rounded-xl bg-white/50 hover:bg-white/70 transition-all backdrop-blur-xl border border-white/40 shadow-sm"
@@ -494,6 +485,7 @@ export function ShipmentCompactCard() {
               </div>
 
               <div className="space-y-2.5">
+                {/* Nome e Telefono */}
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     placeholder="Nome"
@@ -509,6 +501,7 @@ export function ShipmentCompactCard() {
                   />
                 </div>
                 
+                {/* Email */}
                 <input
                   placeholder="Email"
                   value={form.email}
@@ -516,13 +509,23 @@ export function ShipmentCompactCard() {
                   className="w-full px-3 py-2.5 bg-white/60 backdrop-blur-xl border border-white/40 rounded-xl text-sm shadow-sm focus:outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-200/50"
                 />
                 
+                {/* Indirizzo Riga 1 */}
                 <input
-                  placeholder="Indirizzo"
+                  placeholder="Indirizzo (Via, Numero)"
                   value={form.indirizzo}
                   onChange={(e) => setForm({...form, indirizzo: removeAccents(e.target.value)})}
                   className="w-full px-3 py-2.5 bg-white/60 backdrop-blur-xl border border-white/40 rounded-xl text-sm shadow-sm focus:outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-200/50"
                 />
+
+                {/* ✅ Indirizzo Riga 2 - NUOVO CAMPO VISIBILE */}
+                <input
+                  placeholder="Indirizzo 2 (Interno, Scala, Piano - opzionale)"
+                  value={form.indirizzo2}
+                  onChange={(e) => setForm({...form, indirizzo2: removeAccents(e.target.value)})}
+                  className="w-full px-3 py-2.5 bg-white/60 backdrop-blur-xl border border-white/40 rounded-xl text-sm shadow-sm focus:outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-200/50"
+                />
                 
+                {/* CAP, Città, Provincia */}
                 <div className="grid grid-cols-4 gap-2">
                   <input
                     placeholder="CAP"
@@ -555,7 +558,7 @@ export function ShipmentCompactCard() {
             </motion.div>
           )}
 
-          {/* STEP 3: Carriers con Icone */}
+          {/* STEP 3: Carriers */}
           {step === 'carriers' && (
             <motion.div
               key="carriers"
@@ -578,7 +581,6 @@ export function ShipmentCompactCard() {
                   </div>
                 </div>
                 
-                {/* Tasto indietro */}
                 <button
                   onClick={goBack}
                   className="p-2.5 rounded-xl bg-white/50 hover:bg-white/70 transition-all backdrop-blur-xl border border-white/40 shadow-sm"
@@ -597,7 +599,6 @@ export function ShipmentCompactCard() {
                     className="w-full bg-white/60 hover:bg-white/80 backdrop-blur-xl p-3.5 rounded-xl flex items-center justify-between transition-all border border-white/40 shadow-sm"
                   >
                     <div className="flex items-center gap-3">
-                      {/* Icona specifica del corriere */}
                       <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-2xl">
                         {getCarrierIcon(carrier.corriere)}
                       </div>
@@ -636,7 +637,6 @@ export function ShipmentCompactCard() {
                   </div>
                 </div>
                 
-                {/* Tasto indietro */}
                 <button
                   onClick={goBack}
                   className="p-2.5 rounded-xl bg-white/50 hover:bg-white/70 transition-all backdrop-blur-xl border border-white/40 shadow-sm"
@@ -658,7 +658,6 @@ export function ShipmentCompactCard() {
               {error && <div className="mb-3 text-xs text-red-700 bg-red-50/80 backdrop-blur-sm p-2.5 rounded-xl border border-red-200/50">{error}</div>}
 
               <div className="space-y-3">
-                {/* ✅ Pulsante Fulfill - FUNZIONANTE */}
                 <button
                   onClick={handleFulfillOrder}
                   disabled={loading}
@@ -668,7 +667,6 @@ export function ShipmentCompactCard() {
                   {loading ? 'Evasione in corso...' : 'Evadi Ordine su Shopify'}
                 </button>
 
-                {/* ✅ Pulsante Stampa - FUNZIONANTE */}
                 <button
                   onClick={handlePrintLabel}
                   disabled={loading}
@@ -712,5 +710,4 @@ export function ShipmentCompactCard() {
     </div>
   );
 }
-
 
