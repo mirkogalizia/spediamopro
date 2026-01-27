@@ -77,6 +77,38 @@ export default function Page() {
   const router = useRouter();
   const [userChecked, setUserChecked] = useState(false);
 
+  // Nascondi sidebar e cambia sfondo
+  useEffect(() => {
+    // Cambia background del body
+    document.body.style.background = "#dd5935";
+    
+    // Nascondi sidebar (cerca tutti i possibili selettori)
+    const sidebar = document.querySelector('[class*="sidebar"]') || 
+                    document.querySelector('aside') || 
+                    document.querySelector('nav[class*="side"]');
+    
+    if (sidebar) {
+      sidebar.style.display = "none";
+    }
+
+    // Nascondi anche possibili container laterali
+    const sideElements = document.querySelectorAll('[class*="side-"], [class*="Sidebar"], aside, nav[role="navigation"]');
+    sideElements.forEach(el => {
+      if (el.offsetWidth < 300) { // Probabilmente una sidebar
+        el.style.display = "none";
+      }
+    });
+
+    // Cleanup al dismount
+    return () => {
+      document.body.style.background = "";
+      sideElements.forEach(el => {
+        el.style.display = "";
+      });
+      if (sidebar) sidebar.style.display = "";
+    };
+  }, []);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (usr) => {
       if (!usr) {
@@ -424,7 +456,7 @@ export default function Page() {
           alt="Biscotti Sinceri Logo"
           width={220}
           height={90}
-          style={{ width: "220px", height: "auto", objectFit: "contain", filter: "drop-shadow(0 2px 14px #bbb8)", maxWidth: "95vw" }}
+          style={{ width: "220px", height: "auto", objectFit: "contain", filter: "drop-shadow(0 2px 14px rgba(0,0,0,0.3))", maxWidth: "95vw" }}
           priority
           unoptimized
         />
@@ -549,7 +581,7 @@ export default function Page() {
 // --- STILI ---
 const containerStyle = {
   minHeight: "100vh",
-  background: "#f5f7fa",
+  background: "#dd5935", // ← Cambiato sfondo
   display: "flex",
   flexDirection: "column",
   justifyContent: "flex-start",
@@ -672,3 +704,4 @@ const buttonEvadi = {
   textAlign: "center",
   transition: "background-color 0.3s ease",
 };
+
