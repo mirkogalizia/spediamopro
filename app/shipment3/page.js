@@ -71,13 +71,12 @@ function HoverButton({ style, onClick, children, disabled }) {
   );
 }
 
-const LS_KEY = "spediamo-pro-spedizioni-3"; // ← Chiave unica per store 3
+const LS_KEY = "spediamo-pro-spedizioni-3";
 
 export default function Page() {
   const router = useRouter();
   const [userChecked, setUserChecked] = useState(false);
 
-  // --- CONTROLLO LOGIN FIREBASE ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (usr) => {
       if (!usr) {
@@ -87,7 +86,6 @@ export default function Page() {
     });
     return () => unsubscribe();
   }, [router]);
-  // --- FINE CONTROLLO LOGIN FIREBASE ---
 
   const [orders, setOrders] = useState([]);
   const [orderQuery, setOrderQuery] = useState("");
@@ -120,6 +118,7 @@ export default function Page() {
       if (salvate) setSpedizioniCreate(JSON.parse(salvate));
     } catch {}
   }, []);
+
   useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify(spedizioniCreate));
   }, [spedizioniCreate]);
@@ -175,7 +174,7 @@ export default function Page() {
 
     try {
       if (!dateFrom || !dateTo) throw new Error("Specificare sia la data di inizio che di fine.");
-      if (dateFrom > dateTo)   throw new Error("La data di inizio non può essere dopo la data di fine.");
+      if (dateFrom > dateTo) throw new Error("La data di inizio non può essere dopo la data di fine.");
 
       const res = await fetch(`/api/shopify3?from=${dateFrom}&to=${dateTo}`);
       if (!res.ok) throw new Error(await res.text());
@@ -323,9 +322,7 @@ export default function Page() {
       if (dataP.can_pay) {
         alert(`✅ Spedizione #${spedizione.id} creata e pagata!`);
       } else {
-        alert(
-          `⚠️ Spedizione #${spedizione.id} creata ma NON pagata.\n\nMotivo:\n${motivo}`
-        );
+        alert(`⚠️ Spedizione #${spedizione.id} creata ma NON pagata.\n\nMotivo:\n${motivo}`);
         console.warn("PAY NON RIUSCITO:", dataP);
       }
     } catch (err) {
@@ -346,12 +343,6 @@ export default function Page() {
       });
       if (!foundOrder) throw new Error(`Impossibile trovare l'ordine ${orderName}`);
 
-      console.log("Provo evadi: ", {
-        orderId: foundOrder.id,
-        trackingNumber: getTrackingLabel(spedizioneObj.spedizione),
-        carrierName: spedizioneObj.spedizione.corriere || "Altro"
-      });
-
       const res = await fetch("/api/shopify3/fulfill-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -363,8 +354,6 @@ export default function Page() {
       });
 
       const contentType = res.headers.get("content-type");
-      console.log("Risposta fetch:", res.status, contentType);
-
       let data;
       if (contentType && contentType.includes("application/json")) {
         data = await res.json();
@@ -379,9 +368,7 @@ export default function Page() {
 
       setSpedizioniCreate((prev) =>
         prev.map((el) =>
-          el.spedizione.id === spedizioneObj.spedizione.id
-            ? { ...el, fulfilled: true }
-            : el
+          el.spedizione.id === spedizioneObj.spedizione.id ? { ...el, fulfilled: true } : el
         )
       );
 
@@ -425,22 +412,21 @@ export default function Page() {
     }
   };
 
-  // --- BLOCCO LOGIN: Mostra loading se non ha ancora controllato ---
   if (!userChecked) {
     return <div style={{ padding: 40, textAlign: "center" }}>Controllo login…</div>;
   }
 
-  // --- RESTO DEL TUO RENDER ---
   return (
     <div style={containerStyle}>
       <div style={logoWrapperStyle}>
         <Image
-          src="/logo.png"
-          alt="Logo"
+          src="https://cdn.shopify.com/s/files/1/1010/1889/4681/files/image-628ef14a-212b-407c-a7ff-bf182fb029b0.webp?v=1768819449"
+          alt="Biscotti Sinceri Logo"
           width={220}
           height={90}
           style={{ width: "220px", height: "auto", objectFit: "contain", filter: "drop-shadow(0 2px 14px #bbb8)", maxWidth: "95vw" }}
           priority
+          unoptimized
         />
       </div>
       <div style={cardStyle}>
