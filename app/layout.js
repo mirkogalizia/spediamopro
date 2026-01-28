@@ -16,7 +16,10 @@ export default function RootLayout({ children }) {
 
 function RootContent({ children }) {
   const pathname = usePathname();
-  const showSidebar = pathname !== '/';
+
+  // Sidebar nascosta in home (/) e in /shipment3
+  const hideSidebarRoutes = ['/', '/shipment3'];
+  const showSidebar = !hideSidebarRoutes.includes(pathname);
 
   return (
     <div className="flex min-h-screen w-full bg-gray-50">
