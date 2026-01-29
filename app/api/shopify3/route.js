@@ -1,16 +1,5 @@
 // /app/api/shopify3/route.js
-
-async function getShopifyToken() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-  const res = await fetch(`${baseUrl}/api/shopify3/auth`);
-  const data = await res.json();
-
-  if (!data.success) {
-    throw new Error("Token error: " + data.error);
-  }
-
-  return data.access_token;
-}
+import { getShopify3Token } from "@/lib/shopify3-token";
 
 export async function GET(req) {
   try {
@@ -25,7 +14,7 @@ export async function GET(req) {
       );
     }
 
-    const accessToken = await getShopifyToken(); // ← Token fresco
+    const accessToken = await getShopify3Token(); // ← Chiamata diretta
     const shopDomain = process.env.SHOPIFY_DOMAIN_3;
     const apiVersion = "2025-10";
 
@@ -70,17 +59,18 @@ export async function GET(req) {
       }
     }
 
-    console.log(`✅ ${allOrders.length} ordini`);
+    console.log(`✅ ${allOrders.length} ordini caricati`);
 
     return new Response(
       JSON.stringify({ ok: true, orders: allOrders }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (e) {
-    console.error("❌", e.message);
+    console.error("❌ Errore:", e.message);
     return new Response(
       JSON.stringify({ ok: false, error: e.message }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }
+
