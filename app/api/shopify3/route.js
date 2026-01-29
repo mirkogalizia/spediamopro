@@ -1,18 +1,14 @@
 // /app/api/shopify3/route.js
 
-// ========================================
-// Helper: ottieni token sempre valido (OAuth refresh automatico)
-// ========================================
 async function getShopifyToken() {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
   const res = await fetch(`${baseUrl}/api/shopify3/auth`);
   const data = await res.json();
 
   if (!data.success) {
-    throw new Error("Impossibile ottenere token Shopify: " + data.error);
+    throw new Error("Token error: " + data.error);
   }
 
-  console.log(`✅ Token Shopify valido per altri ${data.expires_in}s`);
   return data.access_token;
 }
 
@@ -24,13 +20,12 @@ export async function GET(req) {
 
     if (!from || !to) {
       return new Response(
-        JSON.stringify({ ok: false, error: "'from' e 'to' sono obbligatori" }),
+        JSON.stringify({ ok: false, error: "'from' e 'to' obbligatori" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // ← Usa token OAuth fresco (si rinnova automaticamente ogni 24h)
-    const accessToken = await getShopifyToken();
+    const accessToken = await getShopifyToken(); // ← Token fresco
     const shopDomain = process.env.SHOPIFY_DOMAIN_3;
     const apiVersion = "2025-10";
 
@@ -47,7 +42,7 @@ export async function GET(req) {
     let nextUrl = `https://${shopDomain}/admin/api/${apiVersion}/orders.json?${baseParams}`;
     const allOrders = [];
 
-    console.log(`→ Carico ordini Shopify da ${from} a ${to}`);
+    console.log(`→ Carico ordini ${from} - ${to}`);
 
     while (nextUrl) {
       const response = await fetch(nextUrl, {
@@ -60,7 +55,7 @@ export async function GET(req) {
 
       if (!response.ok) {
         const errTxt = await response.text();
-        throw new Error(`Shopify API error ${response.status}: ${errTxt}`);
+        throw new Error(`Shopify error ${response.status}: ${errTxt}`);
       }
 
       const json = await response.json();
@@ -69,22 +64,22 @@ export async function GET(req) {
       const linkHeader = response.headers.get("Link");
       if (linkHeader) {
         const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-        nextUrl = match && match[1] ? match[1] : null;
+        nextUrl = match?.[1] || null;
       } else {
         nextUrl = null;
       }
     }
 
-    console.log(`✅ Caricati ${allOrders.length} ordini`);
+    console.log(`✅ ${allOrders.length} ordini`);
 
     return new Response(
       JSON.stringify({ ok: true, orders: allOrders }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (e) {
-    console.error("❌ Errore caricamento ordini:", e.message);
+    console.error("❌", e.message);
     return new Response(
-      JSON.stringify({ ok: false, error: e.message || "Errore interno server" }),
+      JSON.stringify({ ok: false, error: e.message }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
