@@ -1,4 +1,21 @@
 // /app/api/shopify3/route.js
+
+// ========================================
+// Helper: ottieni token sempre valido (OAuth refresh automatico)
+// ========================================
+async function getShopifyToken() {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+  const res = await fetch(`${baseUrl}/api/shopify3/auth`);
+  const data = await res.json();
+
+  if (!data.success) {
+    throw new Error("Impossibile ottenere token Shopify: " + data.error);
+  }
+
+  console.log(`✅ Token Shopify valido per altri ${data.expires_in}s`);
+  return data.access_token;
+}
+
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -12,7 +29,8 @@ export async function GET(req) {
       );
     }
 
-    const accessToken = process.env.SHOPIFY_TOKEN_3;
+    // ← Usa token OAuth fresco (si rinnova automaticamente ogni 24h)
+    const accessToken = await getShopifyToken();
     const shopDomain = process.env.SHOPIFY_DOMAIN_3;
     const apiVersion = "2025-10";
 
@@ -28,6 +46,8 @@ export async function GET(req) {
 
     let nextUrl = `https://${shopDomain}/admin/api/${apiVersion}/orders.json?${baseParams}`;
     const allOrders = [];
+
+    console.log(`→ Carico ordini Shopify da ${from} a ${to}`);
 
     while (nextUrl) {
       const response = await fetch(nextUrl, {
@@ -55,11 +75,14 @@ export async function GET(req) {
       }
     }
 
+    console.log(`✅ Caricati ${allOrders.length} ordini`);
+
     return new Response(
       JSON.stringify({ ok: true, orders: allOrders }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (e) {
+    console.error("❌ Errore caricamento ordini:", e.message);
     return new Response(
       JSON.stringify({ ok: false, error: e.message || "Errore interno server" }),
       { status: 500, headers: { "Content-Type": "application/json" } }

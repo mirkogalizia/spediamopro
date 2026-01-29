@@ -2,10 +2,28 @@
 import { NextResponse } from 'next/server';
 
 const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN_3;
-const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN_3;
+
+// ========================================
+// Helper: ottieni token sempre valido (OAuth refresh automatico)
+// ========================================
+async function getShopifyToken() {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+  const res = await fetch(`${baseUrl}/api/shopify3/auth`);
+  const data = await res.json();
+
+  if (!data.success) {
+    throw new Error("Impossibile ottenere token Shopify: " + data.error);
+  }
+
+  return data.access_token;
+}
 
 export async function GET() {
   try {
+    const SHOPIFY_TOKEN = await getShopifyToken(); // ← Token OAuth fresco
+
+    console.log("→ Recupero payouts Shopify...");
+
     // 1. Recupera tutti i payout
     const payoutRes = await fetch(`https://${SHOPIFY_DOMAIN}/admin/api/2025-10/shopify_payments/payouts.json`, {
       headers: {
@@ -17,6 +35,8 @@ export async function GET() {
     if (!payoutRes.ok) throw new Error("Errore nel recupero dei payout");
     const payoutData = await payoutRes.json();
     const payouts = payoutData.payouts;
+
+    console.log(`✅ Trovati ${payouts.length} payouts`);
 
     // 2. Calcola gli incassi giornalieri veri per ogni giorno in cui esiste un payout
     const incassi = {};
@@ -51,10 +71,12 @@ export async function GET() {
       };
     });
 
+    console.log("✅ Payouts arricchiti con incassi giornalieri");
+
     return NextResponse.json({ ok: true, payouts: arricchiti });
 
   } catch (err) {
-    console.error("Errore API payout:", err);
+    console.error("❌ Errore API payout:", err);
     return NextResponse.json({ ok: false, error: err.message || "Errore generico" }, { status: 500 });
   }
 }

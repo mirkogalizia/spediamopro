@@ -1,7 +1,23 @@
 // /app/api/shopify3/fulfill-order/route.js
+
+// ========================================
+// Helper: ottieni token sempre valido (OAuth refresh automatico)
+// ========================================
+async function getShopifyToken() {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+  const res = await fetch(`${baseUrl}/api/shopify3/auth`);
+  const data = await res.json();
+
+  if (!data.success) {
+    throw new Error("Impossibile ottenere token Shopify: " + data.error);
+  }
+
+  return data.access_token;
+}
+
 export async function POST(req) {
   try {
-    const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN_3;
+    const SHOPIFY_TOKEN = await getShopifyToken(); // ← Token OAuth fresco
     const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN_3;
     const body = await req.json();
 
@@ -12,6 +28,8 @@ export async function POST(req) {
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
+
+    console.log(`→ Evadi ordine ${orderId} con tracking ${trackingNumber}`);
 
     // 1. Recupera fulfillmentOrderId e lineItems con GraphQL
     const orderGID = orderId.toString().startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
@@ -96,11 +114,14 @@ export async function POST(req) {
     const restData = await restRes.json();
 
     if (!restRes.ok || restData.errors) {
+      console.error("❌ Errore fulfillment:", restData.errors || restData);
       return new Response(
         JSON.stringify({ error: restData.errors || restData || "Errore fulfillment Shopify" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
+
+    console.log("✅ Ordine evaso con successo");
 
     // Successo!
     return new Response(
@@ -109,9 +130,11 @@ export async function POST(req) {
     );
 
   } catch (err) {
+    console.error("❌ Errore evasione:", err.message);
     return new Response(
       JSON.stringify({ error: err.message || "Errore generico nel backend" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }
+

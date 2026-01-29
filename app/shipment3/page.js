@@ -1,8 +1,5 @@
 'use client';
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { auth } from "../../lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
 import Image from "next/image";
 
 // Utility: rimuove accenti
@@ -74,51 +71,8 @@ function HoverButton({ style, onClick, children, disabled }) {
 const LS_KEY = "spediamo-pro-spedizioni-3";
 
 export default function Page() {
-  const router = useRouter();
-  const [userChecked, setUserChecked] = useState(false);
-
-  // Nascondi sidebar e cambia sfondo
-  useEffect(() => {
-    // Cambia background del body
-    document.body.style.background = "#dd5935";
-    
-    // Nascondi sidebar (cerca tutti i possibili selettori)
-    const sidebar = document.querySelector('[class*="sidebar"]') || 
-                    document.querySelector('aside') || 
-                    document.querySelector('nav[class*="side"]');
-    
-    if (sidebar) {
-      sidebar.style.display = "none";
-    }
-
-    // Nascondi anche possibili container laterali
-    const sideElements = document.querySelectorAll('[class*="side-"], [class*="Sidebar"], aside, nav[role="navigation"]');
-    sideElements.forEach(el => {
-      if (el.offsetWidth < 300) { // Probabilmente una sidebar
-        el.style.display = "none";
-      }
-    });
-
-    // Cleanup al dismount
-    return () => {
-      document.body.style.background = "";
-      sideElements.forEach(el => {
-        el.style.display = "";
-      });
-      if (sidebar) sidebar.style.display = "";
-    };
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (usr) => {
-      if (!usr) {
-        router.push("/login");
-      }
-      setUserChecked(true);
-    });
-    return () => unsubscribe();
-  }, [router]);
-
+  // ✅ RIMOSSO: tutto il codice Firebase e controllo login
+  
   const [orders, setOrders] = useState([]);
   const [orderQuery, setOrderQuery] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState(null);
@@ -143,6 +97,43 @@ export default function Page() {
   const [errore, setErrore] = useState(null);
   const [dateFrom, setDateFrom] = useState("2025-01-01");
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
+
+  // Nascondi sidebar e cambia sfondo
+  useEffect(() => {
+    // Cambia background del body
+    document.body.style.backgroundColor = "#dd5935";
+    document.body.style.backgroundImage = "none";
+
+    // Nascondi sidebar generiche
+    const selectors = [
+      '[class*="sidebar"]',
+      'aside',
+      'nav[class*="side"]',
+      'nav[aria-label*="Sidebar"]',
+    ];
+
+    const foundSidebars = [];
+    selectors.forEach((sel) => {
+      document.querySelectorAll(sel).forEach((el) => {
+        // Salva display originale
+        if (!el.dataset._oldDisplay) {
+          el.dataset._oldDisplay = el.style.display || "";
+        }
+        el.style.display = "none";
+        foundSidebars.push(el);
+      });
+    });
+
+    // Cleanup
+    return () => {
+      document.body.style.backgroundColor = "";
+      document.body.style.backgroundImage = "";
+      foundSidebars.forEach((el) => {
+        el.style.display = el.dataset._oldDisplay || "";
+        delete el.dataset._oldDisplay;
+      });
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -444,9 +435,7 @@ export default function Page() {
     }
   };
 
-  if (!userChecked) {
-    return <div style={{ padding: 40, textAlign: "center" }}>Controllo login…</div>;
-  }
+  // ✅ RIMOSSO: controllo userChecked e schermata "Controllo login..."
 
   return (
     <div style={containerStyle}>
@@ -581,7 +570,7 @@ export default function Page() {
 // --- STILI ---
 const containerStyle = {
   minHeight: "100vh",
-  background: "#dd5935", // ← Cambiato sfondo
+  background: "#dd5935",
   display: "flex",
   flexDirection: "column",
   justifyContent: "flex-start",
