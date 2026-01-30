@@ -1,23 +1,9 @@
 // /app/api/shopify3/fulfill-order/route.js
-
-// ========================================
-// Helper: ottieni token sempre valido (OAuth refresh automatico)
-// ========================================
-async function getShopifyToken() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-  const res = await fetch(`${baseUrl}/api/shopify3/auth`);
-  const data = await res.json();
-
-  if (!data.success) {
-    throw new Error("Impossibile ottenere token Shopify: " + data.error);
-  }
-
-  return data.access_token;
-}
+import { getShopify3Token } from "@/lib/shopify3-token";
 
 export async function POST(req) {
   try {
-    const SHOPIFY_TOKEN = await getShopifyToken(); // ← Token OAuth fresco
+    const SHOPIFY_TOKEN = await getShopify3Token(); // ← Token fresco diretto
     const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN_3;
     const body = await req.json();
 
