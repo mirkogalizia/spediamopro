@@ -1,5 +1,6 @@
 // /app/api/spediamo3/route.js
 import { getSpediamoToken } from "../../lib/spediamo";
+import { getShopify3Token } from "@/lib/shopify3-token"; // ← AGGIUNGI QUESTO
 
 function getQueryParams(req) {
   const url = new URL(req.url, "http://localhost");
@@ -15,7 +16,6 @@ export async function POST(req) {
 
   // Credenziali store 3 (Biscotti Sinceri)
   const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN_3;
-  const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN_3;
   const AUTHCODE = process.env.SPEDIAMO_AUTHCODE_3;
 
   // ════════════════════
@@ -74,12 +74,13 @@ export async function POST(req) {
     try {
       const body = await req.json().catch(() => ({}));
       const jwt  = await getSpediamoToken(AUTHCODE);
+      const SHOPIFY_TOKEN = await getShopify3Token(); // ← USA TOKEN FRESCO ✅
 
       const shopRes = await fetch(
         `https://${SHOPIFY_DOMAIN}/admin/api/2025-10/orders/${shopifyOrderId}.json`,
         {
           headers: {
-            "X-Shopify-Access-Token": SHOPIFY_TOKEN,
+            "X-Shopify-Access-Token": SHOPIFY_TOKEN, // ← ORA È FRESCO ✅
             "Content-Type":           "application/json",
           },
         }
