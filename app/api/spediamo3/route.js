@@ -29,11 +29,11 @@ export async function POST(req) {
       const payload = {
         nazioneMittente:     "IT",
         nazioneDestinatario: body.nazioneDestinatario || "IT",
-        capMittente:         "40141",
+        capMittente:         "00121",
         capDestinatario:     body.capDestinatario,
-        cittaMittente:       "Bologna",
+        cittaMittente:      "OSTIA LIDO",
         cittaDestinatario:   body.cittaDestinatario,
-        provinciaMittente:   "BO",
+        provinciaMittente:   "RM",
         provinciaDestinatario: body.provinciaDestinatario,
         colli: [{
           altezza:    +body.altezza,
@@ -94,11 +94,11 @@ export async function POST(req) {
       const payload = {
         nazioneMittente:       "IT",
         nazioneDestinatario:   ship.country_code || ship.country,
-        capMittente:           "40141",
+        capMittente:           "00121",
         capDestinatario:       ship.zip,
-        cittaMittente:         "Bologna",
+        cittaMittente:         "OSTIA LIDO",
         cittaDestinatario:     ship.city,
-        provinciaMittente:     "BO",
+        provinciaMittente:     "RM",
         provinciaDestinatario: ship.province_code || ship.province,
         consigneePickupPointId: body.consigneePickupPointId || null,
         parcels: [{
@@ -143,12 +143,12 @@ export async function POST(req) {
 
       const payload = {
         nominativoMittente:     "BISCOTTI SINCERI",
-        senderAddressLine1:     "Via Example 123",
+        senderAddressLine1:     "VIA DELLE ALEUTINE 68",
         senderAddressLine2:     body.indirizzo2 || null,
-        comuneMittente:         "Bologna",
-        provinciaMittente:      "BO",
-        capMittente:            "40141",
-        telefonoMittente:       "0511234567",
+        comuneMittente:         "OSTIA LIDO",
+        provinciaMittente:      "RM",
+        capMittente:            "00121",
+        telefonoMittente:       "3929874134",
         emailMittente:          "info@biscottisinceri.it",
         nominativoDestinatario: body.nome,
         consigneeAddressLine1:  body.indirizzo,
