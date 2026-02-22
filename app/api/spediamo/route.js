@@ -74,12 +74,12 @@ export async function POST(req) {
           email:      body.emailDestinatario    || sender.email,
         },
         parcels: [{
-          height: +body.altezza    || 10,
-          width:  +body.larghezza  || 15,
-          length: +body.profondita || 20,
-          weight: +body.peso       || 1,
-          type:   0,
-        }],
+  height: Math.max(1, parseFloat(body.altezza)  || 10),
+  width:  Math.max(1, parseFloat(body.larghezza) || 15),
+  length: Math.max(1, parseFloat(body.profondita)|| 20),
+  weight: Math.max(0.1, parseFloat(body.peso)    || 1),
+  type:   0,
+}],
       };
 
       const res  = await fetch(`${API}/quotations`, {
