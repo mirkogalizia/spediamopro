@@ -18,11 +18,13 @@ export async function POST(req) {
 
     console.log(`→ Evadi ordine ${orderId} con tracking ${trackingNumber}`);
 
-    // 1. Recupera fulfillmentOrderId e lineItems con GraphQL
     const orderGID = orderId.toString().startsWith("gid://")
       ? orderId
       : `gid://shopify/Order/${orderId}`;
 
+    // ============================
+    // 1) TENTATIVO: Fulfillment Orders (nuovo flusso)
+    // ============================
     const graphqlRes = await fetch(
       `https://${SHOPIFY_DOMAIN}/admin/api/2025-10/graphql.json`,
       {
@@ -35,10 +37,15 @@ export async function POST(req) {
           query: `
             query getFulfillmentOrders($orderId: ID!) {
               order(id: $orderId) {
+                id
+                name
+                financialStatus
+                displayFulfillmentStatus
                 fulfillmentOrders(first: 5) {
                   edges {
                     node {
                       id
+                      status
                       lineItems(first: 10) {
                         edges {
                           node {
@@ -63,50 +70,107 @@ export async function POST(req) {
     );
 
     const data = await graphqlRes.json();
+    console.log(
+      "DEBUG getFulfillmentOrders response:",
+      JSON.stringify(data, null, 2)
+    );
 
-    if (!data?.data?.order?.fulfillmentOrders?.edges?.length) {
+    const orderNode = data?.data?.order || null;
+
+    // Se l'ordine proprio non esiste
+    if (!orderNode) {
+      console.error("❌ Ordine non trovato in GraphQL");
       return new Response(
-        JSON.stringify({
-          error: "Nessun fulfillment order trovato per questo ordine",
-        }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Ordine non trovato in Shopify" }),
+        { status: 404, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    const fulfillmentOrder =
-      data.data.order.fulfillmentOrders.edges[0].node;
+    const foEdges = orderNode.fulfillmentOrders?.edges || [];
 
-    const fulfillment_order_id = Number(
-      fulfillmentOrder.id.split("/").pop()
+    if (foEdges.length > 0) {
+      // ===== ABBIAMO FULFILLMENT ORDERS → flusso standard (come prima) =====
+      const fulfillmentOrder = foEdges[0].node;
+
+      const fulfillment_order_id = Number(
+        fulfillmentOrder.id.split("/").pop()
+      );
+
+      const fulfillment_order_line_items =
+        fulfillmentOrder.lineItems.edges.map((edge) => ({
+          id: Number(edge.node.id.split("/").pop()),
+          quantity: edge.node.quantity,
+        }));
+
+      const payload = {
+        fulfillment: {
+          notify_customer: true,
+          ...(trackingNumber && {
+            tracking_info: {
+              number: trackingNumber,
+              company: carrierName || "",
+            },
+          }),
+          line_items_by_fulfillment_order: [
+            {
+              fulfillment_order_id,
+              fulfillment_order_line_items,
+            },
+          ],
+        },
+      };
+
+      const restRes = await fetch(
+        `https://${SHOPIFY_DOMAIN}/admin/api/2025-10/fulfillments.json`,
+        {
+          method: "POST",
+          headers: {
+            "X-Shopify-Access-Token": SHOPIFY_TOKEN,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const restData = await restRes.json();
+
+      if (!restRes.ok || restData.errors) {
+        console.error("❌ Errore fulfillment (FO):", restData.errors || restData);
+        return new Response(
+          JSON.stringify({
+            error:
+              restData.errors || restData || "Errore fulfillment Shopify",
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log("✅ Ordine evaso (Fulfillment Orders)");
+
+      return new Response(
+        JSON.stringify({ success: true, data: restData, mode: "FO" }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // ============================
+    // 2) FALLBACK: vecchia REST /fulfillments.json con order_id
+    // ============================
+    console.warn(
+      "⚠️ Nessun FulfillmentOrder. Uso fallback REST /fulfillments.json con order_id."
     );
 
-    // Usa la quantity del FulfillmentOrderLineItem (quantità effettivamente evadibile)
-    const fulfillment_order_line_items =
-      fulfillmentOrder.lineItems.edges.map((edge) => ({
-        id: Number(edge.node.id.split("/").pop()),
-        quantity: edge.node.quantity,
-      }));
-
-    // 2. Crea fulfillment via REST API
-    const payload = {
+    const fallbackPayload = {
       fulfillment: {
+        order_id: Number(orderId),
         notify_customer: true,
-        ...(trackingNumber && {
-          tracking_info: {
-            number: trackingNumber,
-            company: carrierName || "",
-          },
-        }),
-        line_items_by_fulfillment_order: [
-          {
-            fulfillment_order_id,
-            fulfillment_order_line_items,
-          },
-        ],
+        tracking_number: trackingNumber || "",
+        tracking_company: carrierName || "",
+        // tracking_urls opzionale, Shopify la genera spesso da sola
       },
     };
 
-    const restRes = await fetch(
+    const fbRes = await fetch(
       `https://${SHOPIFY_DOMAIN}/admin/api/2025-10/fulfillments.json`,
       {
         method: "POST",
@@ -114,27 +178,29 @@ export async function POST(req) {
           "X-Shopify-Access-Token": SHOPIFY_TOKEN,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(fallbackPayload),
       }
     );
 
-    const restData = await restRes.json();
+    const fbData = await fbRes.json();
 
-    if (!restRes.ok || restData.errors) {
-      console.error("❌ Errore fulfillment:", restData.errors || restData);
+    if (!fbRes.ok || fbData.errors) {
+      console.error("❌ Errore fallback fulfillment:", fbData.errors || fbData);
       return new Response(
         JSON.stringify({
           error:
-            restData.errors || restData || "Errore fulfillment Shopify",
+            fbData.errors ||
+            fbData ||
+            "Errore fulfillment Shopify (fallback REST)",
         }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    console.log("✅ Ordine evaso con successo");
+    console.log("✅ Ordine evaso (fallback REST order_id)");
 
     return new Response(
-      JSON.stringify({ success: true, data: restData }),
+      JSON.stringify({ success: true, data: fbData, mode: "FALLBACK" }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (err) {
