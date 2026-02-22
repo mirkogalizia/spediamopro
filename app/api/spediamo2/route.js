@@ -227,6 +227,22 @@ export async function POST(req) {
       return json({ ok: false, error: err }, 500);
     }
   }
-
+// ════════════════════════════════════════
+// STEP = "wallet"  →  GET /v2/wallet/balance
+// ════════════════════════════════════════
+if (step === "wallet") {
+  try {
+    const jwt = await getSpediamoToken();
+    const res = await fetch(`${API}/wallet/balance`, {
+      method:  "GET",
+      headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+    });
+    const data = await res.json();
+    if (!res.ok) throw data;
+    return json({ ok: true, balance: data.data });
+  } catch (err) {
+    return json({ ok: false, error: err }, 500);
+  }
+}
   return json({ ok: false, error: "step non supportato o id mancante" }, 400);
 }

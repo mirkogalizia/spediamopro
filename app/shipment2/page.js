@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import Image from "next/image";
 
 // ─── Utilities ────────────────────────────────────────────────
 function removeAccents(str) {
@@ -26,13 +25,30 @@ function getCorriereLabel(spedizione) {
 
 function getCorriereIcon(corriere) {
   const c = (corriere || "").toLowerCase();
-  if (c.includes("brt"))   return <Image src="/icons/brt.png"   alt="BRT"   width={28} height={28} />;
-  if (c.includes("gls"))   return <Image src="/icons/gls.png"   alt="GLS"   width={28} height={28} />;
-  if (c.includes("sda"))   return <Image src="/icons/sda.png"   alt="SDA"   width={28} height={28} />;
-  if (c.includes("poste")) return <Image src="/icons/poste.png" alt="Poste" width={28} height={28} />;
-  if (c.includes("ups"))   return <Image src="/icons/ups.png"   alt="UPS"   width={28} height={28} />;
-  if (c.includes("dhl"))   return <Image src="/icons/dhl.png"   alt="DHL"   width={28} height={28} />;
-  return <Image src="/icons/default.png" alt="Corriere" width={28} height={28} />;
+  const cfg = c.includes("sda")
+    ? { label: "SDA",  bg: "#fff3cd", color: "#92610a", border: "#fcd34d" }
+    : c.includes("brt")
+    ? { label: "BRT",  bg: "#fee2e2", color: "#991b1b", border: "#fca5a5" }
+    : c.includes("gls")
+    ? { label: "GLS",  bg: "#fef9c3", color: "#713f12", border: "#fde047" }
+    : c.includes("ups")
+    ? { label: "UPS",  bg: "#fef3c7", color: "#78350f", border: "#fbbf24" }
+    : c.includes("dhl")
+    ? { label: "DHL",  bg: "#ffedd5", color: "#9a3412", border: "#fb923c" }
+    : c.includes("poste") || c.includes("inpost")
+    ? { label: "POST", bg: "#dbeafe", color: "#1e3a8a", border: "#93c5fd" }
+    : { label: "SPD",  bg: "#f1f5f9", color: "#475569", border: "#cbd5e1" };
+
+  return (
+    <div style={{
+      flexShrink: 0, width: 44, height: 26,
+      background: cfg.bg, border: `1px solid ${cfg.border}`,
+      borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: 10, fontWeight: 800, color: cfg.color, letterSpacing: "0.05em",
+    }}>
+      {cfg.label}
+    </div>
+  );
 }
 
 function HoverButton({ style, onClick, children, disabled }) {
@@ -56,35 +72,26 @@ function HoverButton({ style, onClick, children, disabled }) {
   );
 }
 
-// ─── Modal custom ─────────────────────────────────────────────
+// ─── Modal spedizione/evasione ────────────────────────────────
 function Modal({ tipo, dati, onClose }) {
   if (!dati) return null;
   const isEvadi = tipo === "evadi";
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        zIndex: 9999, padding: 16,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#fff", borderRadius: 16, padding: "28px 28px 22px",
-          maxWidth: 420, width: "100%",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.18)",
-          fontFamily: "sans-serif",
-        }}
-      >
-        {/* Header */}
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      zIndex: 9999, padding: 16,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: "#fff", borderRadius: 16, padding: "28px 28px 22px",
+        maxWidth: 420, width: "100%",
+        boxShadow: "0 24px 64px rgba(0,0,0,0.18)", fontFamily: "sans-serif",
+      }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
           <div style={{
             width: 48, height: 48, borderRadius: 12,
             background: isEvadi ? "#f0fdf4" : "#eff6ff",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 22,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22,
           }}>
             {isEvadi ? "📬" : "✅"}
           </div>
@@ -97,41 +104,25 @@ function Modal({ tipo, dati, onClose }) {
             </div>
           </div>
         </div>
-
-        {/* Righe dati */}
         <div style={{ borderRadius: 10, border: "1px solid #f1f5f9", overflow: "hidden", marginBottom: 18 }}>
           {dati.map(({ label, value, highlight }, i) => (
             <div key={label} style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "10px 14px",
-              background: i % 2 === 0 ? "#f8fafc" : "#fff",
+              padding: "10px 14px", background: i % 2 === 0 ? "#f8fafc" : "#fff",
             }}>
               <span style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>{label}</span>
               <span style={{
-                fontSize: 13,
-                fontWeight: highlight ? 700 : 500,
+                fontSize: 13, fontWeight: highlight ? 700 : 500,
                 color: highlight ? "#16a34a" : "#0f172a",
-                maxWidth: 220, textAlign: "right",
-                wordBreak: "break-all",
-              }}>
-                {value || "—"}
-              </span>
+                maxWidth: 220, textAlign: "right", wordBreak: "break-all",
+              }}>{value || "—"}</span>
             </div>
           ))}
         </div>
-
-        {/* Bottone */}
-        <HoverButton
-          onClick={onClose}
-          style={{
-            width: "100%", padding: "11px 0",
-            background: "#0f172a", color: "#fff",
-            border: "none", borderRadius: 9,
-            fontWeight: 600, fontSize: 14,
-          }}
-        >
-          Chiudi
-        </HoverButton>
+        <HoverButton onClick={onClose} style={{
+          width: "100%", padding: "11px 0", background: "#0f172a", color: "#fff",
+          border: "none", borderRadius: 9, fontWeight: 600, fontSize: 14,
+        }}>Chiudi</HoverButton>
       </div>
     </div>
   );
@@ -141,23 +132,16 @@ function Modal({ tipo, dati, onClose }) {
 function ConfirmModal({ messaggio, onConfirm, onCancel }) {
   if (!messaggio) return null;
   return (
-    <div
-      onClick={onCancel}
-      style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        zIndex: 9999, padding: 16,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#fff", borderRadius: 16, padding: "28px 28px 22px",
-          maxWidth: 380, width: "100%",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.18)",
-          fontFamily: "sans-serif",
-        }}
-      >
+    <div onClick={onCancel} style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      zIndex: 9999, padding: 16,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: "#fff", borderRadius: 16, padding: "28px 28px 22px",
+        maxWidth: 380, width: "100%",
+        boxShadow: "0 24px 64px rgba(0,0,0,0.18)", fontFamily: "sans-serif",
+      }}>
         <div style={{ fontSize: 28, marginBottom: 12, textAlign: "center" }}>⚠️</div>
         <div style={{ fontWeight: 700, fontSize: 15, color: "#0f172a", textAlign: "center", marginBottom: 8 }}>
           Conferma operazione
@@ -166,24 +150,14 @@ function ConfirmModal({ messaggio, onConfirm, onCancel }) {
           {messaggio}
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <HoverButton
-            onClick={onCancel}
-            style={{
-              flex: 1, padding: "10px 0", background: "#f1f5f9", color: "#64748b",
-              border: "none", borderRadius: 9, fontWeight: 600, fontSize: 13,
-            }}
-          >
-            Annulla
-          </HoverButton>
-          <HoverButton
-            onClick={onConfirm}
-            style={{
-              flex: 1, padding: "10px 0", background: "#dc2626", color: "#fff",
-              border: "none", borderRadius: 9, fontWeight: 600, fontSize: 13,
-            }}
-          >
-            Conferma
-          </HoverButton>
+          <HoverButton onClick={onCancel} style={{
+            flex: 1, padding: "10px 0", background: "#f1f5f9", color: "#64748b",
+            border: "none", borderRadius: 9, fontWeight: 600, fontSize: 13,
+          }}>Annulla</HoverButton>
+          <HoverButton onClick={onConfirm} style={{
+            flex: 1, padding: "10px 0", background: "#dc2626", color: "#fff",
+            border: "none", borderRadius: 9, fontWeight: 600, fontSize: 13,
+          }}>Conferma</HoverButton>
         </div>
       </div>
     </div>
@@ -195,14 +169,9 @@ const LS_KEY      = "spediamo-pro-v2-spedizioni-2";
 const LS_MITTENTE = "spediamo-pro-mittente-2";
 
 const DEFAULT_MITTENTE = {
-  name:       "Not For Resale",
-  address:    "Via Streetwear 1",
-  postalCode: "20100",
-  city:       "Milano",
-  country:    "IT",
-  province:   "MI",
-  phone:      "+393313456789",
-  email:      "info@notforresale.it",
+  name: "Not For Resale", address: "Via Streetwear 1",
+  postalCode: "20100", city: "Milano", country: "IT",
+  province: "MI", phone: "+393313456789", email: "info@notforresale.it",
 };
 
 const LABEL_FORMAT_OPTIONS = [
@@ -216,15 +185,7 @@ const LABEL_FORMAT_OPTIONS = [
 export default function Page() {
   const router = useRouter();
 
-  const [userChecked, setUserChecked] = useState(false);
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (usr) => {
-      if (!usr) router.push("/login");
-      setUserChecked(true);
-    });
-    return () => unsub();
-  }, [router]);
-
+  const [userChecked,      setUserChecked]      = useState(false);
   const [orders,           setOrders]           = useState([]);
   const [orderQuery,       setOrderQuery]        = useState("");
   const [selectedOrder,    setSelectedOrder]     = useState(null);
@@ -237,7 +198,9 @@ export default function Page() {
   const [loading,          setLoading]           = useState(false);
   const [errore,           setErrore]            = useState(null);
   const [modal,            setModal]             = useState(null);
-  const [confirm,          setConfirm]           = useState(null); // { messaggio, onConfirm }
+  const [confirm,          setConfirm]           = useState(null);
+  const [wallet,           setWallet]            = useState(null); // ← balance
+  const [walletLoading,    setWalletLoading]     = useState(false);
 
   const [form, setForm] = useState({
     nome: "", telefono: "", email: "",
@@ -248,7 +211,16 @@ export default function Page() {
     noteDestinatario: "", labelFormat: 2,
   });
 
-  // ─── Persist ────────────────────────────────────────────────
+  // ─── Auth ──────────────────────────────────────────────────
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (usr) => {
+      if (!usr) router.push("/login");
+      setUserChecked(true);
+    });
+    return () => unsub();
+  }, [router]);
+
+  // ─── Persist ───────────────────────────────────────────────
   useEffect(() => {
     try {
       const s = localStorage.getItem(LS_KEY);
@@ -266,7 +238,22 @@ export default function Page() {
     localStorage.setItem(LS_MITTENTE, JSON.stringify(mittente));
   }, [mittente]);
 
-  // ─── Auto-refresh tracking ───────────────────────────────────
+  // ─── Wallet balance ────────────────────────────────────────
+  const fetchWallet = useCallback(async () => {
+    setWalletLoading(true);
+    try {
+      const res = await fetch("/api/spediamo2?step=wallet", { method: "POST" });
+      if (res.ok) {
+        const d = await res.json();
+        setWallet(d.balance);
+      }
+    } catch {}
+    finally { setWalletLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchWallet(); }, [fetchWallet]);
+
+  // ─── Auto-refresh tracking ─────────────────────────────────
   const refreshTracking = useCallback(async () => {
     if (!spedizioniCreate.length) return;
     try {
@@ -291,13 +278,13 @@ export default function Page() {
     return () => clearInterval(t);
   }, [refreshTracking]);
 
-  // ─── Handlers ───────────────────────────────────────────────
+  // ─── Handlers ─────────────────────────────────────────────
   const handleLoadOrders = async () => {
     setLoading(true); setErrore(null); setOrders([]); setSelectedOrder(null); setQuotations([]);
     try {
       if (!dateFrom || !dateTo) throw new Error("Specificare data inizio e fine.");
-      if (dateFrom > dateTo)    throw new Error("Data inizio successiva alla data fine.");
-      const res  = await fetch(`/api/shopify2?from=${dateFrom}&to=${dateTo}`);
+      if (dateFrom > dateTo) throw new Error("Data inizio successiva alla data fine.");
+      const res = await fetch(`/api/shopify2?from=${dateFrom}&to=${dateTo}`);
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setOrders(data.orders || []);
@@ -307,7 +294,7 @@ export default function Page() {
 
   const handleSearchOrder = (e) => {
     e.preventDefault(); setErrore(null); setQuotations([]);
-    const term  = orderQuery.trim().toLowerCase();
+    const term = orderQuery.trim().toLowerCase();
     const found = orders.find((o) => {
       const name = (o.name || "").toLowerCase().replace(/#/g, "");
       return name.includes(term) || (o.order_number?.toString() || "").includes(term) || String(o.id) === term;
@@ -317,15 +304,14 @@ export default function Page() {
     const ship = found.shipping_address || {};
     setForm((f) => ({
       ...f,
-      nome:                  `${ship.first_name || ""} ${ship.last_name || ""}`.trim(),
-      telefono:              ship.phone || "",
-      email:                 found.email || "",
-      indirizzo:             removeAccents(ship.address1 || ""),
-      indirizzo2:            removeAccents(ship.address2 || ""),
-      capDestinatario:       ship.zip || "",
-      cittaDestinatario:     removeAccents(ship.city || ""),
+      nome: `${ship.first_name || ""} ${ship.last_name || ""}`.trim(),
+      telefono: ship.phone || "", email: found.email || "",
+      indirizzo: removeAccents(ship.address1 || ""),
+      indirizzo2: removeAccents(ship.address2 || ""),
+      capDestinatario: ship.zip || "",
+      cittaDestinatario: removeAccents(ship.city || ""),
       provinciaDestinatario: ship.country_code === "IT" ? (ship.province_code || "") : (ship.provincia || ship.province_code || ""),
-      nazioneDestinatario:   ship.country_code || "IT",
+      nazioneDestinatario: ship.country_code || "IT",
     }));
   };
 
@@ -386,13 +372,15 @@ export default function Page() {
         }),
       });
       if (!res.ok) throw await res.json();
-      const data       = await res.json();
+      const data = await res.json();
       const spedizione = data.spedizione;
       setSpedizioniCreate((prev) => [
         { shopifyOrder: selectedOrder, spedizione, fulfilled: false, createdAt: new Date().toISOString() },
         ...prev.filter((el) => el.spedizione?.id !== spedizione?.id),
       ]);
       setQuotations([]);
+      // ✅ Aggiorna wallet dopo spedizione
+      fetchWallet();
       setModal({
         tipo: "success",
         dati: [
@@ -403,6 +391,7 @@ export default function Page() {
           { label: "Tracking",        value: getTrackingLabel(spedizione) || "in elaborazione…", highlight: true },
           { label: "Consegna prev.",  value: spedizione.expectedDeliveryDate?.split(" ")[0] || "—" },
           { label: "Formato etich.",  value: spedizione.labelOption?.originalExtension?.toUpperCase() || "—" },
+          { label: "Costo",           value: `€ ${quotation.totalPrice?.toFixed(2)}`, highlight: true },
         ],
       });
     } catch (err) { setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : String(err)); }
@@ -416,9 +405,9 @@ export default function Page() {
       if (!res.ok) throw await res.json();
       const { label } = await res.json();
       const bytes = Uint8Array.from(atob(label.b64), (c) => c.charCodeAt(0));
-      const blob  = new Blob([bytes], { type: label.contentType });
-      const url   = URL.createObjectURL(blob);
-      const a     = document.createElement("a");
+      const blob = new Blob([bytes], { type: label.contentType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
       a.href = url; a.download = label.filename || `etichetta_${idSpedizione}`;
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
@@ -429,8 +418,8 @@ export default function Page() {
   const handleEvadiSpedizione = async (el) => {
     setLoading(true); setErrore(null);
     try {
-      const tracking   = getTrackingLabel(el.spedizione);
-      const corriere   = getCorriereLabel(el.spedizione);
+      const tracking = getTrackingLabel(el.spedizione);
+      const corriere = getCorriereLabel(el.spedizione);
       const foundOrder = orders.find((o) => o.id === el.shopifyOrder?.id) || el.shopifyOrder;
       if (!foundOrder) throw new Error("Ordine Shopify non trovato. Ricarica gli ordini.");
       const res = await fetch("/api/shopify2/fulfill-order", {
@@ -472,6 +461,7 @@ export default function Page() {
           const res = await fetch(`/api/spediamo2?step=cancel&id=${idSpedizione}`, { method: "POST" });
           if (!res.ok) throw await res.json();
           setSpedizioniCreate((prev) => prev.filter((el) => el.spedizione.id !== idSpedizione));
+          fetchWallet(); // aggiorna wallet dopo cancellazione
         } catch (err) { setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : String(err)); }
         finally { setLoading(false); }
       },
@@ -492,44 +482,66 @@ export default function Page() {
   if (!userChecked)
     return <div style={{ padding: 40, textAlign: "center" }}>Caricamento...</div>;
 
+  // ─── Wallet color ──────────────────────────────────────────
+  const balance = wallet?.balance ?? null;
+  const walletColor = balance === null ? "#64748b" : balance < 5 ? "#dc2626" : balance < 20 ? "#f59e0b" : "#16a34a";
+
   // ══════════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════════
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px", fontFamily: "sans-serif" }}>
 
-      {/* ── MODALS ───────────────────────────────────────────── */}
       <Modal tipo={modal?.tipo} dati={modal?.dati} onClose={() => setModal(null)} />
-      <ConfirmModal
-        messaggio={confirm?.messaggio}
-        onConfirm={confirm?.onConfirm}
-        onCancel={() => setConfirm(null)}
-      />
+      <ConfirmModal messaggio={confirm?.messaggio} onConfirm={confirm?.onConfirm} onCancel={() => setConfirm(null)} />
 
-      {/* ── HEADER ───────────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-        <div style={{ fontSize: 28 }}>📦</div>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: "#0f172a" }}>
-            Gestione Spedizioni
-          </h1>
-          <span style={{ fontSize: 12, color: "#64748b" }}>Store 2 — SpediamoPro API v2</span>
+      {/* ── HEADER ────────────────────────────────────────────── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ fontSize: 28 }}>📦</div>
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: "#0f172a" }}>Gestione Spedizioni</h1>
+            <span style={{ fontSize: 12, color: "#64748b" }}>Store 2 — SpediamoPro API v2</span>
+          </div>
+        </div>
+
+        {/* ── WALLET BALANCE ──────────────────────────────────── */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10,
+          background: "#fff", border: "1px solid #e2e8f0",
+          borderRadius: 10, padding: "10px 16px",
+        }}>
+          <div style={{ fontSize: 18 }}>💳</div>
+          <div>
+            <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Wallet
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: walletColor }}>
+              {walletLoading ? "..." : balance !== null ? `€ ${Number(balance).toFixed(2)}` : "—"}
+            </div>
+          </div>
+          <HoverButton
+            onClick={fetchWallet}
+            disabled={walletLoading}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, padding: 4, color: "#94a3b8" }}
+          >🔄</HoverButton>
         </div>
       </div>
 
-      {/* ── ERRORE ───────────────────────────────────────────── */}
+      {/* ── ERRORE ────────────────────────────────────────────── */}
       {errore && (
         <div style={{
           background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10,
-          padding: "12px 16px", marginBottom: 16, whiteSpace: "pre-wrap", fontSize: 13,
-          color: "#dc2626", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10,
+          padding: "12px 16px", marginBottom: 16, whiteSpace: "pre-wrap",
+          fontSize: 13, color: "#dc2626",
+          display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10,
         }}>
           <span>❌ {errore}</span>
           <button onClick={() => setErrore(null)} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 700, color: "#dc2626", flexShrink: 0 }}>✕</button>
         </div>
       )}
 
-      {/* ── MITTENTE ─────────────────────────────────────────── */}
+      {/* ── MITTENTE ──────────────────────────────────────────── */}
       <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontSize: 13 }}>
@@ -540,42 +552,33 @@ export default function Page() {
           <HoverButton
             style={{ fontSize: 12, padding: "5px 12px", background: "#e2e8f0", border: "none", borderRadius: 7, fontWeight: 500, color: "#475569" }}
             onClick={() => setShowMittente((v) => !v)}
-          >
-            {showMittente ? "✕ Chiudi" : "✏️ Modifica"}
-          </HoverButton>
+          >{showMittente ? "✕ Chiudi" : "✏️ Modifica"}</HoverButton>
         </div>
         {showMittente && (
           <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {[
-              { key: "name", label: "Nome / Azienda" }, { key: "address", label: "Indirizzo" },
-              { key: "postalCode", label: "CAP" },       { key: "city", label: "Città" },
-              { key: "province", label: "Provincia" },   { key: "country", label: "Nazione (ISO)" },
-              { key: "phone", label: "Telefono" },       { key: "email", label: "Email" },
+              { key: "name", label: "Nome / Azienda" },   { key: "address", label: "Indirizzo" },
+              { key: "postalCode", label: "CAP" },         { key: "city", label: "Città" },
+              { key: "province", label: "Provincia" },     { key: "country", label: "Nazione (ISO)" },
+              { key: "phone", label: "Telefono" },         { key: "email", label: "Email" },
             ].map(({ key, label }) => (
-              <label key={key} style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 13 }}>
-                <span style={{ color: "#64748b", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</span>
+              <FormField key={key} label={label}>
                 <input
                   value={mittente[key] || ""}
                   onChange={(e) => setMittente((m) => ({ ...m, [key]: e.target.value }))}
                   style={{ padding: "7px 10px", border: "1px solid #cbd5e1", borderRadius: 7, fontSize: 13, outline: "none" }}
                 />
-              </label>
+              </FormField>
             ))}
             <div style={{ gridColumn: "span 2", display: "flex", gap: 10, marginTop: 4 }}>
-              <HoverButton
-                style={{ padding: "7px 18px", background: "#22c55e", color: "#fff", border: "none", borderRadius: 7, fontSize: 13, fontWeight: 600 }}
-                onClick={() => setShowMittente(false)}
-              >✅ Salva</HoverButton>
-              <HoverButton
-                style={{ padding: "7px 18px", background: "#94a3b8", color: "#fff", border: "none", borderRadius: 7, fontSize: 13, fontWeight: 600 }}
-                onClick={() => { setMittente(DEFAULT_MITTENTE); setShowMittente(false); }}
-              >↩ Default</HoverButton>
+              <HoverButton style={{ padding: "7px 18px", background: "#22c55e", color: "#fff", border: "none", borderRadius: 7, fontSize: 13, fontWeight: 600 }} onClick={() => setShowMittente(false)}>✅ Salva</HoverButton>
+              <HoverButton style={{ padding: "7px 18px", background: "#94a3b8", color: "#fff", border: "none", borderRadius: 7, fontSize: 13, fontWeight: 600 }} onClick={() => { setMittente(DEFAULT_MITTENTE); setShowMittente(false); }}>↩ Default</HoverButton>
             </div>
           </div>
         )}
       </div>
 
-      {/* ── STEP 1: CARICA ORDINI ─────────────────────────────── */}
+      {/* ── STEP 1 ────────────────────────────────────────────── */}
       <Section numero="1" titolo="Carica ordini Shopify">
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <DateInput label="Dal" value={dateFrom} onChange={setDateFrom} />
@@ -584,12 +587,12 @@ export default function Page() {
             style={{ padding: "7px 20px", background: "#3b82f6", color: "#fff", border: "none", borderRadius: 7, fontWeight: 600, fontSize: 13 }}
             onClick={handleLoadOrders} disabled={loading}
           >
-            {loading ? "⏳ Caricamento..." : orders.length ? `✅ ${orders.length} ordini` : "Carica ordini"}
+            {loading ? "⏳" : orders.length ? `✅ ${orders.length} ordini` : "Carica ordini"}
           </HoverButton>
         </div>
       </Section>
 
-      {/* ── STEP 2: CERCA ORDINE ──────────────────────────────── */}
+      {/* ── STEP 2 ────────────────────────────────────────────── */}
       {orders.length > 0 && (
         <Section numero="2" titolo="Cerca ordine">
           <form onSubmit={handleSearchOrder} style={{ display: "flex", gap: 10 }}>
@@ -598,10 +601,7 @@ export default function Page() {
               placeholder="Numero ordine (es. 1234)"
               style={{ flex: 1, padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: 7, fontSize: 13, outline: "none" }}
             />
-            <HoverButton
-              style={{ padding: "8px 20px", background: "#6366f1", color: "#fff", border: "none", borderRadius: 7, fontWeight: 600, fontSize: 13 }}
-              disabled={loading}
-            >Cerca</HoverButton>
+            <HoverButton style={{ padding: "8px 20px", background: "#6366f1", color: "#fff", border: "none", borderRadius: 7, fontWeight: 600, fontSize: 13 }} disabled={loading}>Cerca</HoverButton>
           </form>
           {selectedOrder && (
             <div style={{ marginTop: 12, padding: "10px 14px", background: "#f0fdf4", borderRadius: 8, fontSize: 13, border: "1px solid #86efac", color: "#166534" }}>
@@ -611,22 +611,22 @@ export default function Page() {
         </Section>
       )}
 
-      {/* ── STEP 3: FORM DESTINATARIO ─────────────────────────── */}
+      {/* ── STEP 3 ────────────────────────────────────────────── */}
       {selectedOrder && (
         <Section numero="3" titolo="Dati destinatario e pacco">
           <form onSubmit={handleQuota}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
               {[
-                { key: "nome",                  label: "Nome destinatario" },
-                { key: "telefono",              label: "Telefono" },
-                { key: "email",                 label: "Email" },
-                { key: "indirizzo",             label: "Indirizzo" },
-                { key: "indirizzo2",            label: "Indirizzo 2 (opz.)" },
-                { key: "capDestinatario",       label: "CAP" },
-                { key: "cittaDestinatario",     label: "Città" },
+                { key: "nome", label: "Nome destinatario" },
+                { key: "telefono", label: "Telefono" },
+                { key: "email", label: "Email" },
+                { key: "indirizzo", label: "Indirizzo" },
+                { key: "indirizzo2", label: "Indirizzo 2 (opz.)" },
+                { key: "capDestinatario", label: "CAP" },
+                { key: "cittaDestinatario", label: "Città" },
                 { key: "provinciaDestinatario", label: "Provincia" },
-                { key: "nazioneDestinatario",   label: "Nazione (ISO)" },
-                { key: "noteDestinatario",      label: "Note consegna (opz.)" },
+                { key: "nazioneDestinatario", label: "Nazione (ISO)" },
+                { key: "noteDestinatario", label: "Note consegna (opz.)" },
               ].map(({ key, label }) => (
                 <FormField key={key} label={label}>
                   <input
@@ -637,43 +637,28 @@ export default function Page() {
                 </FormField>
               ))}
             </div>
-
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 14 }}>
               {[
                 { key: "altezza", label: "Altezza (cm)" }, { key: "larghezza", label: "Larghezza (cm)" },
                 { key: "profondita", label: "Profondità (cm)" }, { key: "peso", label: "Peso (kg)" },
               ].map(({ key, label }) => (
                 <FormField key={key} label={label}>
-                  <input
-                    type="number" min="0.1" step="0.1" value={form[key]}
+                  <input type="number" min="0.1" step="0.1" value={form[key]}
                     onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                    style={{ padding: "7px 10px", border: "1px solid #cbd5e1", borderRadius: 7, fontSize: 13, outline: "none" }}
-                  />
+                    style={{ padding: "7px 10px", border: "1px solid #cbd5e1", borderRadius: 7, fontSize: 13, outline: "none" }} />
                 </FormField>
               ))}
             </div>
-
             <div style={{ marginBottom: 16, maxWidth: 280 }}>
               <FormField label="🏷️ Formato etichetta">
-                <select
-                  value={form.labelFormat}
-                  onChange={(e) => setForm((f) => ({ ...f, labelFormat: +e.target.value }))}
-                  style={{ padding: "7px 10px", border: "1px solid #cbd5e1", borderRadius: 7, fontSize: 13, outline: "none" }}
-                >
-                  {LABEL_FORMAT_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
+                <select value={form.labelFormat} onChange={(e) => setForm((f) => ({ ...f, labelFormat: +e.target.value }))}
+                  style={{ padding: "7px 10px", border: "1px solid #cbd5e1", borderRadius: 7, fontSize: 13, outline: "none" }}>
+                  {LABEL_FORMAT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </FormField>
-              <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-                Per SDA/Poste viene usato automaticamente PDF Alt. (10×11)
-              </p>
+              <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>Per SDA/Poste viene usato automaticamente PDF Alt. (10×11)</p>
             </div>
-
-            <HoverButton
-              style={{ padding: "10px 28px", background: "#f59e0b", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 14 }}
-              disabled={loading}
-            >
+            <HoverButton style={{ padding: "10px 28px", background: "#f59e0b", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 14 }} disabled={loading}>
               {loading ? "⏳ Caricamento..." : "🔍 Ottieni quotazioni"}
             </HoverButton>
           </form>
@@ -687,17 +672,14 @@ export default function Page() {
             {quotations.map((q) => (
               <div key={q.service} style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "12px 16px", border: "1px solid #e2e8f0", borderRadius: 10,
-                background: "#fafafa", transition: "box-shadow 0.15s",
+                padding: "12px 16px", border: "1px solid #e2e8f0", borderRadius: 10, background: "#fafafa",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   {getCorriereIcon(q.serviceCode)}
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 14, color: "#0f172a" }}>
                       {q.serviceCode}
-                      <span style={{ color: "#94a3b8", fontWeight: 400, fontSize: 12, marginLeft: 6 }}>
-                        {q.deliveryTime}gg
-                      </span>
+                      <span style={{ color: "#94a3b8", fontWeight: 400, fontSize: 12, marginLeft: 6 }}>{q.deliveryTime}gg</span>
                     </div>
                     <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
                       📅 {q.expectedDeliveryDate} · 🚚 ritiro {q.firstAvailablePickupDate}
@@ -705,15 +687,11 @@ export default function Page() {
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                  <span style={{ fontWeight: 800, fontSize: 17, color: "#16a34a" }}>
-                    € {q.totalPrice?.toFixed(2)}
-                  </span>
+                  <span style={{ fontWeight: 800, fontSize: 17, color: "#16a34a" }}>€ {q.totalPrice?.toFixed(2)}</span>
                   <HoverButton
                     style={{ padding: "8px 20px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13 }}
                     onClick={() => handleAccetta(q)} disabled={loading}
-                  >
-                    {loading ? "⏳" : "✅ Spedisci"}
-                  </HoverButton>
+                  >{loading ? "⏳" : "✅ Spedisci"}</HoverButton>
                 </div>
               </div>
             ))}
@@ -744,7 +722,6 @@ export default function Page() {
                   borderRadius: 10, padding: "14px 16px",
                   background: el.fulfilled ? "#f0fdf4" : "#fff",
                 }}>
-                  {/* Top row */}
                   <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       {getCorriereIcon(corriere)}
@@ -763,41 +740,21 @@ export default function Page() {
                     </div>
                   </div>
 
-                  {/* Tracking */}
                   <div style={{ fontSize: 13, marginBottom: 10, padding: "6px 10px", background: "#f8fafc", borderRadius: 7 }}>
                     🔎 <span style={{ color: "#64748b" }}>Tracking: </span>
-                    {tracking ? (
-                      <a href={el.spedizione.trackingUrl || "#"} target="_blank" rel="noreferrer"
-                        style={{ color: "#3b82f6", fontWeight: 600 }}>{tracking}</a>
-                    ) : (
-                      <span style={{ color: "#94a3b8" }}>in elaborazione…</span>
-                    )}
+                    {tracking
+                      ? <a href={el.spedizione.trackingUrl || "#"} target="_blank" rel="noreferrer" style={{ color: "#3b82f6", fontWeight: 600 }}>{tracking}</a>
+                      : <span style={{ color: "#94a3b8" }}>in elaborazione…</span>
+                    }
                   </div>
 
-                  {/* Azioni */}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <HoverButton
-                      style={{ fontSize: 12, padding: "6px 14px", background: "#3b82f6", color: "#fff", border: "none", borderRadius: 7, fontWeight: 500 }}
-                      onClick={() => handleDownloadLabel(el.spedizione.id)} disabled={loading}
-                    >⬇ Etichetta</HoverButton>
-
+                    <HoverButton style={{ fontSize: 12, padding: "6px 14px", background: "#3b82f6", color: "#fff", border: "none", borderRadius: 7, fontWeight: 500 }} onClick={() => handleDownloadLabel(el.spedizione.id)} disabled={loading}>⬇ Etichetta</HoverButton>
                     {!el.fulfilled && (
-                      <HoverButton
-                        style={{ fontSize: 12, padding: "6px 14px", background: "#8b5cf6", color: "#fff", border: "none", borderRadius: 7, fontWeight: 500 }}
-                        onClick={() => handleEvadiSpedizione(el)} disabled={loading || !tracking}
-                        title={!tracking ? "Tracking non ancora disponibile" : ""}
-                      >📬 Evadi su Shopify</HoverButton>
+                      <HoverButton style={{ fontSize: 12, padding: "6px 14px", background: "#8b5cf6", color: "#fff", border: "none", borderRadius: 7, fontWeight: 500 }} onClick={() => handleEvadiSpedizione(el)} disabled={loading || !tracking} title={!tracking ? "Tracking non ancora disponibile" : ""}>📬 Evadi su Shopify</HoverButton>
                     )}
-
-                    <HoverButton
-                      style={{ fontSize: 12, padding: "6px 14px", background: "#f1f5f9", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 7 }}
-                      onClick={refreshTracking} disabled={loading}
-                    >🔄 Aggiorna</HoverButton>
-
-                    <HoverButton
-                      style={{ fontSize: 12, padding: "6px 14px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 7 }}
-                      onClick={() => handleCancella(el.spedizione.id)} disabled={loading}
-                    >✕ Cancella</HoverButton>
+                    <HoverButton style={{ fontSize: 12, padding: "6px 14px", background: "#f1f5f9", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 7 }} onClick={refreshTracking} disabled={loading}>🔄 Aggiorna</HoverButton>
+                    <HoverButton style={{ fontSize: 12, padding: "6px 14px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 7 }} onClick={() => handleCancella(el.spedizione.id)} disabled={loading}>✕ Cancella</HoverButton>
                   </div>
                 </div>
               );
@@ -809,16 +766,12 @@ export default function Page() {
   );
 }
 
-// ─── Componenti UI helper ──────────────────────────────────────
+// ─── UI helpers ───────────────────────────────────────────────
 function Section({ numero, titolo, children }) {
   return (
     <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, marginBottom: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-        <span style={{
-          width: 22, height: 22, background: "#0f172a", color: "#fff",
-          borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center",
-          fontSize: 11, fontWeight: 700, flexShrink: 0,
-        }}>{numero}</span>
+        <span style={{ width: 22, height: 22, background: "#0f172a", color: "#fff", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{numero}</span>
         <h2 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: "#0f172a" }}>{titolo}</h2>
       </div>
       {children}
@@ -829,9 +782,7 @@ function Section({ numero, titolo, children }) {
 function FormField({ label, children }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-        {label}
-      </span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</span>
       {children}
     </label>
   );
