@@ -105,8 +105,8 @@ export async function POST(req) {
       const labelFormat  = isSda ? 3 : (body.labelFormat ?? 2);
 
       const payload = {
-        cashOnDeliveryAmount: body.importoContrassegno  ?? 0,
-        insuredAmount:        body.importoAssicurazione ?? 0,
+        // cashOnDeliveryAmount: body.importoContrassegno  ?? 0,
+        // insuredAmount:        body.importoAssicurazione ?? 0,
         labelFormat,
         consigneeNote:        body.noteDestinatario || null,
         externalId:           body.shopifyOrderId   ? String(body.shopifyOrderId) : null,
