@@ -325,36 +325,44 @@ export default function Page() {
 
   // ─── Evadi ordine su Shopify ───────────────────────────────
   const handleEvadi = async (el) => {
-    setLoading(true);
-    setErrore(null);
-    try {
-      const tracking     = getTrackingLabel(el.spedizione);
-      const corriere     = getCorriereLabel(el.spedizione);
-      const foundOrder   = orders.find((o) => o.id === el.shopifyOrder?.id) || el.shopifyOrder;
-      if (!foundOrder)  throw new Error("Ordine Shopify non trovato in memoria. Ricarica gli ordini.");
+  setLoading(true);
+  setErrore(null);
+  try {
+    const tracking   = getTrackingLabel(el.spedizione);
+    const corriere   = getCorriereLabel(el.spedizione);
+    const foundOrder = orders.find((o) => o.id === el.shopifyOrder?.id) || el.shopifyOrder;
+    if (!foundOrder) throw new Error("Ordine Shopify non trovato. Ricarica gli ordini.");
 
-      const res = await fetch("/api/shopify/fulfill-order", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId:        foundOrder.id,
-          trackingNumber: tracking,
-          carrierName:    corriere.toLowerCase().includes("sda") ? "Poste Italiane" : corriere || "Altro",
-        }),
-      });
-      const ct   = res.headers.get("content-type") || "";
-      const data = ct.includes("application/json") ? await res.json() : (() => { throw new Error(await res.text()); })();
-      if (!res.ok || data.success === false) throw new Error(data.error || "Errore evasione");
+    const res = await fetch("/api/shopify/fulfill-order", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        orderId:        foundOrder.id,
+        trackingNumber: tracking,
+        carrierName:    corriere.toLowerCase().includes("sda") ? "Poste Italiane" : corriere || "Altro",
+      }),
+    });
 
-      setSpedizioniCreate((prev) =>
-        prev.map((s) => s.spedizione.id === el.spedizione.id ? { ...s, fulfilled: true } : s)
-      );
-      alert("✅ Ordine evaso con successo su Shopify!");
-    } catch (err) {
-      setErrore(err.message || String(err));
-    } finally { setLoading(false); }
-  };
+    // ✅ Fix: niente await dentro arrow function non-async
+    const ct = res.headers.get("content-type") || "";
+    let data;
+    if (ct.includes("application/json")) {
+      data = await res.json();
+    } else {
+      const text = await res.text();
+      throw new Error(`Risposta non JSON dal backend: ${text}`);
+    }
 
+    if (!res.ok || data.success === false) throw new Error(data.error || "Errore evasione");
+
+    setSpedizioniCreate((prev) =>
+      prev.map((s) => s.spedizione.id === el.spedizione.id ? { ...s, fulfilled: true } : s)
+    );
+    alert("✅ Ordine evaso con successo su Shopify!");
+  } catch (err) {
+    setErrore(err.message || String(err));
+  } finally { setLoading(false); }
+};
   // ─── Cancella spedizione ───────────────────────────────────
   const handleCancella = async (idSpedizione) => {
     if (!window.confirm(`Cancellare la spedizione #${idSpedizione}?`)) return;
