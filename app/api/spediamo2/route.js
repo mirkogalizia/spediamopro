@@ -228,12 +228,12 @@ export async function POST(req) {
     }
   }
 // ════════════════════════════════════════
-// STEP = "wallet"  →  GET /v2/wallet/balance
+// STEP = "wallet"  →  GET /v2/wallet
 // ════════════════════════════════════════
 if (step === "wallet") {
   try {
     const jwt = await getSpediamoToken();
-    const res = await fetch(`${API}/wallet/balance`, {
+    const res = await fetch(`${API}/wallet`, {  // ✅ /wallet, non /wallet/balance
       method:  "GET",
       headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
     });
@@ -244,5 +244,6 @@ if (step === "wallet") {
     return json({ ok: false, error: err }, 500);
   }
 }
+
   return json({ ok: false, error: "step non supportato o id mancante" }, 400);
 }
