@@ -1,14 +1,20 @@
-// /app/api/spediamo3/route.js
+// /app/api/spediamo2/route.js
+// SpediamoPro API v2 — Store 2
+
 import { getSpediamoToken } from "../../lib/spediamo";
 
 const API = "https://core.spediamopro.com/api/v2";
 
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
+const DEFAULT_SENDER = {
+  name:       "Not For Resale",
+  address:    "Via Streetwear 1",
+  postalCode: "20100",
+  city:       "Milano",
+  country:    "IT",
+  province:   "MI",
+  phone:      "+393313456789",
+  email:      "info@notforresale.it",
+};
 
 function getQueryParams(req) {
   const url = new URL(req.url, "http://localhost");
@@ -18,47 +24,57 @@ function getQueryParams(req) {
   };
 }
 
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 export async function POST(req) {
   const { step, id } = getQueryParams(req);
-  // ⚠️ authcode separato — profilo SpediamoPro di Biscotti Sinceri
-  const AUTHCODE = process.env.SPEDIAMO_AUTHCODE_3;
 
   // ════════════════════════════════════════
-  // STEP = "quotations"
+  // STEP = "quotations"  →  POST /v2/quotations
   // ════════════════════════════════════════
   if (step === "quotations") {
     try {
-      const body = await req.json();
-      const jwt  = await getSpediamoToken(AUTHCODE);
+      const body   = await req.json();
+      const jwt    = await getSpediamoToken();
+      const sender = { ...DEFAULT_SENDER, ...(body.mittente || {}) };
+
       const payload = {
+        // ✅ FIX: cashOnDeliveryAmount e insuredAmount rimossi —
+        // l'API v2 rifiuta con 422 se sono 0
         sender: {
-          name:       body.mittente.name,
-          address:    body.mittente.address,
-          postalCode: body.mittente.postalCode,
-          city:       body.mittente.city,
-          province:   body.mittente.province,
-          country:    body.mittente.country,
-          phone:      body.mittente.phone,
-          email:      body.mittente.email,
+          name:       sender.name,
+          address:    sender.address,
+          postalCode: sender.postalCode,
+          city:       sender.city,
+          country:    sender.country,
+          province:   sender.province || null,
+          phone:      sender.phone,
+          email:      sender.email,
         },
         consignee: {
-          name:       body.nomeDestinatario,
-          address:    body.indirizzoDestinatario,
           postalCode: body.capDestinatario,
           city:       body.cittaDestinatario,
-          province:   body.provinciaDestinatario,
           country:    body.nazioneDestinatario || "IT",
-          phone:      body.telefonoDestinatario,
-          email:      body.emailDestinatario,
+          province:   body.nazioneDestinatario === "IT" ? (body.provinciaDestinatario || null) : null,
+          name:       body.nomeDestinatario     || ".",
+          address:    body.indirizzoDestinatario || ".",
+          phone:      body.telefonoDestinatario  || sender.phone,
+          email:      body.emailDestinatario     || sender.email,
         },
         parcels: [{
-          height:      +body.altezza,
-          length:      +body.profondita,
-          width:       +body.larghezza,
-          realWeight:  +body.peso,
-          packagingType: 0,
+          height: Math.max(1,   parseFloat(body.altezza)    || 10),
+          width:  Math.max(1,   parseFloat(body.larghezza)  || 15),
+          length: Math.max(1,   parseFloat(body.profondita) || 20),
+          weight: Math.max(0.1, parseFloat(body.peso)       || 1),
+          type:   0,
         }],
       };
+
       const res  = await fetch(`${API}/quotations`, {
         method:  "POST",
         headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
@@ -66,63 +82,76 @@ export async function POST(req) {
       });
       const data = await res.json();
       if (!res.ok) throw data;
-      return json({ ok: true, quotations: data.data?.quotations || [] });
+      return json({ ok: true, quotations: data.data });
     } catch (err) {
       return json({ ok: false, error: err }, 500);
     }
   }
 
   // ════════════════════════════════════════
-  // STEP = "accept"  →  crea + paga in un colpo
+  // STEP = "accept"  →  POST /v2/quotations/accept
   // ════════════════════════════════════════
   if (step === "accept") {
     try {
-      const body = await req.json();
-      const jwt  = await getSpediamoToken(AUTHCODE);
+      const body   = await req.json();
+      const jwt    = await getSpediamoToken();
+      const sender = { ...DEFAULT_SENDER, ...(body.mittente || {}) };
 
-      // Forza PDF Alt per SDA/Poste
-      const sc = (body.quotation?.serviceCode || "").toLowerCase();
-      const labelFormat = sc.includes("sda") || sc.includes("poste") ? 3 : (body.labelFormat ?? 2);
+      const serviceCode = (body.quotation?.serviceCode || "").toLowerCase();
+      const isSda       = serviceCode.includes("sda") || (body.corriere || "").toLowerCase().includes("sda");
+      const labelFormat = isSda ? 3 : (body.labelFormat ?? 2);
 
       const payload = {
+        labelFormat,
+        consigneeNote:     body.noteDestinatario || null,
+        externalId:        body.shopifyOrderId   ? String(body.shopifyOrderId) : null,
+        externalReference: body.shopifyOrderName || null,
+        deliveryPudo:      null,
+        pickup:            null,
+
+        // ✅ FIX: cashOnDeliveryAmount e insuredAmount solo se > 0
+        ...(body.importoContrassegno  > 0 && { cashOnDeliveryAmount: body.importoContrassegno }),
+        ...(body.importoAssicurazione > 0 && { insuredAmount: body.importoAssicurazione }),
+
         sender: {
-          name:       body.mittente.name,
-          address:    body.mittente.address,
-          postalCode: body.mittente.postalCode,
-          city:       body.mittente.city,
-          province:   body.mittente.province,
-          country:    body.mittente.country,
-          phone:      body.mittente.phone,
-          email:      body.mittente.email,
+          name:         sender.name,
+          address:      sender.address,
+          postalCode:   sender.postalCode,
+          city:         sender.city,
+          country:      sender.country,
+          province:     sender.province || null,
+          phone:        sender.phone,
+          email:        sender.email,
+          addressLine2: sender.addressLine2 || null,
         },
+
         consignee: {
-          name:       body.nome,
-          address:    body.indirizzo,
-          address2:   body.indirizzo2 || null,
-          postalCode: body.capDestinatario,
-          city:       body.cittaDestinatario,
-          province:   body.provinciaDestinatario,
-          country:    body.nazioneDestinatario || "IT",
-          phone:      body.telefono,
-          email:      body.email,
-          notes:      body.noteDestinatario || null,
+          name:         body.nome,
+          address:      body.indirizzo,
+          addressLine2: body.indirizzo2 || null,
+          postalCode:   body.capDestinatario,
+          city:         body.cittaDestinatario,
+          country:      body.nazioneDestinatario || "IT",
+          province:     body.nazioneDestinatario === "IT" ? (body.provinciaDestinatario || null) : null,
+          phone:        body.telefono,
+          email:        body.email,
         },
+
+        // ✅ FIX: Math.max per garantire valori positivi
         parcels: [{
-          height:       +body.altezza,
-          length:       +body.profondita,
-          width:        +body.larghezza,
-          realWeight:   +body.peso,
-          packagingType: 0,
+          height: Math.max(1,   parseFloat(body.altezza)    || 10),
+          width:  Math.max(1,   parseFloat(body.larghezza)  || 15),
+          length: Math.max(1,   parseFloat(body.profondita) || 20),
+          weight: Math.max(0.1, parseFloat(body.peso)       || 1),
+          type:   0,
         }],
-        service:                  body.quotation.service,
-        expectedDeliveryDate:     body.quotation.expectedDeliveryDate,
-        firstAvailablePickupDate: body.quotation.firstAvailablePickupDate,
-        pricing:                  body.quotation.pricing,
-        serviceCode:              body.quotation.serviceCode,
-        labelOption: { format: labelFormat },
-        cashOnDeliveryAmount:     body.importoContrassegno  ?? 0,
-        insuranceAmount:          body.importoAssicurazione ?? 0,
-        externalReference:        body.shopifyOrderName     || null,
+
+        quotation: {
+          service:                  body.quotation.service,
+          expectedDeliveryDate:     body.quotation.expectedDeliveryDate,
+          firstAvailablePickupDate: body.quotation.firstAvailablePickupDate,
+          pricing:                  body.quotation.pricing,
+        },
       };
 
       const res  = await fetch(`${API}/quotations/accept`, {
@@ -139,41 +168,38 @@ export async function POST(req) {
   }
 
   // ════════════════════════════════════════
-  // STEP = "labels"
+  // STEP = "labels"  →  GET /v2/shipments/{id}/labels
   // ════════════════════════════════════════
   if (step === "labels" && id) {
     try {
-      const jwt = await getSpediamoToken(AUTHCODE);
+      const jwt = await getSpediamoToken();
       const res = await fetch(`${API}/shipments/${id}/labels`, {
         method:  "GET",
         headers: { Authorization: `Bearer ${jwt}` },
       });
-      const data = await res.json();
-      if (!res.ok) throw data;
-      const label = data.data?.labels?.[0];
-      if (!label) throw new Error("Nessuna etichetta disponibile");
-      return json({
-        ok: true,
-        label: {
-          b64:         label.content,
-          contentType: label.contentType || "application/pdf",
-          filename:    label.filename    || `etichetta_${id}.pdf`,
-        },
-      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return json({ ok: false, error: err }, res.status);
+      }
+      const contentType = res.headers.get("content-type") || "application/octet-stream";
+      const filename    = res.headers.get("x-filename") || `label_${id}`;
+      const buffer      = await res.arrayBuffer();
+      const b64         = Buffer.from(buffer).toString("base64");
+      return json({ ok: true, label: { b64, contentType, filename } });
     } catch (err) {
-      return json({ ok: false, error: err }, 500);
+      return json({ ok: false, error: err?.message || err }, 500);
     }
   }
 
   // ════════════════════════════════════════
-  // STEP = "details"
+  // STEP = "details"  →  GET /v2/shipments/{id}
   // ════════════════════════════════════════
   if (step === "details" && id) {
     try {
-      const jwt = await getSpediamoToken(AUTHCODE);
+      const jwt = await getSpediamoToken();
       const res = await fetch(`${API}/shipments/${id}`, {
         method:  "GET",
-        headers: { Authorization: `Bearer ${jwt}` },
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
       });
       const data = await res.json();
       if (!res.ok) throw data;
@@ -184,15 +210,16 @@ export async function POST(req) {
   }
 
   // ════════════════════════════════════════
-  // STEP = "cancel"
+  // STEP = "cancel"  →  POST /v2/shipments/{id}/cancel
   // ════════════════════════════════════════
   if (step === "cancel" && id) {
     try {
-      const jwt = await getSpediamoToken(AUTHCODE);
+      const jwt = await getSpediamoToken();
       const res = await fetch(`${API}/shipments/${id}/cancel`, {
         method:  "POST",
         headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
       });
+      if (res.status === 204) return json({ ok: true });
       const data = await res.json();
       if (!res.ok) throw data;
       return json({ ok: true });
@@ -200,25 +227,23 @@ export async function POST(req) {
       return json({ ok: false, error: err }, 500);
     }
   }
-
-  // ════════════════════════════════════════
-  // STEP = "wallet"  →  GET /v2/wallet
-  // ════════════════════════════════════════
-  if (step === "wallet") {
-    try {
-      const jwt = await getSpediamoToken(AUTHCODE);
-      const res = await fetch(`${API}/wallet`, {
-        method:  "GET",
-        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
-      });
-      const data = await res.json();
-      if (!res.ok) throw data;
-      return json({ ok: true, balance: data.data });
-    } catch (err) {
-      return json({ ok: false, error: err }, 500);
-    }
+// ════════════════════════════════════════
+// STEP = "wallet"  →  GET /v2/wallet
+// ════════════════════════════════════════
+if (step === "wallet") {
+  try {
+    const jwt = await getSpediamoToken();
+    const res = await fetch(`${API}/wallet`, {  // ✅ /wallet, non /wallet/balance
+      method:  "GET",
+      headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+    });
+    const data = await res.json();
+    if (!res.ok) throw data;
+    return json({ ok: true, balance: data.data });
+  } catch (err) {
+    return json({ ok: false, error: err }, 500);
   }
+}
 
   return json({ ok: false, error: "step non supportato o id mancante" }, 400);
 }
-
