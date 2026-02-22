@@ -1,287 +1,224 @@
 // /app/api/spediamo3/route.js
 import { getSpediamoToken } from "../../lib/spediamo";
-import { getShopify3Token } from "@/lib/shopify3-token"; // ← AGGIUNGI QUESTO
+
+const API = "https://core.spediamopro.com/api/v2";
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 function getQueryParams(req) {
   const url = new URL(req.url, "http://localhost");
   return {
-    step:            url.searchParams.get("step"),
-    id:              url.searchParams.get("id"),
-    shopifyOrderId:  url.searchParams.get("shopifyOrderId"),
+    step: url.searchParams.get("step"),
+    id:   url.searchParams.get("id"),
   };
 }
 
 export async function POST(req) {
-  const { step, id, shopifyOrderId } = getQueryParams(req);
-
-  // Credenziali store 3 (Biscotti Sinceri)
-  const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN_3;
+  const { step, id } = getQueryParams(req);
+  // ⚠️ authcode separato — profilo SpediamoPro di Biscotti Sinceri
   const AUTHCODE = process.env.SPEDIAMO_AUTHCODE_3;
 
-  // ════════════════════
-  // STEP = "simula"
-  // ════════════════════
-  if (step === "simula") {
+  // ════════════════════════════════════════
+  // STEP = "quotations"
+  // ════════════════════════════════════════
+  if (step === "quotations") {
     try {
       const body = await req.json();
       const jwt  = await getSpediamoToken(AUTHCODE);
-
       const payload = {
-        nazioneMittente:     "IT",
-        nazioneDestinatario: body.nazioneDestinatario || "IT",
-        capMittente:         "00121",
-        capDestinatario:     body.capDestinatario,
-        cittaMittente:      "OSTIA LIDO",
-        cittaDestinatario:   body.cittaDestinatario,
-        provinciaMittente:   "RM",
-        provinciaDestinatario: body.provinciaDestinatario,
-        colli: [{
-          altezza:    +body.altezza,
-          larghezza:  +body.larghezza,
-          profondita: +body.profondita,
-          pesoReale:  +body.peso,
-          packagingType: 0,
-        }],
-      };
-
-      const res = await fetch("https://core.spediamopro.com/api/v1/simulazione", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${jwt}`,
-          "Content-Type":  "application/json",
+        sender: {
+          name:       body.mittente.name,
+          address:    body.mittente.address,
+          postalCode: body.mittente.postalCode,
+          city:       body.mittente.city,
+          province:   body.mittente.province,
+          country:    body.mittente.country,
+          phone:      body.mittente.phone,
+          email:      body.mittente.email,
         },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw data;
-      return new Response(JSON.stringify({ ok: true, simulazione: data.simulazione }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
-    } catch (err) {
-      return new Response(JSON.stringify({ ok: false, error: err.error?.message || err.message || err }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      });
-    }
-  }
-
-  // ════════════════════
-  // STEP = "create"
-  // ════════════════════
-  if (step === "create" && id && shopifyOrderId) {
-    try {
-      const body = await req.json().catch(() => ({}));
-      const jwt  = await getSpediamoToken(AUTHCODE);
-      const SHOPIFY_TOKEN = await getShopify3Token(); // ← USA TOKEN FRESCO ✅
-
-      const shopRes = await fetch(
-        `https://${SHOPIFY_DOMAIN}/admin/api/2025-10/orders/${shopifyOrderId}.json`,
-        {
-          headers: {
-            "X-Shopify-Access-Token": SHOPIFY_TOKEN, // ← ORA È FRESCO ✅
-            "Content-Type":           "application/json",
-          },
-        }
-      );
-      if (!shopRes.ok) {
-        const e = await shopRes.json();
-        throw { source: "shopify", details: e };
-      }
-      const ship = (await shopRes.json()).order.shipping_address || {};
-
-      const payload = {
-        nazioneMittente:       "IT",
-        nazioneDestinatario:   ship.country_code || ship.country,
-        capMittente:           "00121",
-        capDestinatario:       ship.zip,
-        cittaMittente:         "OSTIA LIDO",
-        cittaDestinatario:     ship.city,
-        provinciaMittente:     "RM",
-        provinciaDestinatario: ship.province_code || ship.province,
-        consigneePickupPointId: body.consigneePickupPointId || null,
+        consignee: {
+          name:       body.nomeDestinatario,
+          address:    body.indirizzoDestinatario,
+          postalCode: body.capDestinatario,
+          city:       body.cittaDestinatario,
+          province:   body.provinciaDestinatario,
+          country:    body.nazioneDestinatario || "IT",
+          phone:      body.telefonoDestinatario,
+          email:      body.emailDestinatario,
+        },
         parcels: [{
-          height:       20,
-          length:       30,
-          width:        5,
-          realWeight:   1.0,
+          height:      +body.altezza,
+          length:      +body.profondita,
+          width:       +body.larghezza,
+          realWeight:  +body.peso,
           packagingType: 0,
         }],
       };
-
-      const createRes = await fetch(`https://core.spediamopro.com/api/v1/spedizione/${id}`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${jwt}`,
-          "Content-Type":  "application/json",
-        },
-        body: JSON.stringify(payload),
+      const res  = await fetch(`${API}/quotations`, {
+        method:  "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
       });
-      const data = await createRes.json();
-      if (!createRes.ok) throw data;
-      return new Response(JSON.stringify({ ok: true, spedizione: data.spedizione }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
+      const data = await res.json();
+      if (!res.ok) throw data;
+      return json({ ok: true, quotations: data.data?.quotations || [] });
     } catch (err) {
-      const status = err.source === "shopify" ? 502 : 500;
-      return new Response(JSON.stringify({ ok: false, error: err }), {
-        status,
-        headers: { "Content-Type": "application/json" }
-      });
+      return json({ ok: false, error: err }, 500);
     }
   }
 
-  // ════════════════════
-  // STEP = "update"
-  // ════════════════════
-  if (step === "update" && id) {
+  // ════════════════════════════════════════
+  // STEP = "accept"  →  crea + paga in un colpo
+  // ════════════════════════════════════════
+  if (step === "accept") {
     try {
       const body = await req.json();
       const jwt  = await getSpediamoToken(AUTHCODE);
 
+      // Forza PDF Alt per SDA/Poste
+      const sc = (body.quotation?.serviceCode || "").toLowerCase();
+      const labelFormat = sc.includes("sda") || sc.includes("poste") ? 3 : (body.labelFormat ?? 2);
+
       const payload = {
-        nominativoMittente:     "BISCOTTI SINCERI",
-        senderAddressLine1:     "VIA DELLE ALEUTINE 68",
-        senderAddressLine2:     body.indirizzo2 || null,
-        comuneMittente:         "OSTIA LIDO",
-        provinciaMittente:      "RM",
-        capMittente:            "00121",
-        telefonoMittente:       "3929874134",
-        emailMittente:          "info@biscottisinceri.it",
-        nominativoDestinatario: body.nome,
-        consigneeAddressLine1:  body.indirizzo,
-        consigneePresso:  body.indirizzo2 || null,
-        comuneDestinatario:     body.cittaDestinatario,
-        provinciaDestinatario:  body.provinciaDestinatario,
-        capDestinatario:        body.capDestinatario,
-        telefonoDestinatario:   body.telefono,
-        emailDestinatario:      body.email,
-        noteDestinatario:       body.noteDestinatario || "",
-        importoContrassegno:    body.importoContrassegno ?? 0,
-        importoAssicurazione:   body.importoAssicurazione ?? 0,
-        consigneePickupPointId: body.consigneePickupPointId || null,
-        labelFormat:            body.labelFormat ?? 0,
-        colli: [{
-          altezza:    20,
-          larghezza:  30,
-          profondita: 5,
-          pesoReale:  1.0,
+        sender: {
+          name:       body.mittente.name,
+          address:    body.mittente.address,
+          postalCode: body.mittente.postalCode,
+          city:       body.mittente.city,
+          province:   body.mittente.province,
+          country:    body.mittente.country,
+          phone:      body.mittente.phone,
+          email:      body.mittente.email,
+        },
+        consignee: {
+          name:       body.nome,
+          address:    body.indirizzo,
+          address2:   body.indirizzo2 || null,
+          postalCode: body.capDestinatario,
+          city:       body.cittaDestinatario,
+          province:   body.provinciaDestinatario,
+          country:    body.nazioneDestinatario || "IT",
+          phone:      body.telefono,
+          email:      body.email,
+          notes:      body.noteDestinatario || null,
+        },
+        parcels: [{
+          height:       +body.altezza,
+          length:       +body.profondita,
+          width:        +body.larghezza,
+          realWeight:   +body.peso,
           packagingType: 0,
         }],
-        pickup: null,
+        service:                  body.quotation.service,
+        expectedDeliveryDate:     body.quotation.expectedDeliveryDate,
+        firstAvailablePickupDate: body.quotation.firstAvailablePickupDate,
+        pricing:                  body.quotation.pricing,
+        serviceCode:              body.quotation.serviceCode,
+        labelOption: { format: labelFormat },
+        cashOnDeliveryAmount:     body.importoContrassegno  ?? 0,
+        insuranceAmount:          body.importoAssicurazione ?? 0,
+        externalReference:        body.shopifyOrderName     || null,
       };
 
-      const res = await fetch(`https://core.spediamopro.com/api/v1/spedizione/${id}`, {
-        method: "PUT",
-        headers: {
-          "Authorization": `Bearer ${jwt}`,
-          "Content-Type":  "application/json",
-        },
-        body: JSON.stringify(payload),
+      const res  = await fetch(`${API}/quotations/accept`, {
+        method:  "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw data;
-      return new Response(JSON.stringify({ ok: true, spedizione: data.spedizione }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
+      return json({ ok: true, spedizione: data.data });
     } catch (err) {
-      return new Response(JSON.stringify({ ok: false, error: err }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      });
+      return json({ ok: false, error: err }, 500);
     }
   }
 
-  // ════════════════════
-  // STEP = "pay"
-  // ════════════════════
-  if (step === "pay" && id) {
+  // ════════════════════════════════════════
+  // STEP = "labels"
+  // ════════════════════════════════════════
+  if (step === "labels" && id) {
     try {
       const jwt = await getSpediamoToken(AUTHCODE);
-      const res = await fetch(`https://core.spediamopro.com/api/v1/spedizione/${id}/can_pay`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${jwt}`,
-          "Content-Type":  "application/json",
-        },
+      const res = await fetch(`${API}/shipments/${id}/labels`, {
+        method:  "GET",
+        headers: { Authorization: `Bearer ${jwt}` },
       });
       const data = await res.json();
       if (!res.ok) throw data;
-      return new Response(JSON.stringify({ ok: true, can_pay: data.can_pay }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
-    } catch (err) {
-      return new Response(JSON.stringify({ ok: false, error: err }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      });
-    }
-  }
-
-  // ════════════════════
-  // STEP = "ldv"
-  // ════════════════════
-  if (step === "ldv" && id) {
-    try {
-      const jwt = await getSpediamoToken(AUTHCODE);
-      const res = await fetch(`https://core.spediamopro.com/api/v1/spedizione/${id}/ldv`, {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${jwt}`,
-          "Content-Type":  "application/json",
+      const label = data.data?.labels?.[0];
+      if (!label) throw new Error("Nessuna etichetta disponibile");
+      return json({
+        ok: true,
+        label: {
+          b64:         label.content,
+          contentType: label.contentType || "application/pdf",
+          filename:    label.filename    || `etichetta_${id}.pdf`,
         },
       });
-      const data = await res.json();
-      if (!res.ok) throw data;
-      return new Response(JSON.stringify({ ok: true, ldv: data }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
     } catch (err) {
-      return new Response(JSON.stringify({ ok: false, error: err }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      });
+      return json({ ok: false, error: err }, 500);
     }
   }
 
-  // ════════════════════
+  // ════════════════════════════════════════
   // STEP = "details"
-  // ════════════════════
+  // ════════════════════════════════════════
   if (step === "details" && id) {
     try {
       const jwt = await getSpediamoToken(AUTHCODE);
-      const res = await fetch(`https://core.spediamopro.com/api/v1/spedizione/${id}`, {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${jwt}`,
-          "Content-Type":  "application/json",
-        },
+      const res = await fetch(`${API}/shipments/${id}`, {
+        method:  "GET",
+        headers: { Authorization: `Bearer ${jwt}` },
       });
       const data = await res.json();
       if (!res.ok) throw data;
-      return new Response(JSON.stringify({ ok: true, spedizione: data.spedizione }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
+      return json({ ok: true, spedizione: data.data });
     } catch (err) {
-      return new Response(JSON.stringify({ ok: false, error: err }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      });
+      return json({ ok: false, error: err }, 500);
     }
   }
 
-  // ════════════════════
-  // Default response
-  // ════════════════════
-  return new Response(
-    JSON.stringify({ ok: false, error: "step non supportato o id mancante" }),
-    { status: 400, headers: { "Content-Type": "application/json" } }
-  );
+  // ════════════════════════════════════════
+  // STEP = "cancel"
+  // ════════════════════════════════════════
+  if (step === "cancel" && id) {
+    try {
+      const jwt = await getSpediamoToken(AUTHCODE);
+      const res = await fetch(`${API}/shipments/${id}/cancel`, {
+        method:  "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) throw data;
+      return json({ ok: true });
+    } catch (err) {
+      return json({ ok: false, error: err }, 500);
+    }
+  }
+
+  // ════════════════════════════════════════
+  // STEP = "wallet"  →  GET /v2/wallet
+  // ════════════════════════════════════════
+  if (step === "wallet") {
+    try {
+      const jwt = await getSpediamoToken(AUTHCODE);
+      const res = await fetch(`${API}/wallet`, {
+        method:  "GET",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) throw data;
+      return json({ ok: true, balance: data.data });
+    } catch (err) {
+      return json({ ok: false, error: err }, 500);
+    }
+  }
+
+  return json({ ok: false, error: "step non supportato o id mancante" }, 400);
 }
 
