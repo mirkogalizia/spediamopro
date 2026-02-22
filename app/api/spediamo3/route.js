@@ -20,8 +20,7 @@ function getQueryParams(req) {
 
 export async function POST(req) {
   const { step, id } = getQueryParams(req);
-  // ⚠️ authcode separato — profilo SpediamoPro di Biscotti Sinceri
-  const AUTHCODE = process.env.SPEDIAMO_AUTHCODE_3;
+  const AUTHCODE = process.env.SPEDIAMO_AUTHCODE_3; // ← unica differenza
 
   // ════════════════════════════════════════
   // STEP = "quotations"
@@ -52,10 +51,10 @@ export async function POST(req) {
           email:      body.emailDestinatario,
         },
         parcels: [{
-          height:      +body.altezza,
-          length:      +body.profondita,
-          width:       +body.larghezza,
-          realWeight:  +body.peso,
+          height:        +body.altezza,
+          length:        +body.profondita,
+          width:         +body.larghezza,
+          realWeight:    +body.peso,
           packagingType: 0,
         }],
       };
@@ -73,14 +72,13 @@ export async function POST(req) {
   }
 
   // ════════════════════════════════════════
-  // STEP = "accept"  →  crea + paga in un colpo
+  // STEP = "accept"
   // ════════════════════════════════════════
   if (step === "accept") {
     try {
       const body = await req.json();
       const jwt  = await getSpediamoToken(AUTHCODE);
 
-      // Forza PDF Alt per SDA/Poste
       const sc = (body.quotation?.serviceCode || "").toLowerCase();
       const labelFormat = sc.includes("sda") || sc.includes("poste") ? 3 : (body.labelFormat ?? 2);
 
@@ -108,21 +106,28 @@ export async function POST(req) {
           notes:      body.noteDestinatario || null,
         },
         parcels: [{
-          height:       +body.altezza,
-          length:       +body.profondita,
-          width:        +body.larghezza,
-          realWeight:   +body.peso,
+          height:        +body.altezza,
+          length:        +body.profondita,
+          width:         +body.larghezza,
+          realWeight:    +body.peso,
           packagingType: 0,
         }],
         service:                  body.quotation.service,
         expectedDeliveryDate:     body.quotation.expectedDeliveryDate,
         firstAvailablePickupDate: body.quotation.firstAvailablePickupDate,
-        pricing:                  body.quotation.pricing,
+        pricing: {
+          totalPrice:            +(body.quotation.pricing.totalPrice            ?? 0),
+          basePrice:             +(body.quotation.pricing.basePrice             ?? 0),
+          fuelSurcharge:         +(body.quotation.pricing.fuelSurcharge         ?? 0),
+          accessoryServicePrice: +(body.quotation.pricing.accessoryServicePrice ?? 0),
+          vatAmount:             +(body.quotation.pricing.vatAmount             ?? 0),
+          vatRate:               +(body.quotation.pricing.vatRate               ?? 0),
+        },
         serviceCode:              body.quotation.serviceCode,
-        labelOption: { format: labelFormat },
-        cashOnDeliveryAmount:     body.importoContrassegno  ?? 0,
-        insuranceAmount:          body.importoAssicurazione ?? 0,
-        externalReference:        body.shopifyOrderName     || null,
+        labelOption:             { format: labelFormat },
+        cashOnDeliveryAmount:    +(body.importoContrassegno  ?? 0),
+        insuranceAmount:         +(body.importoAssicurazione ?? 0),
+        externalReference:        body.shopifyOrderName || null,
       };
 
       const res  = await fetch(`${API}/quotations/accept`, {
@@ -202,7 +207,7 @@ export async function POST(req) {
   }
 
   // ════════════════════════════════════════
-  // STEP = "wallet"  →  GET /v2/wallet
+  // STEP = "wallet"
   // ════════════════════════════════════════
   if (step === "wallet") {
     try {
