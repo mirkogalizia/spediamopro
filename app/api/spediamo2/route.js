@@ -1,5 +1,5 @@
 // /app/api/spediamo2/route.js
-// SpediamoPro API v2 — Store 2 (SHOPIFY_DOMAIN_2 / SHOPIFY_TOKEN_2)
+// SpediamoPro API v2 — Store 2
 
 import { getSpediamoToken } from "../../lib/spediamo";
 
@@ -44,8 +44,8 @@ export async function POST(req) {
       const sender = { ...DEFAULT_SENDER, ...(body.mittente || {}) };
 
       const payload = {
-        cashOnDeliveryAmount: 0,
-        insuredAmount:        0,
+        // ✅ FIX: cashOnDeliveryAmount e insuredAmount rimossi —
+        // l'API v2 rifiuta con 422 se sono 0
         sender: {
           name:       sender.name,
           address:    sender.address,
@@ -61,18 +61,18 @@ export async function POST(req) {
           city:       body.cittaDestinatario,
           country:    body.nazioneDestinatario || "IT",
           province:   body.nazioneDestinatario === "IT" ? (body.provinciaDestinatario || null) : null,
-          name:       body.nomeDestinatario    || ".",
+          name:       body.nomeDestinatario     || ".",
           address:    body.indirizzoDestinatario || ".",
           phone:      body.telefonoDestinatario  || sender.phone,
           email:      body.emailDestinatario     || sender.email,
         },
         parcels: [{
-  height: Math.max(1, parseFloat(body.altezza)  || 10),
-  width:  Math.max(1, parseFloat(body.larghezza) || 15),
-  length: Math.max(1, parseFloat(body.profondita)|| 20),
-  weight: Math.max(0.1, parseFloat(body.peso)    || 1),
-  type:   0,
-}],
+          height: Math.max(1,   parseFloat(body.altezza)    || 10),
+          width:  Math.max(1,   parseFloat(body.larghezza)  || 15),
+          length: Math.max(1,   parseFloat(body.profondita) || 20),
+          weight: Math.max(0.1, parseFloat(body.peso)       || 1),
+          type:   0,
+        }],
       };
 
       const res  = await fetch(`${API}/quotations`, {
@@ -90,7 +90,6 @@ export async function POST(req) {
 
   // ════════════════════════════════════════
   // STEP = "accept"  →  POST /v2/quotations/accept
-  // Crea + dati + paga in una sola chiamata
   // ════════════════════════════════════════
   if (step === "accept") {
     try {
@@ -98,20 +97,21 @@ export async function POST(req) {
       const jwt    = await getSpediamoToken();
       const sender = { ...DEFAULT_SENDER, ...(body.mittente || {}) };
 
-      // Per SDA/Poste usa labelFormat 3 (PDF Alt 10×11),
-      // per tutti gli altri rispetta la scelta utente (default 2 = ZPL)
-      const serviceCode  = (body.quotation?.serviceCode || "").toLowerCase();
-      const isSda        = serviceCode.includes("sda") || (body.corriere || "").toLowerCase().includes("sda");
-      const labelFormat  = isSda ? 3 : (body.labelFormat ?? 2);
+      const serviceCode = (body.quotation?.serviceCode || "").toLowerCase();
+      const isSda       = serviceCode.includes("sda") || (body.corriere || "").toLowerCase().includes("sda");
+      const labelFormat = isSda ? 3 : (body.labelFormat ?? 2);
 
       const payload = {
-    
         labelFormat,
-        consigneeNote:        body.noteDestinatario || null,
-        externalId:           body.shopifyOrderId   ? String(body.shopifyOrderId) : null,
-        externalReference:    body.shopifyOrderName || null,
-        deliveryPudo:         null,
-        pickup:               null,
+        consigneeNote:     body.noteDestinatario || null,
+        externalId:        body.shopifyOrderId   ? String(body.shopifyOrderId) : null,
+        externalReference: body.shopifyOrderName || null,
+        deliveryPudo:      null,
+        pickup:            null,
+
+        // ✅ FIX: cashOnDeliveryAmount e insuredAmount solo se > 0
+        ...(body.importoContrassegno  > 0 && { cashOnDeliveryAmount: body.importoContrassegno }),
+        ...(body.importoAssicurazione > 0 && { insuredAmount: body.importoAssicurazione }),
 
         sender: {
           name:         sender.name,
@@ -137,11 +137,12 @@ export async function POST(req) {
           email:        body.email,
         },
 
+        // ✅ FIX: Math.max per garantire valori positivi
         parcels: [{
-          height: +body.altezza    || 10,
-          width:  +body.larghezza  || 15,
-          length: +body.profondita || 20,
-          weight: +body.peso       || 1,
+          height: Math.max(1,   parseFloat(body.altezza)    || 10),
+          width:  Math.max(1,   parseFloat(body.larghezza)  || 15),
+          length: Math.max(1,   parseFloat(body.profondita) || 20),
+          weight: Math.max(0.1, parseFloat(body.peso)       || 1),
           type:   0,
         }],
 
@@ -229,4 +230,3 @@ export async function POST(req) {
 
   return json({ ok: false, error: "step non supportato o id mancante" }, 400);
 }
-
