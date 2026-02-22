@@ -282,12 +282,20 @@ export default function Page() {
           importoContrassegno:   0,
           importoAssicurazione:  0,
           quotation: {
-            service:                  quotation.service,
-            expectedDeliveryDate:     quotation.expectedDeliveryDate,
-            firstAvailablePickupDate: quotation.firstAvailablePickupDate,
-            pricing:                  quotation.pricing,
-            serviceCode:              quotation.serviceCode,
-          },
+  service:                  quotation.service,
+  expectedDeliveryDate:     quotation.expectedDeliveryDate,
+  firstAvailablePickupDate: quotation.firstAvailablePickupDate,
+  // ✅ pricing completo con tutti i campi richiesti dall'API
+  pricing: {
+    totalPrice:             quotation.totalPrice            ?? 0,
+    basePrice:              quotation.basePrice             ?? 0,
+    fuelSurcharge:          quotation.fuelSurcharge         ?? 0,
+    accessoryServicePrice:  quotation.accessoryServicePrice ?? 0,
+    vatAmount:              quotation.vatAmount             ?? 0,
+    vatRate:                quotation.vatRate               ?? 0,
+  },
+  serviceCode: quotation.serviceCode,
+},
         }),
       });
       if (!res.ok) throw await res.json();
