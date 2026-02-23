@@ -1,4 +1,5 @@
 // /app/api/spediamo2/route.js
+
 // SpediamoPro API v2 — Store 2
 
 import { getSpediamoToken } from "../../lib/spediamo";
@@ -35,7 +36,7 @@ export async function POST(req) {
   const { step, id } = getQueryParams(req);
 
   // ════════════════════════════════════════
-  // STEP = "quotations"  →  POST /v2/quotations
+  // STEP = "quotations" → POST /v2/quotations
   // ════════════════════════════════════════
   if (step === "quotations") {
     try {
@@ -46,11 +47,10 @@ export async function POST(req) {
       const safeWeight = (() => {
         const w = parseFloat(body.peso);
         if (isNaN(w)) return 10;
-        return Math.max(10, w); // peso minimo 10 richiesto dall'API
+        return Math.max(10, w); // minimo 10 come nel test curl
       })();
 
       const payload = {
-        // cashOnDeliveryAmount / insuredAmount NON inviati qui
         sender: {
           name:       sender.name,
           address:    sender.address,
@@ -62,22 +62,24 @@ export async function POST(req) {
           email:      sender.email,
         },
         consignee: {
-          postalCode: body.capDestinatario,
-          city:       body.cittaDestinatario,
-          country:    body.nazioneDestinatario || "IT",
-          province:   body.nazioneDestinatario === "IT" ? (body.provinciaDestinatario || null) : null,
-          name:       body.nomeDestinatario      || ".",
-          address:    body.indirizzoDestinatario || ".",
-          phone:      body.telefonoDestinatario  || sender.phone,
-          email:      body.emailDestinatario     || sender.email,
+          name:        body.nomeDestinatario       || ".",
+          address:     body.indirizzoDestinatario  || ".",
+          postalCode:  body.capDestinatario,
+          city:        body.cittaDestinatario,
+          country:     body.nazioneDestinatario || "IT",
+          province:    body.nazioneDestinatario === "IT" ? (body.provinciaDestinatario || null) : null,
+          phone:       body.telefonoDestinatario   || sender.phone,
+          email:       body.emailDestinatario      || sender.email,
         },
-        parcels: [{
-          height: Math.max(1,  parseFloat(body.altezza)    || 10),
-          width:  Math.max(1,  parseFloat(body.larghezza)  || 15),
-          length: Math.max(1,  parseFloat(body.profondita) || 20),
-          weight: safeWeight,
-          type:   0,
-        }],
+        parcels: [
+          {
+            height: Math.max(1,  parseFloat(body.altezza)    || 10),
+            width:  Math.max(1,  parseFloat(body.larghezza)  || 15),
+            length: Math.max(1,  parseFloat(body.profondita) || 20),
+            weight: safeWeight,
+            type:   0,
+          },
+        ],
       };
 
       const res  = await fetch(`${API}/quotations`, {
@@ -88,16 +90,19 @@ export async function POST(req) {
         },
         body: JSON.stringify(payload),
       });
+
       const data = await res.json();
       if (!res.ok) throw data;
+
       return json({ ok: true, quotations: data.data });
     } catch (err) {
+      console.error("SPEDIAMO quotations error:", JSON.stringify(err));
       return json({ ok: false, error: err }, 500);
     }
   }
 
   // ════════════════════════════════════════
-  // STEP = "accept"  →  POST /v2/quotations/accept
+  // STEP = "accept" → POST /v2/quotations/accept
   // ════════════════════════════════════════
   if (step === "accept") {
     try {
@@ -112,7 +117,7 @@ export async function POST(req) {
       const safeWeight = (() => {
         const w = parseFloat(body.peso);
         if (isNaN(w)) return 10;
-        return Math.max(10, w); // stesso vincolo della quotations
+        return Math.max(10, w);
       })();
 
       const payload = {
@@ -123,7 +128,6 @@ export async function POST(req) {
         deliveryPudo:      null,
         pickup:            null,
 
-        // cashOnDeliveryAmount e insuredAmount SOLO se > 0
         ...(body.importoContrassegno  > 0 && { cashOnDeliveryAmount: body.importoContrassegno }),
         ...(body.importoAssicurazione > 0 && { insuredAmount: body.importoAssicurazione }),
 
@@ -151,19 +155,22 @@ export async function POST(req) {
           email:        body.email,
         },
 
-        parcels: [{
-          height: Math.max(1,  parseFloat(body.altezza)    || 10),
-          width:  Math.max(1,  parseFloat(body.larghezza)  || 15),
-          length: Math.max(1,  parseFloat(body.profondita) || 20),
-          weight: safeWeight,
-          type:   0,
-        }],
+        parcels: [
+          {
+            height: Math.max(1,  parseFloat(body.altezza)    || 10),
+            width:  Math.max(1,  parseFloat(body.larghezza)  || 15),
+            length: Math.max(1,  parseFloat(body.profondita) || 20),
+            weight: safeWeight,
+            type:   0,
+          },
+        ],
 
-        // NON mandiamo più pricing / priceBreakdown per evitare il 422
+        // Qui passiamo solo i campi realmente richiesti / accettati
         quotation: {
           service:                  body.quotation.service,
           expectedDeliveryDate:     body.quotation.expectedDeliveryDate,
           firstAvailablePickupDate: body.quotation.firstAvailablePickupDate,
+          priceBreakdown:           body.quotation.priceBreakdown, // struttura identica a quella ricevuta da /quotations
         },
       };
 
@@ -175,16 +182,19 @@ export async function POST(req) {
         },
         body: JSON.stringify(payload),
       });
+
       const data = await res.json();
       if (!res.ok) throw data;
+
       return json({ ok: true, spedizione: data.data });
     } catch (err) {
+      console.error("SPEDIAMO accept error:", JSON.stringify(err));
       return json({ ok: false, error: err }, 500);
     }
   }
 
   // ════════════════════════════════════════
-  // STEP = "labels"  →  GET /v2/shipments/{id}/labels
+  // STEP = "labels" → GET /v2/shipments/{id}/labels
   // ════════════════════════════════════════
   if (step === "labels" && id) {
     try {
@@ -193,22 +203,26 @@ export async function POST(req) {
         method:  "GET",
         headers: { Authorization: `Bearer ${jwt}` },
       });
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         return json({ ok: false, error: err }, res.status);
       }
+
       const contentType = res.headers.get("content-type") || "application/octet-stream";
       const filename    = res.headers.get("x-filename") || `label_${id}`;
       const buffer      = await res.arrayBuffer();
       const b64         = Buffer.from(buffer).toString("base64");
+
       return json({ ok: true, label: { b64, contentType, filename } });
     } catch (err) {
+      console.error("SPEDIAMO labels error:", err);
       return json({ ok: false, error: err?.message || err }, 500);
     }
   }
 
   // ════════════════════════════════════════
-  // STEP = "details"  →  GET /v2/shipments/{id}
+  // STEP = "details" → GET /v2/shipments/{id}
   // ════════════════════════════════════════
   if (step === "details" && id) {
     try {
@@ -220,16 +234,19 @@ export async function POST(req) {
           "Content-Type": "application/json",
         },
       });
+
       const data = await res.json();
       if (!res.ok) throw data;
+
       return json({ ok: true, spedizione: data.data });
     } catch (err) {
+      console.error("SPEDIAMO details error:", JSON.stringify(err));
       return json({ ok: false, error: err }, 500);
     }
   }
 
   // ════════════════════════════════════════
-  // STEP = "cancel"  →  POST /v2/shipments/{id}/cancel
+  // STEP = "cancel" → POST /v2/shipments/{id}/cancel
   // ════════════════════════════════════════
   if (step === "cancel" && id) {
     try {
@@ -241,17 +258,21 @@ export async function POST(req) {
           "Content-Type": "application/json",
         },
       });
+
       if (res.status === 204) return json({ ok: true });
+
       const data = await res.json();
       if (!res.ok) throw data;
+
       return json({ ok: true });
     } catch (err) {
+      console.error("SPEDIAMO cancel error:", JSON.stringify(err));
       return json({ ok: false, error: err }, 500);
     }
   }
 
   // ════════════════════════════════════════
-  // STEP = "wallet"  →  GET /v2/wallet
+  // STEP = "wallet" → GET /v2/wallet
   // ════════════════════════════════════════
   if (step === "wallet") {
     try {
@@ -263,11 +284,13 @@ export async function POST(req) {
           "Content-Type": "application/json",
         },
       });
+
       const data = await res.json();
       if (!res.ok) throw data;
-      // i decimali li normalizziamo eventualmente in frontend
+
       return json({ ok: true, balance: data.data });
     } catch (err) {
+      console.error("SPEDIAMO wallet error:", JSON.stringify(err));
       return json({ ok: false, error: err }, 500);
     }
   }
