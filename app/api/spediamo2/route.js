@@ -43,9 +43,14 @@ export async function POST(req) {
       const jwt    = await getSpediamoToken();
       const sender = { ...DEFAULT_SENDER, ...(body.mittente || {}) };
 
+      const safeWeight = (() => {
+        const w = parseFloat(body.peso);
+        if (isNaN(w)) return 10;
+        return Math.max(10, w); // peso minimo 10 richiesto dall'API
+      })();
+
       const payload = {
-        // ✅ FIX: cashOnDeliveryAmount e insuredAmount rimossi —
-        // l'API v2 rifiuta con 422 se sono 0
+        // cashOnDeliveryAmount / insuredAmount NON inviati qui
         sender: {
           name:       sender.name,
           address:    sender.address,
@@ -61,24 +66,27 @@ export async function POST(req) {
           city:       body.cittaDestinatario,
           country:    body.nazioneDestinatario || "IT",
           province:   body.nazioneDestinatario === "IT" ? (body.provinciaDestinatario || null) : null,
-          name:       body.nomeDestinatario     || ".",
+          name:       body.nomeDestinatario      || ".",
           address:    body.indirizzoDestinatario || ".",
           phone:      body.telefonoDestinatario  || sender.phone,
           email:      body.emailDestinatario     || sender.email,
         },
         parcels: [{
-          height: Math.max(1,   parseFloat(body.altezza)    || 10),
-          width:  Math.max(1,   parseFloat(body.larghezza)  || 15),
-          length: Math.max(1,   parseFloat(body.profondita) || 20),
-          weight: Math.max(0.1, parseFloat(body.peso)       || 1),
+          height: Math.max(1,  parseFloat(body.altezza)    || 10),
+          width:  Math.max(1,  parseFloat(body.larghezza)  || 15),
+          length: Math.max(1,  parseFloat(body.profondita) || 20),
+          weight: safeWeight,
           type:   0,
         }],
       };
 
       const res  = await fetch(`${API}/quotations`, {
         method:  "POST",
-        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
-        body:    JSON.stringify(payload),
+        headers: {
+          Authorization: `Bearer ${jwt}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw data;
@@ -101,6 +109,12 @@ export async function POST(req) {
       const isSda       = serviceCode.includes("sda") || (body.corriere || "").toLowerCase().includes("sda");
       const labelFormat = isSda ? 3 : (body.labelFormat ?? 2);
 
+      const safeWeight = (() => {
+        const w = parseFloat(body.peso);
+        if (isNaN(w)) return 10;
+        return Math.max(10, w); // stesso vincolo della quotations
+      })();
+
       const payload = {
         labelFormat,
         consigneeNote:     body.noteDestinatario || null,
@@ -109,7 +123,7 @@ export async function POST(req) {
         deliveryPudo:      null,
         pickup:            null,
 
-        // ✅ FIX: cashOnDeliveryAmount e insuredAmount solo se > 0
+        // cashOnDeliveryAmount e insuredAmount SOLO se > 0
         ...(body.importoContrassegno  > 0 && { cashOnDeliveryAmount: body.importoContrassegno }),
         ...(body.importoAssicurazione > 0 && { insuredAmount: body.importoAssicurazione }),
 
@@ -137,27 +151,29 @@ export async function POST(req) {
           email:        body.email,
         },
 
-        // ✅ FIX: Math.max per garantire valori positivi
         parcels: [{
-          height: Math.max(1,   parseFloat(body.altezza)    || 10),
-          width:  Math.max(1,   parseFloat(body.larghezza)  || 15),
-          length: Math.max(1,   parseFloat(body.profondita) || 20),
-          weight: Math.max(0.1, parseFloat(body.peso)       || 1),
+          height: Math.max(1,  parseFloat(body.altezza)    || 10),
+          width:  Math.max(1,  parseFloat(body.larghezza)  || 15),
+          length: Math.max(1,  parseFloat(body.profondita) || 20),
+          weight: safeWeight,
           type:   0,
         }],
 
+        // NON mandiamo più pricing / priceBreakdown per evitare il 422
         quotation: {
           service:                  body.quotation.service,
           expectedDeliveryDate:     body.quotation.expectedDeliveryDate,
           firstAvailablePickupDate: body.quotation.firstAvailablePickupDate,
-          pricing:                  body.quotation.pricing,
         },
       };
 
       const res  = await fetch(`${API}/quotations/accept`, {
         method:  "POST",
-        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
-        body:    JSON.stringify(payload),
+        headers: {
+          Authorization: `Bearer ${jwt}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw data;
@@ -199,7 +215,10 @@ export async function POST(req) {
       const jwt = await getSpediamoToken();
       const res = await fetch(`${API}/shipments/${id}`, {
         method:  "GET",
-        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        headers: {
+          Authorization:  `Bearer ${jwt}`,
+          "Content-Type": "application/json",
+        },
       });
       const data = await res.json();
       if (!res.ok) throw data;
@@ -217,7 +236,10 @@ export async function POST(req) {
       const jwt = await getSpediamoToken();
       const res = await fetch(`${API}/shipments/${id}/cancel`, {
         method:  "POST",
-        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        headers: {
+          Authorization:  `Bearer ${jwt}`,
+          "Content-Type": "application/json",
+        },
       });
       if (res.status === 204) return json({ ok: true });
       const data = await res.json();
@@ -227,23 +249,28 @@ export async function POST(req) {
       return json({ ok: false, error: err }, 500);
     }
   }
-// ════════════════════════════════════════
-// STEP = "wallet"  →  GET /v2/wallet
-// ════════════════════════════════════════
-if (step === "wallet") {
-  try {
-    const jwt = await getSpediamoToken();
-    const res = await fetch(`${API}/wallet`, {  // ✅ /wallet, non /wallet/balance
-      method:  "GET",
-      headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
-    });
-    const data = await res.json();
-    if (!res.ok) throw data;
-    return json({ ok: true, balance: data.data });
-  } catch (err) {
-    return json({ ok: false, error: err }, 500);
+
+  // ════════════════════════════════════════
+  // STEP = "wallet"  →  GET /v2/wallet
+  // ════════════════════════════════════════
+  if (step === "wallet") {
+    try {
+      const jwt = await getSpediamoToken();
+      const res = await fetch(`${API}/wallet`, {
+        method:  "GET",
+        headers: {
+          Authorization:  `Bearer ${jwt}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) throw data;
+      // i decimali li normalizziamo eventualmente in frontend
+      return json({ ok: true, balance: data.data });
+    } catch (err) {
+      return json({ ok: false, error: err }, 500);
+    }
   }
-}
 
   return json({ ok: false, error: "step non supportato o id mancante" }, 400);
 }
