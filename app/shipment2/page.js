@@ -356,19 +356,13 @@ export default function Page() {
           shopifyOrderId: selectedOrder.id, shopifyOrderName: selectedOrder.name,
           importoContrassegno: 0, importoAssicurazione: 0,
           quotation: {
-            service: quotation.service,
-            expectedDeliveryDate: quotation.expectedDeliveryDate,
-            firstAvailablePickupDate: quotation.firstAvailablePickupDate,
-            pricing: {
-              totalPrice:            quotation.totalPrice            ?? 0,
-              basePrice:             quotation.basePrice             ?? 0,
-              fuelSurcharge:         quotation.fuelSurcharge         ?? 0,
-              accessoryServicePrice: quotation.accessoryServicePrice ?? 0,
-              vatAmount:             quotation.vatAmount             ?? 0,
-              vatRate:               quotation.vatRate               ?? 0,
-            },
-            serviceCode: quotation.serviceCode,
-          },
+  service:                  quotation.service,
+  expectedDeliveryDate:     quotation.expectedDeliveryDate,
+  firstAvailablePickupDate: quotation.firstAvailablePickupDate,
+  serviceCode:              quotation.serviceCode,
+  // non mandiamo pricing / priceBreakdown
+},
+
         }),
       });
       if (!res.ok) throw await res.json();
