@@ -170,7 +170,6 @@ export async function POST(req) {
           service:                  body.quotation.service,
           expectedDeliveryDate:     body.quotation.expectedDeliveryDate,
           firstAvailablePickupDate: body.quotation.firstAvailablePickupDate,
-          priceBreakdown:           body.quotation.priceBreakdown, // struttura identica a quella ricevuta da /quotations
         },
       };
 
