@@ -340,74 +340,95 @@ export default function Page() {
   };
 
   const handleAccetta = async (quotation) => {
-    if (!selectedOrder) { setErrore("Nessun ordine selezionato."); return; }
-    setLoading(true); setErrore(null);
-    try {
-      const res = await fetch("/api/spediamo2?step=accept", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mittente, nome: form.nome, telefono: form.telefono, email: form.email,
-          indirizzo: form.indirizzo, indirizzo2: form.indirizzo2 || null,
-          capDestinatario: form.capDestinatario, cittaDestinatario: form.cittaDestinatario,
-          provinciaDestinatario: form.provinciaDestinatario, nazioneDestinatario: form.nazioneDestinatario,
-          noteDestinatario: form.noteDestinatario || null,
-          altezza: form.altezza, larghezza: form.larghezza, profondita: form.profondita, peso: form.peso,
-          labelFormat: form.labelFormat,
-          shopifyOrderId: selectedOrder.id, shopifyOrderName: selectedOrder.name,
-          importoContrassegno: 0, importoAssicurazione: 0,
-          quotation: {
-  service:                  quotation.service,
-  expectedDeliveryDate:     quotation.expectedDeliveryDate,
-  firstAvailablePickupDate: quotation.firstAvailablePickupDate,
-  serviceCode:              quotation.serviceCode,
-  // non mandiamo pricing / priceBreakdown
-},
+  if (!selectedOrder) {
+    setErrore("Nessun ordine selezionato.");
+    return;
+  }
+  setLoading(true);
+  setErrore(null);
 
-        }),
-      });
-      if (!res.ok) throw await res.json();
-      const data = await res.json();
-      const spedizione = data.spedizione;
-      setSpedizioniCreate((prev) => [
-        { shopifyOrder: selectedOrder, spedizione, fulfilled: false, createdAt: new Date().toISOString() },
-        ...prev.filter((el) => el.spedizione?.id !== spedizione?.id),
-      ]);
-      setQuotations([]);
-      // ✅ Aggiorna wallet dopo spedizione
-      fetchWallet();
-      setModal({
-        tipo: "success",
-        dati: [
-          { label: "Ordine Shopify",  value: selectedOrder.name },
-          { label: "ID Spedizione",   value: `#${spedizione.id}` },
-          { label: "Corriere",        value: spedizione.courierService?.courier?.toUpperCase() || "—" },
-          { label: "Servizio",        value: spedizione.courierService?.code || "—" },
-          { label: "Tracking",        value: getTrackingLabel(spedizione) || "in elaborazione…", highlight: true },
-          { label: "Consegna prev.",  value: spedizione.expectedDeliveryDate?.split(" ")[0] || "—" },
-          { label: "Formato etich.",  value: spedizione.labelOption?.originalExtension?.toUpperCase() || "—" },
-          { label: "Costo",           value: `€ ${quotation.totalPrice?.toFixed(2)}`, highlight: true },
-        ],
-      });
-    } catch (err) { setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : String(err)); }
-    finally { setLoading(false); }
-  };
+  try {
+    const res = await fetch("/api/spediamo2?step=accept", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mittente,
+        nome: form.nome,
+        telefono: form.telefono,
+        email: form.email,
+        indirizzo: form.indirizzo,
+        indirizzo2: form.indirizzo2 || null,
+        capDestinatario: form.capDestinatario,
+        cittaDestinatario: form.cittaDestinatario,
+        provinciaDestinatario: form.provinciaDestinatario,
+        nazioneDestinatario: form.nazioneDestinatario,
+        noteDestinatario: form.noteDestinatario || null,
+        altezza: form.altezza,
+        larghezza: form.larghezza,
+        profondita: form.profondita,
+        peso: form.peso,
+        labelFormat: form.labelFormat,
+        shopifyOrderId: selectedOrder.id,
+        shopifyOrderName: selectedOrder.name,
+        importoContrassegno: 0,
+        importoAssicurazione: 0,
 
-  const handleDownloadLabel = async (idSpedizione) => {
-    setLoading(true); setErrore(null);
-    try {
-      const res = await fetch(`/api/spediamo2?step=labels&id=${idSpedizione}`, { method: "POST" });
-      if (!res.ok) throw await res.json();
-      const { label } = await res.json();
-      const bytes = Uint8Array.from(atob(label.b64), (c) => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: label.contentType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = label.filename || `etichetta_${idSpedizione}`;
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) { setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : String(err)); }
-    finally { setLoading(false); }
-  };
+        // 🔹 Quotation minimale: niente pricing/priceBreakdown,
+        // il breakdown viene ricostruito nel route.js
+        quotation: {
+          service:                  quotation.service,
+          serviceCode:              quotation.serviceCode,
+          expectedDeliveryDate:     quotation.expectedDeliveryDate,
+          firstAvailablePickupDate: quotation.firstAvailablePickupDate,
+
+          // campi “flat” usati dal route.js per ricostruire priceBreakdown
+          totalPrice:            quotation.totalPrice,
+          basePrice:             quotation.priceBreakdown?.basePrice,
+          fuelSurcharge:         quotation.priceBreakdown?.fuelSurcharge,
+          accessoryServicePrice: quotation.priceBreakdown?.accessoryServicePrice,
+          vatRate:               quotation.priceBreakdown?.vatRate,
+          vatAmount:             quotation.priceBreakdown?.vatAmount,
+        },
+      }),
+    });
+
+    if (!res.ok) throw await res.json();
+    const data = await res.json();
+    const spedizione = data.spedizione;
+
+    setSpedizioniCreate((prev) => [
+      {
+        shopifyOrder: selectedOrder,
+        spedizione,
+        fulfilled: false,
+        createdAt: new Date().toISOString(),
+      },
+      ...prev.filter((el) => el.spedizione?.id !== spedizione?.id),
+    ]);
+
+    setQuotations([]);
+    fetchWallet();
+
+    setModal({
+      tipo: "success",
+      dati: [
+        { label: "Ordine Shopify",  value: selectedOrder.name },
+        { label: "ID Spedizione",   value: `#${spedizione.id}` },
+        { label: "Corriere",        value: spedizione.courierService?.courier?.toUpperCase() || "—" },
+        { label: "Servizio",        value: spedizione.courierService?.code || "—" },
+        { label: "Tracking",        value: getTrackingLabel(spedizione) || "in elaborazione…", highlight: true },
+        { label: "Consegna prev.",  value: spedizione.expectedDeliveryDate?.split(" ")[0] || "—" },
+        { label: "Formato etich.",  value: spedizione.labelOption?.originalExtension?.toUpperCase() || "—" },
+        { label: "Costo",           value: `€ ${quotation.totalPrice?.toFixed(2)}`, highlight: true },
+      ],
+    });
+  } catch (err) {
+    setErrore(typeof err === "object" ? JSON.stringify(err, null, 2) : String(err));
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const handleEvadiSpedizione = async (el) => {
     setLoading(true); setErrore(null);

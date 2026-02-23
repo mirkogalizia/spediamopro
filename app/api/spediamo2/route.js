@@ -120,6 +120,8 @@ export async function POST(req) {
         return Math.max(10, w);
       })();
 
+      const q = body.quotation || {};
+
       const payload = {
         labelFormat,
         consigneeNote:     body.noteDestinatario || null,
@@ -128,6 +130,7 @@ export async function POST(req) {
         deliveryPudo:      null,
         pickup:            null,
 
+        // COD / assicurazione solo se > 0
         ...(body.importoContrassegno  > 0 && { cashOnDeliveryAmount: body.importoContrassegno }),
         ...(body.importoAssicurazione > 0 && { insuredAmount: body.importoAssicurazione }),
 
@@ -165,11 +168,18 @@ export async function POST(req) {
           },
         ],
 
-        // Qui passiamo solo i campi realmente richiesti / accettati
         quotation: {
-          service:                  body.quotation.service,
-          expectedDeliveryDate:     body.quotation.expectedDeliveryDate,
-          firstAvailablePickupDate: body.quotation.firstAvailablePickupDate,
+          service:                  q.service,
+          serviceCode:              q.serviceCode,
+          expectedDeliveryDate:     q.expectedDeliveryDate,
+          firstAvailablePickupDate: q.firstAvailablePickupDate,
+          priceBreakdown: {
+            basePrice:             q.basePrice             ?? q.priceBreakdown?.basePrice             ?? q.totalPrice ?? 0,
+            fuelSurcharge:         q.fuelSurcharge         ?? q.priceBreakdown?.fuelSurcharge         ?? 0,
+            accessoryServicePrice: q.accessoryServicePrice ?? q.priceBreakdown?.accessoryServicePrice ?? 0,
+            vatRate:               q.vatRate               ?? q.priceBreakdown?.vatRate               ?? 0,
+            vatAmount:             q.vatAmount             ?? q.priceBreakdown?.vatAmount             ?? 0,
+          },
         },
       };
 
