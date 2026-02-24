@@ -994,14 +994,14 @@ export default function Page() {
 
       {/* MITTENTE */}
       <div
-        style={{
-          background: "#f8fafc",
-          border: "1px solid "#e2e8f0",
-          borderRadius: 12,
-          padding: 16,
-          marginBottom: 16,
-        }}
-      >
+  style={{
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  }}
+>
         <div
           style={{
             display: "flex",
