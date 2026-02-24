@@ -996,7 +996,7 @@ export default function Page() {
       <div
         style={{
           background: "#f8fafc",
-          border: "1px solid #e2e8f0",
+          border: "1px solid "#e2e8f0",
           borderRadius: 12,
           padding: 16,
           marginBottom: 16,
@@ -1466,7 +1466,7 @@ export default function Page() {
                 padding: "5px 12px",
                 background: "#fef2f2",
                 color: "#dc2626",
-                border: "1px solid "#fecaca",
+                border: "1px solid #fecaca",   // ← fixato
                 borderRadius: 7,
               }}
               onClick={handleSvuotaLista}
@@ -1785,7 +1785,7 @@ function DateInput({ label, value, onChange }) {
         onChange={(e) => onChange(e.target.value)}
         style={{
           padding: "6px 10px",
-          border: "1px solid "#cbd5e1",
+          border: "1px solid #cbd5e1",   // ← fixato
           borderRadius: 7,
           fontSize: 13,
           outline: "none",
